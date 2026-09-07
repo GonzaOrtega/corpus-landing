@@ -92,6 +92,8 @@ describe('disposable-branch migration configuration', () => {
     expect(refresh.run).toContain(
       'https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$NEON_BRANCH_ID',
     );
-    expect(refresh.run).toContain('"expires_at":"%s"');
+    expect(refresh.run).toContain('expires_at');
+    expect(refresh.run).toContain('%s');
+    expect(refresh.run).toContain('--data "$payload"');
   });
 });
