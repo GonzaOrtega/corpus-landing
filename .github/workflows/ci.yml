@@ -12,14 +12,8 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  # Points CI tests at a disposable Neon branch, never production (§9, Task 19
-  # wires the official Neon GitHub Action to create pr-<number> branches off
-  # `development`). Until then this is unset and DB-touching tests skip.
-  DATABASE_URL: ${{ secrets.NEON_CI_DATABASE_URL }}
-
 jobs:
-  # Job name is a required PR check per spec §31 — do not rename.
+  # Stable required PR check — do not rename.
   check:
     name: check
     runs-on: ubuntu-latest
@@ -27,14 +21,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: latest
+          bun-version: 1.3.13
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun run lint
+      - name: Dependency-cruiser
+        run: bunx depcruise --config .dependency-cruiser.json src app --output-type err
       - name: Stack conformance
         run: bun run stack:check
 
-  # Job name is a required PR check per spec §31 — do not rename.
+  # Stable required PR check — do not rename. Forks still run the safe unit
+  # suite, but GitHub withholds Neon credentials so DB-specific steps are skipped.
   test:
     name: test
     runs-on: ubuntu-latest
@@ -42,9 +39,44 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: latest
+          bun-version: 1.3.13
       - run: bun install --frozen-lockfile
+      - id: expiry
+        name: Set disposable branch expiration
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: echo "rfc3339=$(date -u -d '+1 day' +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+      - id: neon
+        name: Create disposable Neon branch
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: neondatabase/create-branch-action@72ed4f69a12b6be9c16aebfad893f6a21e9aba8b # v6.4.0
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          parent_branch: development
+          branch_name: ci-${{ github.run_id }}-${{ github.run_attempt }}
+          expires_at: ${{ steps.expiry.outputs.rfc3339 }}
+      - name: Mask dynamic Neon URLs
+        if: ${{ steps.neon.outputs.branch_id != '' }}
+        env:
+          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
+          DATABASE_URL_UNPOOLED: ${{ steps.neon.outputs.db_url }}
+        run: |
+          echo "::add-mask::$DATABASE_URL"
+          echo "::add-mask::$DATABASE_URL_UNPOOLED"
       - name: Apply migrations to the disposable Neon branch
-        if: env.DATABASE_URL != ''
+        if: ${{ steps.neon.outputs.branch_id != '' }}
+        env:
+          DATABASE_URL: ${{ steps.neon.outputs.db_url }}
         run: bun run db:migrate
-      - run: bun run test
+      - name: Run Vitest
+        env:
+          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
+          DATABASE_URL_UNPOOLED: ${{ steps.neon.outputs.db_url }}
+        run: bun run test
+      - name: Delete disposable Neon branch
+        if: ${{ always() && steps.neon.outputs.branch_id != '' }}
+        uses: neondatabase/delete-branch-action@4468d825d5a88ef4012f1705a82f02ec3072f776 # v3.2.1
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          branch: ${{ steps.neon.outputs.branch_id }}

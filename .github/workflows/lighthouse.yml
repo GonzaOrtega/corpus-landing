@@ -1,4 +1,4 @@
-name: E2E
+name: Lighthouse
 
 on:
   workflow_run:
@@ -10,10 +10,10 @@ permissions:
   contents: read
 
 jobs:
-  # Stable required PR check — do not rename. This runs only after Preview has
-  # published its non-secret URL artifact, so browser tests cannot target prod.
-  e2e:
-    name: e2e
+  # Stable required PR check — do not rename. The URL comes from Preview, which
+  # is the only workflow allowed to handle Vercel and Neon deployment secrets.
+  lighthouse:
+    name: lighthouse
     runs-on: ubuntu-latest
     steps:
       - name: Fail when the trusted preview did not finish
@@ -48,11 +48,8 @@ jobs:
       - name: Install dependencies
         if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository }}
         run: bun install --frozen-lockfile
-      - name: Install Chromium
-        if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository }}
-        run: bunx playwright install --with-deps chromium
-      - name: Run Playwright against preview
+      - name: Run Lighthouse CI against preview
         if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository }}
         env:
-          PLAYWRIGHT_BASE_URL: ${{ steps.preview-url.outputs.url }}
-        run: bun run e2e
+          LHCI_URL: ${{ steps.preview-url.outputs.url }}
+        run: bun run lighthouse

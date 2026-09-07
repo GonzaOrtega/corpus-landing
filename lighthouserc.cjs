@@ -1,11 +1,17 @@
 /** @type {import('@lhci/cli/src/types').LHCIConfig} */
+const previewUrl = process.env.LHCI_URL;
+
 module.exports = {
   ci: {
     collect: {
-      startServerCommand: 'bun run start -- --port 3018',
-      startServerReadyPattern: 'Ready',
-      startServerReadyTimeout: 120000,
-      url: ['http://localhost:3018/'],
+      ...(previewUrl
+        ? { url: [previewUrl] }
+        : {
+            startServerCommand: 'bun run start -- --port 3018',
+            startServerReadyPattern: 'Ready',
+            startServerReadyTimeout: 120000,
+            url: ['http://localhost:3018/'],
+          }),
       numberOfRuns: 3,
       settings: {
         formFactor: 'mobile',

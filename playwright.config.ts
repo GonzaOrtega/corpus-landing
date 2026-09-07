@@ -3,13 +3,16 @@ import { defineConfig, devices } from '@playwright/test';
 
 nextEnv.loadEnvConfig(process.cwd());
 
+const previewBaseUrl = process.env.PLAYWRIGHT_BASE_URL;
+const baseURL = previewBaseUrl ?? 'http://localhost:3018';
+
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: false,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? 'github' : 'list',
   use: {
-    baseURL: 'http://localhost:3018',
+    baseURL,
     trace: 'retain-on-failure',
   },
   projects: [
@@ -21,10 +24,12 @@ export default defineConfig({
     { name: 'mobile-chrome', grep: /@mobile/, use: { ...devices['Pixel 5'] } },
     { name: 'mobile-safari', grep: /@mobile/, use: { ...devices['iPhone 13'] } },
   ],
-  webServer: {
-    command: 'bun run dev --port 3018',
-    url: 'http://localhost:3018',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: previewBaseUrl
+    ? undefined
+    : {
+        command: 'bun run dev --port 3018',
+        url: baseURL,
+        reuseExistingServer: !process.env.CI,
+        timeout: 120_000,
+      },
 });
