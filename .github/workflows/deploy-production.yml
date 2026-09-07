@@ -7,6 +7,13 @@ on:
         description: Lowercase full 40-hex commit SHA currently on main
         required: true
         type: string
+      release_stage:
+        description: Expected CORPUS_RELEASE_STAGE in the Production build
+        required: true
+        type: choice
+        options:
+          - early-access
+          - launched
 
 permissions:
   contents: read
@@ -33,6 +40,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'sha must be a lowercase 40-hex commit ID' >&2; exit 64; }
+          [[ "$EXPECTED_SHA" = "$GITHUB_SHA" ]] || { echo 'Requested SHA is not the dispatch event SHA' >&2; exit 1; }
           LIVE_MAIN_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
           [[ "$LIVE_MAIN_SHA" = "$EXPECTED_SHA" ]] || { echo 'Requested SHA is not live main' >&2; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -48,6 +56,7 @@ jobs:
           npm install --global vercel@59.11.7
       - name: Validate smoke expectations
         env:
+          SMOKE_RELEASE_STAGE: ${{ inputs.release_stage }}
           SMOKE_SITE_URL: ${{ vars.PRODUCTION_SITE_URL }}
           SMOKE_DOWNLOAD_URL: ${{ vars.PRODUCTION_DOWNLOAD_URL }}
         run: bun src/ops/production-smoke.ts --validate
@@ -87,6 +96,7 @@ jobs:
           vercel inspect "$DEPLOY_URL" --wait --timeout=10m --token="$VERCEL_TOKEN"
       - name: Smoke the immutable staged deployment
         env:
+          SMOKE_RELEASE_STAGE: ${{ inputs.release_stage }}
           DEPLOY_URL: ${{ steps.stage.outputs.url }}
           SMOKE_SITE_URL: ${{ vars.PRODUCTION_SITE_URL }}
           SMOKE_DOWNLOAD_URL: ${{ vars.PRODUCTION_DOWNLOAD_URL }}
@@ -106,5 +116,6 @@ jobs:
       - name: Record release provenance
         env:
           DEPLOY_URL: ${{ steps.stage.outputs.url }}
+          RELEASE_STAGE: ${{ inputs.release_stage }}
         run: |
-          printf 'Released commit: `%s`\n\nDeployment: %s\n' "$EXPECTED_SHA" "$DEPLOY_URL" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Released commit: `%s`\n\nStage: %s\n\nDeployment: %s\n' "$EXPECTED_SHA" "$RELEASE_STAGE" "$DEPLOY_URL" >> "$GITHUB_STEP_SUMMARY"

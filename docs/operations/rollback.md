@@ -27,8 +27,10 @@ deployment URL or ID and its commit.
 
 5. Verify the production domain and expected behavior for that previous
    release stage, inspect error signals, and record the selected deployment,
-   incident reason and time. The launched-only smoke suite may not apply to a
-   known-good early-access release. Do not submit real signup as a health probe.
+   incident reason and time. Run the smoke suite against the selected immutable
+   URL with `SMOKE_RELEASE_STAGE` matching that known-good release's
+   `early-access` or `launched` stage and its original site/download expectations.
+   Do not submit real signup as a health probe.
 
 Never run bare `vercel rollback` with an implicit target. If the chosen
 deployment is not eligible for rollback under the account plan, stop and

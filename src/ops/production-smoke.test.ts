@@ -4,6 +4,7 @@ import { runProductionSmoke, type SmokeOptions, validateSmokeOptions } from './p
 const options: SmokeOptions = {
   deploymentUrl: 'https://corpus-immutable-example.vercel.app',
   siteUrl: 'https://corpus.example/',
+  releaseStage: 'launched',
   downloadUrl: 'https://downloads.corpus.example/android?a=1&b=2',
 };
 const html = `<!doctype html><html><head>
@@ -12,7 +13,17 @@ const html = `<!doctype html><html><head>
 <link rel="stylesheet" href="/_next/static/chunks/site.css"/>
 </head><body><h1>Learn words from real life.</h1>
 <a href="https://downloads.corpus.example/android?a=1&amp;b=2">Get Corpus</a>
+<section id="early-access"><h2>Get Corpus.</h2></section>
 </body></html>`;
+const earlyAccessHtml = html
+  .replace(
+    '<a href="https://downloads.corpus.example/android?a=1&amp;b=2">Get Corpus</a>',
+    '<a href="#early-access">Join early access</a>',
+  )
+  .replace(
+    '<h2>Get Corpus.</h2>',
+    '<h2>Be there for the first build.</h2><form class="signup-form"><input name="email" type="email"/><button type="submit">Join the list</button></form>',
+  );
 const security = {
   'content-type': 'text/html; charset=utf-8',
   'x-content-type-options': 'nosniff',
@@ -47,6 +58,86 @@ function fixture(overrides: Record<string, Fixture> = {}) {
 }
 
 describe('production smoke', () => {
+  it.each([
+    undefined,
+    '',
+    'unused-invalid-download',
+  ])('supports early-access without a validated download URL (%s)', async (downloadUrl) => {
+    const fetcher = fixture({ '/': { body: earlyAccessHtml, headers: security } });
+    await expect(
+      runProductionSmoke({ ...options, releaseStage: 'early-access', downloadUrl }, fetcher),
+    ).resolves.toBeDefined();
+    expect(fetcher).toHaveBeenCalledTimes(4);
+    expect(
+      fetcher.mock.calls.every(([, init]) => init?.method === 'GET' && init.body === undefined),
+    ).toBe(true);
+  });
+
+  it.each([
+    '',
+    'preview',
+    'Early-access',
+    'launched ',
+  ])('rejects unknown or missing release stage %s', async (releaseStage) => {
+    const fetcher = fixture();
+    await expect(runProductionSmoke({ ...options, releaseStage }, fetcher)).rejects.toThrow(
+      'release stage',
+    );
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, ''])('requires download URL for launched (%s)', async (downloadUrl) => {
+    const fetcher = fixture();
+    await expect(runProductionSmoke({ ...options, downloadUrl }, fetcher)).rejects.toThrow('HTTPS');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['early-access', html],
+    ['launched', earlyAccessHtml],
+  ])('rejects the opposite deployed stage when expecting %s', async (releaseStage, body) => {
+    await expect(
+      runProductionSmoke(
+        { ...options, releaseStage },
+        fixture({ '/': { body, headers: security } }),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it.each([
+    ['CTA destination', earlyAccessHtml.replace('href="#early-access"', 'href="#other"')],
+    ['signup heading', earlyAccessHtml.replace('Be there for the first build.', 'Other heading')],
+    ['email control', earlyAccessHtml.replace('type="email"', 'type="text"')],
+    ['signup button', earlyAccessHtml.replace('Join the list', 'Unavailable')],
+    ['signup form', earlyAccessHtml.replace('class="signup-form"', 'class="other"')],
+    [
+      'mixed-stage CTA',
+      earlyAccessHtml.replace(
+        '</body>',
+        '<a href="https://downloads.example">Get Corpus</a></body>',
+      ),
+    ],
+  ])('rejects invalid early-access %s', async (_name, body) => {
+    await expect(
+      runProductionSmoke(
+        { ...options, releaseStage: 'early-access', downloadUrl: undefined },
+        fixture({ '/': { body, headers: security } }),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it.each([
+    ['signup form', html.replace('</section>', '<form class="signup-form"></form></section>')],
+    [
+      'wrong heading',
+      html.replace('<h2>Get Corpus.</h2>', '<h2>Be there for the first build.</h2>'),
+    ],
+  ])('rejects launched page with an early-access %s', async (_name, body) => {
+    await expect(
+      runProductionSmoke(options, fixture({ '/': { body, headers: security } })),
+    ).rejects.toThrow('Launched release surface');
+  });
+
   it('checks the captured deployment with four GETs and never authenticates maintenance', async () => {
     const fetcher = fixture();
     const result = await runProductionSmoke(

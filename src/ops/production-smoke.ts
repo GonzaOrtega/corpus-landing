@@ -1,7 +1,8 @@
 export interface SmokeOptions {
   deploymentUrl: string;
   siteUrl: string;
-  downloadUrl: string;
+  releaseStage: string;
+  downloadUrl?: string;
   bypassSecret?: string;
 }
 
@@ -27,9 +28,13 @@ function httpsUrl(value: string | undefined): URL {
 }
 
 export function validateSmokeOptions(options: SmokeOptions): void {
+  requireCheck(
+    options.releaseStage === 'early-access' || options.releaseStage === 'launched',
+    'Expected release stage must be early-access or launched',
+  );
   const deployment = httpsUrl(options.deploymentUrl);
   const site = httpsUrl(options.siteUrl);
-  httpsUrl(options.downloadUrl);
+  if (options.releaseStage === 'launched') httpsUrl(options.downloadUrl);
   requireCheck(
     /^[a-z0-9-]+\.vercel\.app$/.test(deployment.hostname) &&
       !deployment.port &&
@@ -125,15 +130,47 @@ export async function runProductionSmoke(options: SmokeOptions, fetcher: Fetch =
     'Homepage heading missing',
   );
   const anchors = html.match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) ?? [];
-  requireCheck(
-    anchors.some(
-      (tag) =>
-        attribute(tag, 'href') === new URL(options.downloadUrl).href &&
-        />\s*Get Corpus\s*<\/a>$/i.test(tag),
-    ),
-    'Launched download CTA missing or incorrect',
+  const section = (html.match(/<section\b[^>]*>[\s\S]*?<\/section>/gi) ?? []).find(
+    (tag) => attribute(tag, 'id') === 'early-access',
   );
-  requireCheck(!/>\s*Join early access\s*</i.test(html), 'Early-access CTA still rendered');
+  requireCheck(section, 'Release-stage section missing');
+  const signupForm = (section.match(/<form\b[^>]*>[\s\S]*?<\/form>/gi) ?? []).find((tag) =>
+    attribute(tag, 'class')?.split(/\s+/).includes('signup-form'),
+  );
+  if (options.releaseStage === 'launched') {
+    requireCheck(
+      anchors.some(
+        (tag) =>
+          attribute(tag, 'href') === httpsUrl(options.downloadUrl).href &&
+          />\s*Get Corpus\s*<\/a>$/i.test(tag),
+      ),
+      'Launched download CTA missing or incorrect',
+    );
+    requireCheck(!/>\s*Join early access\s*</i.test(html), 'Early-access CTA still rendered');
+    requireCheck(
+      /<h2\b[^>]*>\s*Get Corpus\.\s*<\/h2>/i.test(section) && !signupForm,
+      'Launched release surface is incorrect',
+    );
+  } else {
+    requireCheck(
+      anchors.some(
+        (tag) =>
+          attribute(tag, 'href') === '#early-access' && />\s*Join early access\s*<\/a>$/i.test(tag),
+      ),
+      'Early-access CTA missing or incorrect',
+    );
+    requireCheck(!/>\s*Get Corpus\s*</i.test(html), 'Launched CTA still rendered');
+    requireCheck(
+      /<h2\b[^>]*>\s*Be there for the first build\.\s*<\/h2>/i.test(section) && signupForm,
+      'Early-access signup surface missing',
+    );
+    requireCheck(
+      (signupForm.match(/<input\b[^>]*>/gi) ?? []).some(
+        (tag) => attribute(tag, 'name') === 'email' && attribute(tag, 'type') === 'email',
+      ) && /<button\b[^>]*>\s*Join the list\s*<\/button>/i.test(signupForm),
+      'Early-access signup controls missing',
+    );
+  }
   const metas = html.match(/<meta\b[^>]*>/gi) ?? [];
   const robots = metas.filter((tag) => /^(robots|googlebot)$/i.test(attribute(tag, 'name') ?? ''));
   requireCheck(
@@ -183,7 +220,7 @@ export async function runProductionSmoke(options: SmokeOptions, fetcher: Fetch =
   return {
     checks: [
       'homepage',
-      'launched-cta',
+      'release-stage-surface',
       'security-headers',
       'static-css',
       'indexing',
@@ -196,6 +233,7 @@ if (import.meta.main) {
   const options: SmokeOptions = {
     deploymentUrl: process.env.DEPLOY_URL ?? 'https://validate-only.vercel.app',
     siteUrl: process.env.SMOKE_SITE_URL ?? '',
+    releaseStage: process.env.SMOKE_RELEASE_STAGE ?? '',
     downloadUrl: process.env.SMOKE_DOWNLOAD_URL ?? '',
     bypassSecret: process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
   };

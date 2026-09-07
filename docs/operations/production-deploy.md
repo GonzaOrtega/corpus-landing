@@ -2,8 +2,10 @@
 
 Merging to `main` never deploys production. `.github/workflows/deploy-production.yml`
 has only `workflow_dispatch`, and `vercel.json` disables Vercel Git deployments.
-The separate Preview workflow owns PR deployments. This workflow releases the
-**launched** site: smoke requires the rendered **Get Corpus** download CTA.
+The separate Preview workflow owns PR deployments. This workflow supports both
+exact release stages: **early-access** and **launched**. The required
+`release_stage` dispatch input tells smoke which CTA and signup/download surface
+the Production build must render.
 
 ## Prerequisites (operator configuration)
 
@@ -23,11 +25,14 @@ In that protected environment, set:
 | Secret | `DATABASE_URL_UNPOOLED` | Production Neon direct connection for generated migrations |
 | Secret | `VERCEL_AUTOMATION_BYPASS_SECRET` | Protection bypass for the staged URL, if deployment protection is enabled |
 | Variable | `PRODUCTION_SITE_URL` | Expected canonical HTTPS site origin, matching Vercel `SITE_URL` |
-| Variable | `PRODUCTION_DOWNLOAD_URL` | Expected launched HTTPS download destination, matching Vercel `CORPUS_DOWNLOAD_URL` |
+| Variable | `PRODUCTION_DOWNLOAD_URL` | Required only for launched: expected HTTPS download destination, matching Vercel `CORPUS_DOWNLOAD_URL` |
 
 The Vercel project's **Production** environment must contain the application's
-complete server configuration, including `CORPUS_RELEASE_STAGE=launched`,
-`CORPUS_DOWNLOAD_URL`, `SITE_URL`, and both database URLs. Its unpooled database
+complete server configuration, including `CORPUS_RELEASE_STAGE` set to the
+selected `early-access` or `launched` stage, `SITE_URL`, and both database URLs.
+For launched, also configure `CORPUS_DOWNLOAD_URL`; early-access ignores it.
+The dispatch expectation does not override the Vercel build environment: a
+stage mismatch fails smoke before promotion. Its unpooled database
 must be the same production database as the GitHub migration secret. Set
 `CRON_SECRET` for actual scheduled maintenance; the smoke never uses it. Keep
 Vercel system environment variables enabled so Production metadata sees
@@ -50,9 +55,12 @@ driver output because connection failures can contain connection strings.
    [rollback](rollback.md); for a first release record that no previous target
    exists.
 3. Open **Actions → Deploy production → Run workflow**, select `main`, and
-   supply its full lowercase 40-hex SHA as `sha`. Approve the protected
-   environment only after reviewing that specific SHA and migration set.
-4. Observe the run. It validates the input against the authoritative GitHub
+   supply its full lowercase 40-hex SHA as `sha` and select the expected
+   `release_stage` (`early-access` or `launched`). Approve the protected
+   environment after reviewing that SHA, stage and migration set.
+4. Observe the run. Before checkout/install, it requires the requested SHA to
+   equal the workflow dispatch event's `GITHUB_SHA` as well as live `main`.
+   It validates live main against the authoritative GitHub
    `git/ref/heads/main` API, checks out that immutable SHA with checkout
    credentials disabled, and checks the live ref again immediately before
    migration/build. An empty, stale, malformed, or unreadable ref fails closed.
@@ -86,17 +94,27 @@ the workflow cannot provide a transaction across the two services.
 ## Smoke contract
 
 Run `bun src/ops/production-smoke.ts` with `DEPLOY_URL`, `SMOKE_SITE_URL`,
-`SMOKE_DOWNLOAD_URL`, and optional `VERCEL_AUTOMATION_BYPASS_SECRET` supplied
-through the environment. `--validate` checks configuration without requests.
+and explicit `SMOKE_RELEASE_STAGE=early-access` or `SMOKE_RELEASE_STAGE=launched`.
+Supply `SMOKE_DOWNLOAD_URL` only when launched requires a validated download
+destination, and optional `VERCEL_AUTOMATION_BYPASS_SECRET` through the
+environment. `--validate` checks configuration without requests.
 The script fails on errors, redirects, unexpected statuses/types, or timeouts.
 It never follows links to the download site or forwards bypass headers there.
 
 | Request | Required evidence |
 | --- | --- |
-| `GET /` | 200 HTML, Corpus heading, launched download link matching the expected destination, production CSP/HSTS and other configured security headers, `index, follow` metadata, correct canonical origin |
+| `GET /` | 200 HTML, Corpus heading, expected stage surface described below, production CSP/HSTS and other configured security headers, `index, follow` metadata, correct canonical origin |
 | Referenced `/_next/static/…css` | Same deployment origin, 200 CSS, nonempty CSS content |
 | `GET /robots.txt` | 200 text, wildcard user agent allowed `/`, production sitemap URL |
 | `GET /api/cron/maintenance` | Exactly 401 with body `Unauthorized`, with no Authorization header |
+
+For early-access, require **Join early access** linking to `#early-access`,
+the **Be there for the first build.** section, and the rendered signup form
+with an email field and **Join the list** button. Do not submit the form.
+For launched, require **Get Corpus** linking to the expected download URL,
+the **Get Corpus.** section, and no signup form. Both reject the opposite
+stage's CTA/surface. Missing or unknown expected stages fail before requests;
+only launched requires and validates a download destination.
 
 The last check exercises the existing server composition and authorization
 boundary. The handler rejects the request before `maintenance.execute`, so it
