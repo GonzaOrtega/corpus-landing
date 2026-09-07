@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildPageRobotsMetadata,
   buildRobotsMetadata,
   buildSiteMetadata,
   buildSitemapEntries,
@@ -37,6 +38,8 @@ describe('discovery surfaces', () => {
       sitemap: 'https://corpus.example/sitemap.xml',
     });
     expect(buildRobotsMetadata(false)).toEqual({ rules: { userAgent: '*', disallow: '/' } });
+    expect(buildPageRobotsMetadata(false)).toEqual({ index: false, follow: false });
+    expect(buildPageRobotsMetadata(true)).toEqual({ index: true, follow: true });
   });
 
   it('publishes only canonical public pages in the production sitemap', () => {

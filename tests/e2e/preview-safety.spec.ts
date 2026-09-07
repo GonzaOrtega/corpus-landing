@@ -13,5 +13,6 @@ test('non-production deployments disallow indexing and do not load real CAPTCHA'
   expect(await robots.text()).toContain('Disallow: /');
 
   await page.goto('/');
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex, nofollow');
   await expect(page.locator('#google-recaptcha-v3')).toHaveCount(0);
 });

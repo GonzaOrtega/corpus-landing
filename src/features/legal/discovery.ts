@@ -43,6 +43,10 @@ export function buildSiteMetadata({ siteUrl, releaseStage }: DiscoveryOptions): 
   };
 }
 
+export function buildPageRobotsMetadata(indexable: boolean): Metadata['robots'] {
+  return { index: indexable, follow: indexable };
+}
+
 /** Only Vercel production is allowed into discovery; every other environment is private. */
 export function isIndexableDeployment(vercelEnv: string | undefined): boolean {
   return vercelEnv === 'production';

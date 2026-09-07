@@ -43,21 +43,27 @@ deletes the deterministic branch on PR close without checking out PR code.
 
 Generated database URLs are masked before use, remain in their originating
 job, and are never job outputs or artifacts. Only the non-secret Vercel Preview
-URL crosses jobs as a one-day artifact for the E2E and Lighthouse workflows.
-Neither CI nor Preview connects to Neon `main` or production resources.
+URL crosses jobs as the `preview` job output to the dependent E2E and Lighthouse
+jobs in the same `pull_request` workflow. Neither CI nor Preview connects to
+Neon `main` or production resources.
+
+The E2E job independently reuses the deterministic `pr-<number>` branch to
+obtain a masked pooled connection string for its management-flow fixture. This
+keeps dynamic database URLs inside the job that consumes them instead of passing
+them through the Preview job output.
 
 ## Forks and browser gates
 
 For same-repository PRs, GitHub supplies the scoped Vercel and Neon secrets and
-the preview pipeline runs normally. Fork PRs retain all five check names but
-skip authenticated database/deployment work: unit tests run without a database,
-and Preview, E2E, and Lighthouse report a safe no-op. This preserves the
-security boundary while keeping branch-protection contexts stable.
+the preview pipeline runs normally. Fork PRs retain all five check names, but
+database/deployment-dependent checks fail closed because their required
+credentials are unavailable. This preserves the security boundary without
+reporting successful validation that did not run.
 
-E2E and Lighthouse start only after the successful Preview workflow, download
-the URL artifact, validate that it is HTTPS, and point their runners at that
-Preview. Lighthouse uses its existing temporary-public-storage upload target;
-there is no self-hosted or paid LHCI service.
+E2E and Lighthouse depend on the successful `preview` job, validate its HTTPS
+URL output, and point their runners at that Preview. Lighthouse uses its
+existing temporary-public-storage upload target; there is no self-hosted or
+paid LHCI service.
 
 ## Operating notes
 
