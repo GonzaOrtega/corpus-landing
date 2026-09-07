@@ -1,4 +1,4 @@
-import { landingContent } from '../content/landing-content';
+import { CaptureEnrichPractice } from './capture-enrich-practice';
 import { Hero } from './hero';
 import { ProgressSpine } from './progress-spine';
 import { SiteFooter } from './site-footer';
@@ -14,21 +14,7 @@ export function LandingShell() {
       <SiteHeader />
       <main id="main">
         <Hero />
-        <section className="section" id="how">
-          <div className="wrap column">
-            <p className="eyebrow">How it works</p>
-            <h2>One word, three moments.</h2>
-            <div className="stages">
-              {landingContent.stages.map(([label, heading, body]) => (
-                <article key={label}>
-                  <p className="eyebrow">◆ {label}</p>
-                  <h3>{heading}</h3>
-                  <p>{body}</p>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
+        <CaptureEnrichPractice />
         <section className="section lexicon" id="lexicon">
           <div className="wrap column">
             <p className="eyebrow">Your living lexicon</p>

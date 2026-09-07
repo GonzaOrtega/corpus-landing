@@ -13,4 +13,13 @@ describe('LandingShell', () => {
     expect(html).toContain('Learn words from real life.');
     expect(html).toContain('Join early access');
   });
+
+  it('keeps every Capture, Enrich, and Practice demonstration readable in server HTML', () => {
+    const html = renderToStaticMarkup(<LandingShell />);
+
+    expect(html).toContain('Saved. Nothing else needed.');
+    expect(html).toContain('Near: luminous, radiant, translucent');
+    expect(html).toContain('The water was');
+    expect(html).toContain('in the late afternoon.');
+  });
 });
