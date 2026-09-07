@@ -14,8 +14,9 @@ export class RetryFailedConfirmationsUseCase {
     private readonly tokenHasher: TokenHasher,
   ) {}
 
-  async execute(limit: number): Promise<number> {
+  async execute(limit: number): Promise<{ processed: number; exhausted: number }> {
     const due = await this.repository.findConfirmationsDue(this.clock.now(), limit);
+    let exhausted = 0;
     for (const signup of due) {
       const managementToken = this.tokenGenerator.generate();
       await this.repository.save(
@@ -26,7 +27,9 @@ export class RetryFailedConfirmationsUseCase {
         }),
       );
       await this.sendConfirmation.execute({ signupId: signup.id, managementToken });
+      const updated = await this.repository.findById(signup.id);
+      if (updated?.toProps().confirmationStatus === 'exhausted') exhausted += 1;
     }
-    return due.length;
+    return { processed: due.length, exhausted };
   }
 }

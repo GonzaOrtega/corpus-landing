@@ -4,5 +4,6 @@
   "installCommand": "bun install --frozen-lockfile",
   "buildCommand": "bun run build",
   "regions": ["gru1"],
-  "cleanUrls": true
+  "cleanUrls": true,
+  "crons": [{ "path": "/api/cron/maintenance", "schedule": "0 5 * * *" }]
 }

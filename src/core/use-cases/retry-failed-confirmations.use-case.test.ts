@@ -57,7 +57,7 @@ describe('RetryFailedConfirmationsUseCase', () => {
   it('rotates the management token and sends a due second attempt', async () => {
     const { repository, created, sender, useCase } = await setup(['accepted']);
 
-    await useCase.execute(100);
+    await expect(useCase.execute(100)).resolves.toEqual({ processed: 1, exhausted: 0 });
     const saved = await repository.findById(created.id);
 
     expect(saved?.toProps()).toMatchObject({
@@ -78,7 +78,7 @@ describe('RetryFailedConfirmationsUseCase', () => {
       }),
     );
 
-    await useCase.execute(100);
+    await expect(useCase.execute(100)).resolves.toEqual({ processed: 1, exhausted: 1 });
 
     expect((await repository.findById(created.id))?.toProps()).toMatchObject({
       confirmationStatus: 'exhausted',
