@@ -48,6 +48,24 @@ jobs:
           parent_branch: development
           branch_name: pr-${{ github.event.pull_request.number }}
           expires_at: ${{ steps.expiry.outputs.rfc3339 }}
+      - name: Refresh preview branch expiration
+        if: ${{ steps.neon.outputs.branch_id != '' }}
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_BRANCH_ID: ${{ steps.neon.outputs.branch_id }}
+          NEON_EXPIRES_AT: ${{ steps.expiry.outputs.rfc3339 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(printf '{\"branch\":{\"expires_at\":\"%s\"}}' "$NEON_EXPIRES_AT")"
+          curl --fail --silent --show-error \
+            --request PATCH \
+            --header "Authorization: Bearer $NEON_API_KEY" \
+            --header 'Content-Type: application/json' \
+            --data "$payload" \
+            --output /dev/null \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$NEON_BRANCH_ID"
       - name: Mask dynamic Neon URLs
         if: ${{ steps.neon.outputs.branch_id != '' }}
         env:
