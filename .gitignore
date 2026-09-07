@@ -36,6 +36,7 @@ secrets.json
 .turbo
 .drizzle/
 *.tsbuildinfo
+.claude/scheduled_tasks.lock
 
 # Editor / OS
 .DS_Store

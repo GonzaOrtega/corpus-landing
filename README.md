@@ -5,10 +5,12 @@ early-access signups, confirms them, lets subscribers manage or revoke their own
 subscription, sends exactly one launch notification, and then flips the whole
 site from *early access* to *Get Corpus* mode.
 
-> **Status: pre-implementation.** This repository currently holds the approved
-> design specification, the 22-task implementation plan, and the visual
-> prototypes. No application code has been written yet. Work begins at packet
-> **P0** — see [`docs/execution/stages.md`](docs/execution/stages.md).
+> **Status: scaffolded (Task 1 / P0 done).** The repository is a conforming
+> Claude Stack `next-app` with the real `early_access_signups` schema/migration
+> and CI wired, but no product behavior yet — the landing page, signup flow,
+> and emails are still ahead. See
+> [`docs/execution/stages.md`](docs/execution/stages.md) for what's done and
+> what's next (Task 2).
 
 ## Release stages
 
@@ -36,6 +38,12 @@ API**; signup is a Server Action only.
 ## Repository layout
 
 ```text
+src/
+  adapters/db/          Drizzle schema (early_access_signups, per spec §9)
+  composition/          capability providers + composition root
+
+drizzle/                generated migrations (never hand-edit the DB)
+
 docs/
   superpowers/specs/    approved design specification (the contract)
   superpowers/plans/    22-task implementation plan
@@ -56,8 +64,6 @@ require real Neon, Resend, or reCAPTCHA credentials.
 
 ## Verification
 
-Once P0 lands:
-
 ```bash
 bun install
 bun run check   # typecheck + Biome + stack conformance
@@ -65,8 +71,9 @@ bun run test    # Vitest
 bun run e2e     # Playwright
 ```
 
-CI additionally runs `preview` (deployment against a disposable Neon branch) and
-`lighthouse`.
+`check` and `test` run in CI today (`.github/workflows/ci.yml`); `e2e` runs on
+pull requests. `preview` (deployment against a disposable Neon branch) and
+`lighthouse` are not wired yet — Task 19.
 
 ## Deployment
 
