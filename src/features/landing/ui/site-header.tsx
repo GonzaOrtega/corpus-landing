@@ -23,11 +23,7 @@ export function SiteHeader({ releaseStage, downloadUrl = null }: SiteHeaderProps
               {item.label}
             </Link>
           ))}
-          <ReleaseCta
-            className="button button-solid"
-            downloadUrl={downloadUrl}
-            releaseStage={releaseStage}
-          />
+          <ReleaseCta className="button" downloadUrl={downloadUrl} releaseStage={releaseStage} />
         </nav>
       </div>
     </header>

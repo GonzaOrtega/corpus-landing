@@ -10,7 +10,12 @@ import {
 } from '@/src/features/legal/discovery';
 import './globals.css';
 
-const serif = Newsreader({ subsets: ['latin'], variable: '--font-serif' });
+const serif = Newsreader({
+  subsets: ['latin'],
+  style: ['normal', 'italic'],
+  axes: ['opsz'],
+  variable: '--font-serif',
+});
 const sans = Karla({ subsets: ['latin'], variable: '--font-sans' });
 
 export function generateMetadata(): Metadata {

@@ -18,7 +18,9 @@ test.describe('landing motion progressive enhancement', () => {
       page.getByRole('heading', { level: 3, name: 'Type it and move on.' }),
     ).toBeVisible();
     await expect(page.getByText('Saved. Nothing else needed.')).toBeVisible();
-    await expect(page.getByText('Near: luminous, radiant, translucent')).toBeVisible();
+    await expect(
+      page.locator('#top').getByText('Near: luminous, radiant, translucent'),
+    ).toBeVisible();
     await expect(page.getByText('The water was')).toBeVisible();
   });
 });
@@ -41,7 +43,7 @@ test('does not prepare hidden or translated animation states when reduced motion
   for (const locator of [
     page.getByRole('heading', { level: 1, name: 'Learn words from real life.' }),
     page.getByRole('heading', { level: 3, name: 'The entry fills itself in.' }),
-    page.getByText('Saved. Nothing else needed.'),
+    page.locator('[data-state="0"]'),
   ]) {
     await expect(locator).toBeVisible();
     await expect(locator).toHaveCSS('opacity', '1');

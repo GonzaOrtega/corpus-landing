@@ -14,6 +14,7 @@ export function LivingLexiconClient({ entries }: { entries: readonly DemoLexicon
   const [practised, setPractised] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const trackRef = useRef<HTMLDivElement>(null);
+  const progressRef = useRef<HTMLElement>(null);
   const resumeTimerRef = useRef<number | null>(null);
   const dragRef = useRef<{
     pointerId: number;
@@ -37,6 +38,7 @@ export function LivingLexiconClient({ entries }: { entries: readonly DemoLexicon
     const markPractised = () => setPractised(true);
     window.addEventListener(PRACTICE_EVENT, markPractised);
     return () => {
+      window.clearTimeout(resumeTimerRef.current ?? undefined);
       media.removeEventListener('change', updateMotionPreference);
       window.removeEventListener(PRACTICE_EVENT, markPractised);
     };
@@ -44,18 +46,64 @@ export function LivingLexiconClient({ entries }: { entries: readonly DemoLexicon
 
   useEffect(() => {
     if (isPaused || reducedMotion || !isHydrated) return;
+    let frame = 0;
+    let started = performance.now();
+    const paintProgress = (now: number) => {
+      if (progressRef.current) {
+        progressRef.current.style.transform = `scaleX(${Math.min(1, (now - started) / AUTOPLAY_MS)})`;
+      }
+      frame = window.requestAnimationFrame(paintProgress);
+    };
+    frame = window.requestAnimationFrame(paintProgress);
     const interval = window.setInterval(() => {
+      started = performance.now();
       setActiveIndex((current) => (current === entries.length - 1 ? current - 1 : current + 1));
     }, AUTOPLAY_MS);
-    return () => window.clearInterval(interval);
+    return () => {
+      window.clearInterval(interval);
+      window.cancelAnimationFrame(frame);
+    };
   }, [entries.length, isHydrated, isPaused, reducedMotion]);
+
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const paint = () => {
+      const inset = Number.parseFloat(getComputedStyle(track).paddingLeft);
+      const focusX = track.getBoundingClientRect().left + inset;
+      const reach = Math.max(200, Math.min(track.clientWidth * 0.4, 320));
+      for (const item of track.querySelectorAll<HTMLElement>('.lex-item')) {
+        const distance = Math.min(Math.abs(item.getBoundingClientRect().left - focusX) / reach, 1);
+        item.style.opacity = String(0.06 + (1 - distance) ** 1.6 * 0.94);
+      }
+    };
+    track.addEventListener('scroll', paint, { passive: true });
+    const observer = new ResizeObserver(paint);
+    observer.observe(track);
+    paint();
+    return () => {
+      track.removeEventListener('scroll', paint);
+      observer.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     const track = trackRef.current;
     const activeButton = track?.querySelector<HTMLButtonElement>(
       `[data-lexicon-index="${activeIndex}"]`,
     );
-    activeButton?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', inline: 'start' });
+    if (track && activeButton) {
+      const inset = Number.parseFloat(getComputedStyle(track).paddingLeft);
+      // Move only the archive: autoplay must never move the document.
+      track.scrollTo({
+        left:
+          track.scrollLeft +
+          activeButton.getBoundingClientRect().left -
+          track.getBoundingClientRect().left -
+          inset,
+        behavior: reducedMotion ? 'auto' : 'smooth',
+      });
+    }
   }, [activeIndex, reducedMotion]);
 
   const stopThenResume = () => {
@@ -80,8 +128,10 @@ export function LivingLexiconClient({ entries }: { entries: readonly DemoLexicon
   };
 
   return (
-    <div className="browser" data-autoplay-running={!isPaused && !reducedMotion}>
-      <section
+    <div className="browser" data-autoplay-running={isHydrated && !isPaused && !reducedMotion}>
+      {/* biome-ignore lint/a11y/useSemanticElements: This is a word navigation group, not a form fieldset. */}
+      <div
+        role="group"
         aria-label="Word browser. Drag, or use the previous and next controls, to move through your lexicon."
         className="lex-track"
         onKeyDown={(event) => {
@@ -149,53 +199,63 @@ export function LivingLexiconClient({ entries }: { entries: readonly DemoLexicon
             {entry.word}
           </button>
         ))}
-      </section>
+      </div>
 
-      <div className="wrap column">
-        <div aria-hidden="true" className="lex-underline">
-          <i />
-          <b />
-        </div>
-        <div className="lex-controls">
-          <button
-            aria-pressed={isPaused}
-            className="lex-pause"
-            hidden={!isHydrated || reducedMotion}
-            onClick={() => {
-              window.clearTimeout(resumeTimerRef.current ?? undefined);
-              setIsPaused((paused) => !paused);
-            }}
-            type="button"
+      <div className="wrap">
+        <div className="column">
+          <div
+            aria-hidden="true"
+            className="lex-underline"
+            data-running={isHydrated && !isPaused && !reducedMotion}
           >
-            {isPaused ? 'Play the word browser' : 'Pause the word browser'}
-          </button>
-          <span aria-live="polite" className="sr-only">
-            {activeIndex + 1} of {entries.length}
-          </span>
+            <i ref={progressRef} />
+            <b />
+          </div>
+          <div className="lex-controls">
+            <button
+              aria-pressed={isPaused}
+              className="lex-pause"
+              hidden={!isHydrated || reducedMotion}
+              onClick={() => {
+                window.clearTimeout(resumeTimerRef.current ?? undefined);
+                setIsPaused((paused) => !paused);
+              }}
+              type="button"
+            >
+              {isPaused ? 'Play the word browser' : 'Pause the word browser'}
+            </button>
+            <span aria-live="polite" className="sr-only">
+              {activeIndex + 1} of {entries.length}
+            </span>
+          </div>
+          <article aria-live={isPaused ? 'polite' : 'off'} className="lex-detail">
+            <div>
+              <p className="lex-gram">
+                {activeEntry.partOfSpeech} ·{' '}
+                <span className="ipa">{activeEntry.pronunciation}</span>
+              </p>
+              <p className="spec-def">{activeEntry.definition}</p>
+              <p className="lex-state">
+                <i aria-hidden="true" /> {activeState}
+              </p>
+            </div>
+            <div className="lex-encounters">
+              {activeEntry.encounters.map((encounter) => (
+                <div
+                  className="encounter"
+                  data-empty={encounter.empty || undefined}
+                  key={encounter.label}
+                >
+                  <span className="when">{encounter.label}</span>
+                  <span className="where">
+                    {encounter.detail}
+                    {encounter.emphasis && <em>{encounter.emphasis}</em>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </article>
         </div>
-        <article aria-live={isPaused ? 'polite' : 'off'} className="lex-detail">
-          <div>
-            <p className="lex-gram">
-              {activeEntry.partOfSpeech} · <span className="ipa">{activeEntry.pronunciation}</span>
-            </p>
-            <p className="spec-def">{activeEntry.definition}</p>
-            <p className="lex-state">
-              <i aria-hidden="true" /> {activeState}
-            </p>
-          </div>
-          <div className="lex-encounters">
-            {activeEntry.encounters.map((encounter) => (
-              <div
-                className="encounter"
-                data-empty={encounter.empty || undefined}
-                key={encounter.label}
-              >
-                <span className="when">{encounter.label}</span>
-                <span className="where">{encounter.detail}</span>
-              </div>
-            ))}
-          </div>
-        </article>
       </div>
     </div>
   );

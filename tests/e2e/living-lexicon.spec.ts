@@ -50,6 +50,7 @@ test.describe('Living Lexicon', () => {
     const control = page.getByRole('button', { name: 'Pause the word browser' });
     await expect(control).toHaveAttribute('aria-pressed', 'false');
 
+    await control.focus();
     await control.click();
 
     const playControl = page.getByRole('button', { name: 'Play the word browser' });
@@ -62,7 +63,9 @@ test.describe('Living Lexicon', () => {
 
     const browser = page.locator('.lex-track');
     await expect(browser).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Pause the word browser' })).toBeVisible();
+    const pause = page.getByRole('button', { name: 'Pause the word browser' });
+    await pause.focus();
+    await expect(pause).toBeVisible();
     expect(await browser.evaluate((track) => track.scrollWidth > track.clientWidth)).toBe(true);
   });
 });

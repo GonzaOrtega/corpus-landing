@@ -1,12 +1,13 @@
 export function ProgressSpine() {
   return (
     <div aria-hidden="true" className="progress-spine">
-      <span />
-      <i />
-      <i />
-      <i />
-      <i />
-      <i />
+      <div className="progress-track" />
+      <div className="progress-fill" />
+      <i className="progress-node" />
+      <i className="progress-node" />
+      <i className="progress-node" />
+      <i className="progress-node" />
+      <i className="progress-node" />
     </div>
   );
 }

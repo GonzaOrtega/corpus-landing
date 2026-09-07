@@ -1,6 +1,7 @@
 export interface DemoLexiconEncounter {
   label: string;
   detail: string;
+  emphasis?: string;
   empty?: boolean;
 }
 
@@ -21,7 +22,7 @@ export const demoLexicon = [
     definition: 'Softly bright; glowing with, or reflecting, light.',
     state: 'Solid — comes back without effort',
     encounters: [
-      { label: 'First encountered', detail: 'Heard in a podcast — a lucent morning' },
+      { label: 'First encountered', detail: 'Heard in a podcast — ', emphasis: 'a lucent morning' },
       { label: 'Met again', detail: 'Read in a novel, chapter 4' },
       { label: 'Used by you', detail: 'In writing, 2 September' },
     ],
