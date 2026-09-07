@@ -15,10 +15,8 @@ export interface NotificationsDeps {
   emailSender: EmailSender;
 }
 
-export const provideNotifications = (config: ServerConfig): NotificationsDeps => {
-  if (process.env.VERCEL_ENV !== 'production') {
-    return { emailSender: new FakeEmailSenderAdapter() };
-  }
+/** Production mail is explicitly requested by launch operations, regardless of VERCEL_ENV. */
+export const provideProductionNotifications = (config: ServerConfig): NotificationsDeps => {
   if (!config.resendApiKey || !config.emailFrom || !config.replyTo || !config.emailPostalAddress) {
     throw new Error('Email delivery configuration is required in production');
   }
@@ -34,4 +32,11 @@ export const provideNotifications = (config: ServerConfig): NotificationsDeps =>
       postalAddress: config.emailPostalAddress,
     }),
   };
+};
+
+export const provideNotifications = (config: ServerConfig): NotificationsDeps => {
+  if (process.env.VERCEL_ENV !== 'production') {
+    return { emailSender: new FakeEmailSenderAdapter() };
+  }
+  return provideProductionNotifications(config);
 };

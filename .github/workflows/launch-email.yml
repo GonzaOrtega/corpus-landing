@@ -1,0 +1,82 @@
+name: Launch email
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_file:
+        description: Committed JSON release payload to validate and send
+        required: true
+        default: ops/release-input.json
+        type: string
+      send_production:
+        description: Send to eligible subscribers after the dry run succeeds
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: corpus-launch-email
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    environment: launch-production
+    outputs:
+      fingerprint: ${{ steps.dry-run.outputs.fingerprint }}
+    env:
+      SITE_URL: ${{ vars.SITE_URL }}
+      CORPUS_RELEASE_STAGE: launched
+      CORPUS_DOWNLOAD_URL: ${{ vars.CORPUS_DOWNLOAD_URL }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      EMAIL_FROM: ${{ vars.EMAIL_FROM }}
+      REPLY_TO: ${{ vars.REPLY_TO }}
+      EMAIL_POSTAL_ADDRESS: ${{ vars.EMAIL_POSTAL_ADDRESS }}
+      LAUNCH_DRY_RUN_RECIPIENT: ${{ secrets.LAUNCH_DRY_RUN_RECIPIENT }}
+      MANAGEMENT_TOKEN_SECRET: ${{ secrets.MANAGEMENT_TOKEN_SECRET }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.3.13
+      - run: bun install --frozen-lockfile
+      - id: dry-run
+        env:
+          RELEASE_FILE: ${{ inputs.release_file }}
+        run: |
+          result="$(bun scripts/launch-email.ts dry-run --release-file "$RELEASE_FILE")"
+          fingerprint="$(printf '%s' "$result" | jq -r '.fingerprint')"
+          test -n "$fingerprint"
+          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+
+  production:
+    if: inputs.send_production
+    needs: dry-run
+    runs-on: ubuntu-latest
+    environment: launch-production
+    env:
+      SITE_URL: ${{ vars.SITE_URL }}
+      CORPUS_RELEASE_STAGE: launched
+      CORPUS_DOWNLOAD_URL: ${{ vars.CORPUS_DOWNLOAD_URL }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      EMAIL_FROM: ${{ vars.EMAIL_FROM }}
+      REPLY_TO: ${{ vars.REPLY_TO }}
+      EMAIL_POSTAL_ADDRESS: ${{ vars.EMAIL_POSTAL_ADDRESS }}
+      MANAGEMENT_TOKEN_SECRET: ${{ secrets.MANAGEMENT_TOKEN_SECRET }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.3.13
+      - run: bun install --frozen-lockfile
+      - env:
+          RELEASE_FILE: ${{ inputs.release_file }}
+          DRY_RUN_FINGERPRINT: ${{ needs.dry-run.outputs.fingerprint }}
+        run: bun scripts/launch-email.ts production --release-file "$RELEASE_FILE" --dry-run-fingerprint "$DRY_RUN_FINGERPRINT"

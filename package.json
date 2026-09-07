@@ -15,6 +15,8 @@
     "e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "ops:launch-dry-run": "bun scripts/launch-email.ts dry-run",
+    "ops:launch-production": "bun scripts/launch-email.ts production",
     "stack:check": "bun scripts/stack-conformance/stack-audit.ts . --ci",
     "check": "bun run typecheck && bun run lint && bun run stack:check"
   },

@@ -21,6 +21,7 @@ export interface ServerConfig {
   emailPostalAddress: string | null;
   cronSecret: string | null;
   launchDryRunRecipient: string | null;
+  managementTokenSecret: string | null;
 }
 
 /** Blank and unset both mean "not configured" for these — never bare `''`. */
@@ -50,6 +51,7 @@ const rawServerEnvSchema = z.object({
   EMAIL_POSTAL_ADDRESS: optionalString(),
   CRON_SECRET: optionalString(),
   LAUNCH_DRY_RUN_RECIPIENT: optionalString(),
+  MANAGEMENT_TOKEN_SECRET: optionalString(),
 });
 
 export function loadServerConfig(env: Record<string, string | undefined>): ServerConfig {
@@ -84,5 +86,6 @@ export function loadServerConfig(env: Record<string, string | undefined>): Serve
     emailPostalAddress: raw.EMAIL_POSTAL_ADDRESS,
     cronSecret: raw.CRON_SECRET,
     launchDryRunRecipient: raw.LAUNCH_DRY_RUN_RECIPIENT,
+    managementTokenSecret: raw.MANAGEMENT_TOKEN_SECRET,
   };
 }
