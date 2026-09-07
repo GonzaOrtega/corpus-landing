@@ -6,6 +6,8 @@ import type {
 } from '../../core/ports/email-sender.port';
 import { ConfirmationEmail } from './templates/confirmation-email';
 import { renderConfirmationEmailText } from './templates/confirmation-email.text';
+import { LaunchEmail } from './templates/launch-email';
+import { renderLaunchEmailText } from './templates/launch-email.text';
 
 interface ResendError {
   statusCode: number | null;
@@ -39,14 +41,24 @@ export class ResendEmailSenderAdapter implements EmailSender {
         managementUrl: message.managementUrl,
         postalAddress: this.config.postalAddress,
       };
+      const rendered =
+        message.kind === 'confirmation'
+          ? {
+              subject: "You're on the list for Corpus",
+              html: await render(ConfirmationEmail(templateProps)),
+              text: renderConfirmationEmailText(templateProps),
+            }
+          : {
+              subject: 'Corpus is ready to try',
+              html: await render(LaunchEmail({ ...message, ...templateProps })),
+              text: renderLaunchEmailText({ ...message, ...templateProps }),
+            };
       const result = await this.client.send(
         {
           from: this.config.from,
           to: message.to,
           replyTo: this.config.replyTo,
-          subject: "You're on the list for Corpus",
-          html: await render(ConfirmationEmail(templateProps)),
-          text: renderConfirmationEmailText(templateProps),
+          ...rendered,
         },
         { idempotencyKey: message.idempotencyKey },
       );
