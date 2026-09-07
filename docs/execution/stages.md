@@ -102,41 +102,121 @@ What genuinely must exist, and when:
 | P8 (Task 20) | Vercel production project, verified sending domain | Production is `workflow_dispatch` only — merging to `main` never deploys. |
 | Before real launch send | Resend API key, verified subdomain, postal address | P4's dry run must pass first. |
 
-## P0 handoff — read this before scaffolding
+## Stage 1 / Task 1 — Scaffold ✅ done
 
-`create-next-app` refuses to scaffold into a directory containing files outside
-its allowlist. As of current Next.js the allowlist is: `.claude`, `.cursor`,
-`.DS_Store`, `.git`, `.gitattributes`, `.gitignore`, `.gitlab-ci.yml`, `.hg*`,
-`.idea`, `.npmignore`, `.travis.yml`, `.vscode`, `.zed`, `LICENSE`,
-`Thumbs.db`, `docs`, `mkdocs.yml`, log files, `.yarn`, `yarnrc.yml`.
+`create-next-app` refused to scaffold in place, as expected (see below), so it
+was scaffolded into a sibling directory and merged in with `rsync`, excluding
+`.git`, `README.md`, and `.gitignore` so the repo's own history and hygiene
+files survived untouched.
+
+What's actually in the repo now, beyond the plain scaffold:
+
+- **Tailwind removed.** Live conformance (`scripts/stack-conformance/`) does
+  not check for Tailwind at all — it's a stack-default convention, not a
+  gated requirement — so per Task 1 Step 3 it was stripped and
+  `app/globals.css` rewritten as plain CSS. `postcss.config.mjs` and the
+  Next.js demo SVGs in `public/` were removed with it.
+- **`typescript@npm:@typescript/typescript6`**, exactly as the skill warns.
+  It ships no `tsc` binary of its own (only `tsc6`) — it pulls in
+  `@typescript/old` as an internal dependency, and bun's bin-linker hoists
+  *that* package's `tsc` to root `.bin/`. Verified: `tsc --version` reports
+  `6.0.3`, the full classic compiler, not TS7's API-less rewrite.
+- **`@types/bun` + `scripts/bun-env.d.ts`.** The vendored
+  `stack-audit.ts` uses `import.meta.main`, a Bun ambient type. Rather than
+  set `"types": ["bun"]` in the root tsconfig — which would suppress the
+  default implicit inclusion of every other `@types/*` package — a scoped
+  `scripts/bun-env.d.ts` with a single `/// <reference types="bun-types" />`
+  pulls in just that ambient global.
+- **`biome.json` migrated** from the schema `create-next-app --biome`
+  generates (1.9.0-shaped) to the installed Biome 2.4.2's schema, via
+  `biome migrate --write`. Also excludes `scripts/stack-conformance/**` and
+  `docs/design/prototypes/**` from lint/format entirely — the first is a
+  byte-identical vendor copy (reformatting it would read as drift to
+  `vendor-drift.ts`, which only tolerates JSON formatting differences, not
+  `.ts`), the second is prototype reference material that must never be
+  rewritten (learned the hard way: an early `biome check --write .` pass, run
+  before this exclusion existed, rewrote `function(){}` to `() => {}` inside
+  `landing-lexicon.html`'s embedded scripts — reverted via `git checkout --`
+  before it was ever committed).
+- **The real `early_access_signups` schema and its first migration**,
+  earlier than the plan's task numbering implies. `stack:check --ci` gates on
+  `migrations-exist` for any repo with `drizzle-orm` + the `persistence`
+  capability — there is no path to a green birth certificate without a
+  `drizzle.config.ts` and a committed `.sql` migration. Rather than fabricate
+  a throwaway placeholder table Task 4 would immediately replace, the real
+  table from spec §9 was implemented directly (`src/adapters/db/schema.ts` +
+  `drizzle/0000_curly_ares.sql`) — the spec already fully constrains it, so
+  this isn't invention, just earlier-than-planned execution. **Task 4 inherits
+  this schema already done**; what remains for Task 4 is the repository class
+  implementing the port (mapping rows ↔ `EarlyAccessSignup`) and wiring it
+  into a capability provider.
+- **`ci.yml` (`check` + `test` jobs) and `e2e.yml` (`e2e` job)**, also earlier
+  than planned, for the same reason: `stack:check --ci` gates red on
+  `ci-workflow` and `e2e-workflow` without them. Job names already match
+  three of spec §31's five required check names, so Task 19 extends this file
+  rather than restructuring it. All actions SHA-pinned per the plan's global
+  constraint (stricter than live conformance, which only requires pinning
+  non-`actions/*` actions) — `actions/checkout@3d3c42e5...` (v7.0.1) and
+  `oven-sh/setup-bun@0c5077e5...` (v2.2.0), both verified against GitHub's API
+  at write time, not copied from memory. `secret-scan.yml` was retrofitted to
+  match (checkout SHA-pinned, gitleaks download now checksum-verified) — this
+  required an explicit yes/no confirmation since it's in
+  `.claude/protected-files.txt`.
+- **`typecheck` runs `next typegen && tsc --noEmit`**, not bare `tsc`.
+  Next 16's `LayoutProps<"/">` helper type (used in `app/layout.tsx`, exactly
+  as `create-next-app` generated it) is defined in `.next/types/`, which only
+  Next's IDE language-service plugin or an explicit generation step produces
+  — bare `tsc` never triggers it. Without this, `bun run typecheck` only
+  worked by accident of a stale `.next/` on disk; on a genuinely fresh
+  checkout it fails with `Cannot find name 'LayoutProps'`. `next typegen`
+  (Next 16) generates just the types, no full build.
+
+**Known non-blocking findings**, left for later tasks rather than forced now
+(none of these are `ciEligible`, so `stack:check --ci` is green regardless):
+
+- `capabilities-declared-matches: config-secrets` — stack-audit's only
+  detection signal for this capability is `@aws-sdk/client-secrets-manager` /
+  `@aws-sdk/client-ssm`. This project's config-secrets is Zod-validated env
+  vars, which the heuristic doesn't recognize — an upstream claude-stack gap,
+  not something to fake by adding an irrelevant AWS SDK dependency.
+- `blueprint-naming: src/adapters/db/schema.ts` — adapter-scope files must
+  match `^[a-z0-9-]+\.(adapter|repository)\.ts$`. A schema/DDL module isn't
+  really "an adapter" in the sense the rule means, but the scope walk doesn't
+  distinguish. Task 4 should decide the final layout when it adds the actual
+  repository class alongside it.
+- `seed-script`, `playwright-setup`, `member-has-tests` — no seed script,
+  Playwright config, or tests exist yet. Expected; TDD starts at Task 2/3,
+  and Task 18 owns the full Playwright matrix.
+- `docs-trio` (advisory-only, `ciEligible: false`) — the generic
+  `/doc-onboard` docs trio (`docs/overview.md` etc.) doesn't exist. This
+  project's own Task 21 builds a different, spec-driven doc set
+  (`docs/architecture.md`, `docs/operations/*`); the generic trio was not
+  pursued as it's a separate, optional system this plan doesn't reference.
+
+**Verified, not just asserted:** `bun run check` (typecheck + lint +
+stack:check) exits 0 from a fully clean `.next`-free state; `bun run build`
+succeeds and prerenders `/` and `/_not-found`. `bun run dev` could not be
+confirmed rendering live — Turbopack's file watcher needs more inotify
+instances than this machine's `fs.inotify.max_user_instances=128` allows, a
+pre-existing host setting (`sudo` requires interactive auth, not available
+here), unrelated to this scaffold. Worth raising `max_user_instances` on this
+machine at some point — every Turbopack-based project here will hit the same
+wall.
+
+## Original P0 handoff note — read this before scaffolding a *different* repo
+
+`create-next-app` refuses to scaffold into a directory containing files
+outside its allowlist. As of current Next.js the allowlist is: `.claude`,
+`.cursor`, `.DS_Store`, `.git`, `.gitattributes`, `.gitignore`,
+`.gitlab-ci.yml`, `.hg*`, `.idea`, `.npmignore`, `.travis.yml`, `.vscode`,
+`.zed`, `LICENSE`, `Thumbs.db`, `docs`, `mkdocs.yml`, log files, `.yarn`,
+`yarnrc.yml`.
 
 `README.md`, `SECURITY.md` and `.github/` are **not** on it — `README.md` was
-removed from the list in current versions. So running the scaffold in place here
-will abort with a conflict list.
-
-This is expected. Scaffold into a sibling directory and merge:
-
-```bash
-cd /home/gonza/github
-bun create next-app corpus-landing-scaffold \
-  --typescript --tailwind --app --no-src-dir --import-alias "@/*"
-
-# Merge in, preserving the repo's own git history and hygiene files.
-rsync -a \
-  --exclude .git \
-  --exclude README.md \
-  --exclude .gitignore \
-  corpus-landing-scaffold/ corpus-landing/
-
-rm -rf corpus-landing-scaffold
-cd corpus-landing && git status
-```
-
-Review `git status` before staging: the scaffold's `.gitignore` was excluded on
-purpose because this repository already ships a stricter one.
-
-Task 1 Step 3 then asks whether Tailwind survives — decide that against live
-Claude Stack conformance, not against the flag used above.
+removed from the list in current versions. So running the scaffold in place
+aborts with a conflict list; scaffold into a sibling directory and `rsync` in,
+excluding `.git`, `README.md`, `.gitignore` (this repo's own is stricter than
+the generated one).
 
 ## Local URL
 

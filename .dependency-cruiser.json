@@ -1,0 +1,21 @@
+{
+  "forbidden": [
+    {
+      "name": "layering.core-no-adapters",
+      "severity": "error",
+      "comment": "core declares ports; adapters implement them. An import in this direction inverts the dependency arrow and puts a technology choice inside the layer that exists to be free of them.",
+      "from": {
+        "path": "^src/core/"
+      },
+      "to": {
+        "path": "^src/adapters/"
+      }
+    }
+  ],
+  "options": {
+    "tsPreCompilationDeps": false,
+    "doNotFollow": {
+      "path": "node_modules"
+    }
+  }
+}

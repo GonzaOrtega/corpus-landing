@@ -1,0 +1,6 @@
+{
+  "$schema": "./scripts/stack-conformance/stack.schema.json",
+  "kind": "next-app",
+  "intent": "production",
+  "capabilities": ["persistence", "external-api", "notifications", "config-secrets"]
+}

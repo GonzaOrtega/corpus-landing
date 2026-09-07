@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Points CI tests at a disposable Neon branch, never production (§9, Task 19
+  # wires the official Neon GitHub Action to create pr-<number> branches off
+  # `development`). Until then this is unset and DB-touching tests skip.
+  DATABASE_URL: ${{ secrets.NEON_CI_DATABASE_URL }}
+
+jobs:
+  # Job name is a required PR check per spec §31 — do not rename.
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run lint
+      - name: Stack conformance
+        run: bun run stack:check
+
+  # Job name is a required PR check per spec §31 — do not rename.
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Apply migrations to the disposable Neon branch
+        if: env.DATABASE_URL != ''
+        run: bun run db:migrate
+      - run: bun run test

@@ -1,0 +1,6 @@
+# One glob per line. Files listed here are blocked from edits by the
+# gonza-stack guard hook; mirror the CLAUDE.md "What NOT to change" list.
+docs/superpowers/specs/**
+.github/workflows/secret-scan.yml
+docs/operations/branch-protection.md
+docs/design/prototypes/**
