@@ -3,11 +3,14 @@ import { provideExternalApi } from './capabilities/external-api';
 import { provideNotifications } from './capabilities/notifications';
 import { providePersistence } from './capabilities/persistence';
 
-export type AppContext = {};
+export const buildContext = () => {
+  const configSecrets = provideConfigSecrets();
+  return {
+    ...configSecrets,
+    ...providePersistence(configSecrets.serverConfig),
+    ...provideExternalApi(),
+    ...provideNotifications(),
+  };
+};
 
-export const buildContext = (): AppContext => ({
-  ...providePersistence(),
-  ...provideExternalApi(),
-  ...provideNotifications(),
-  ...provideConfigSecrets(),
-});
+export type AppContext = ReturnType<typeof buildContext>;
