@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
+    "lighthouse": "lhci autorun",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "ops:launch-dry-run": "bun scripts/launch-email.ts dry-run",

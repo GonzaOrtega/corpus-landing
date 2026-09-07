@@ -12,7 +12,15 @@ export default defineConfig({
     baseURL: 'http://localhost:3018',
     trace: 'retain-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    // Chromium is the release gate. The remaining projects exercise the
+    // representative, tagged journeys without multiplying DB-backed tests.
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'firefox', grep: /@smoke/, use: { ...devices['Desktop Firefox'] } },
+    { name: 'webkit', grep: /@smoke/, use: { ...devices['Desktop Safari'] } },
+    { name: 'mobile-chrome', grep: /@mobile/, use: { ...devices['Pixel 5'] } },
+    { name: 'mobile-safari', grep: /@mobile/, use: { ...devices['iPhone 13'] } },
+  ],
   webServer: {
     command: 'bun run dev --port 3018',
     url: 'http://localhost:3018',
