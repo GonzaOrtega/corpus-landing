@@ -35,6 +35,7 @@ secrets.json
 .vercel
 .turbo
 .drizzle/
+.worktrees/
 *.tsbuildinfo
 .claude/scheduled_tasks.lock
 
