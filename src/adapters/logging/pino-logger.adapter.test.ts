@@ -46,7 +46,7 @@ describe('PinoLoggerAdapter', () => {
     // Simulates a caller building fields dynamically (e.g. from a spread) —
     // the adapter must not trust the type system alone to keep PII out.
     const fields = JSON.parse(
-      '{"operation":"join","email":"person@example.com","rawToken":"secret-token","manageTokenHash":"deadbeef"}',
+      '{"operation":"join","email":"person@example.com","emailNormalized":"person@example.com","rawToken":"secret-token","manageTokenHash":"deadbeef","captchaToken":"synthetic-captcha","captchaScore":0.42,"providerResponseBody":"synthetic-provider-body","databaseUrl":"postgresql://synthetic.invalid/database","secret":"synthetic-secret","formData":{"email":"person@example.com"}}',
     );
 
     logger.info('signup created', fields);
@@ -58,6 +58,16 @@ describe('PinoLoggerAdapter', () => {
     expect(entry?.manageTokenHash).toBeUndefined();
     expect(JSON.stringify(entry)).not.toContain('person@example.com');
     expect(JSON.stringify(entry)).not.toContain('secret-token');
+    for (const forbidden of [
+      'deadbeef',
+      'synthetic-captcha',
+      '0.42',
+      'synthetic-provider-body',
+      'postgresql://synthetic.invalid/database',
+      'synthetic-secret',
+    ]) {
+      expect(JSON.stringify(entry)).not.toContain(forbidden);
+    }
   });
 
   it('drops a non-primitive value even in an allowed field slot, never serializing it', () => {
