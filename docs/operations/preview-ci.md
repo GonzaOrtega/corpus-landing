@@ -65,9 +65,26 @@ URL output, and point their runners at that Preview. Lighthouse uses its
 existing temporary-public-storage upload target; there is no self-hosted or
 paid LHCI service.
 
+The Lighthouse job sets `LHCI_DEPLOYMENT_ENV=preview` to exclude only
+`is-crawlable`, which would penalize Preview's required noindex policy. All
+category thresholds remain enforced: performance >=0.90, accessibility,
+best practices, and SEO >=0.95. Preview E2E explicitly requires `Disallow: /`
+and `noindex, nofollow` metadata. Default/Production Lighthouse runs retain
+`is-crawlable`; setting a remote `LHCI_URL` alone does not exclude it. To audit
+a local non-production build with the Preview policy, also set
+`LHCI_DEPLOYMENT_ENV=preview`. The Production release smoke separately requires
+index/follow metadata and an allow-all robots policy with the production
+sitemap before promotion; verify indexing headers on the public domain after
+promotion as described in [production-deploy.md](production-deploy.md).
+
 ## Operating notes
 
-Vercel CLI is intentionally pinned to `59.11.7` in CI. This task does not
-change Vercel Git integration or any production deployment setting. If an
-operator later changes Git integration, they must separately verify the
-production deployment procedure and ensure only one preview deployer is active.
+Vercel CLI is intentionally pinned to `59.11.7` in CI. `vercel.json` sets
+`git.deploymentEnabled=false`, disabling automatic Vercel Git deployments.
+GitHub Actions owns deployment: this Preview workflow deploys PRs, and the
+manual `Deploy production` workflow releases an explicitly selected live-main
+SHA through the protected `production` environment. Merging to `main` does not
+deploy Production. Follow [production-deploy.md](production-deploy.md) to
+configure the required external protections, stage, smoke-test, and promote
+the same Production artifact. Keep automatic Git deployments disabled so
+Actions remains the sole deployment owner.

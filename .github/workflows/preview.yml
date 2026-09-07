@@ -181,4 +181,5 @@ jobs:
         if: ${{ needs.preview.result == 'success' }}
         env:
           LHCI_URL: ${{ needs.preview.outputs.url }}
+          LHCI_DEPLOYMENT_ENV: preview
         run: bun run lighthouse
