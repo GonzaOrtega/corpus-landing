@@ -7,13 +7,19 @@ const { safeLoad } = createRequire(import.meta.url)('js-yaml') as {
   safeLoad: (source: string) => unknown;
 };
 
+interface WorkflowStep {
+  name?: string;
+  run?: string;
+  env?: Record<string, string>;
+}
+
 interface Workflow {
   env?: Record<string, string>;
   jobs: Record<
     string,
     {
       env?: Record<string, string>;
-      steps: { run?: string; env?: Record<string, string> }[];
+      steps: WorkflowStep[];
     }
   >;
 }
@@ -58,5 +64,30 @@ describe('disposable-branch migration configuration', () => {
       credentials && 'url' in credentials && credentials.url === 'direct-neon-output',
       "Drizzle must receive the migration step's direct branch output",
     ).toBe(true);
+  });
+
+  it('refreshes the deterministic Preview Neon branch expiration after create or reuse', () => {
+    const definition = safeLoad(
+      readFileSync(new URL('../../.github/workflows/preview.yml', import.meta.url), 'utf8'),
+    ) as Workflow;
+    const steps = definition.jobs.preview.steps;
+    const createIndex = steps.findIndex((step) => step.name === 'Create or reuse preview Neon branch');
+    const refreshIndex = steps.findIndex((step) => step.name === 'Refresh preview branch expiration');
+
+    expect(createIndex).toBeGreaterThanOrEqual(0);
+    expect(refreshIndex).toBe(createIndex + 1);
+
+    const refresh = steps[refreshIndex];
+    expect(refresh.env).toMatchObject({
+      NEON_API_KEY: '${{ secrets.NEON_API_KEY }}',
+      NEON_PROJECT_ID: '${{ vars.NEON_PROJECT_ID }}',
+      NEON_BRANCH_ID: '${{ steps.neon.outputs.branch_id }}',
+      NEON_EXPIRES_AT: '${{ steps.expiry.outputs.rfc3339 }}',
+    });
+    expect(refresh.run).toContain('--request PATCH');
+    expect(refresh.run).toContain(
+      'https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$NEON_BRANCH_ID',
+    );
+    expect(refresh.run).toContain('"expires_at":"%s"');
   });
 });
