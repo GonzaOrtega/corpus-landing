@@ -5,6 +5,7 @@ baseline: `454d4877ede963cfe792c648d693ed9a4a3244d8`; fix round 1 starts from
 `d6f0b9e12df2ac5fee55f41d6a90efab5e67801c`. E1–E7 preserve the initial evidence;
 E8 records fix round 1; E9 corrects its typography finding and supersedes its
 font solution and affected verification results. Fix round 2 starts from `0f309fb`.
+E10 records the final workflow/config and documentation corrections from `1100946`.
 The release is **not verified complete**.
 
 PASS means the stated local scope was observed. FAIL means observed contrary
@@ -16,15 +17,15 @@ remain pending. The approved landing contrast exception does not turn axe green.
 | # | Specification requirement | State | Evidence and remaining boundary |
 | --- | --- | --- | --- |
 | 1 | stack conformance green | FAIL | E8: construction fixed and green; actual JSON has zero RED and `ciRed:[]`. It still reports `standard:false` / `NOT STANDARD (v4)` because five YELLOW findings remain: config-secrets detection, adapter naming, no Vercel link, no seed script, missing overview/concepts docs. The rule is unchanged. |
-| 2 | typecheck green | PASS | E9: `next typegen && tsc --noEmit`, exit 0 after the final optical-size delivery fix. |
-| 3 | Biome green | PASS | E9: 175 source/config files checked, no fixes. Generated Lighthouse artifacts were moved to `/tmp` before checking source. |
-| 4 | dependency rules green | PASS | E9: explicit `bunx depcruise --config .dependency-cruiser.json src app`, no violations, 169 modules / 304 dependencies. |
-| 5 | Vitest green | PASS | E9: 214 tests passed, 43 files passed; one real-Neon integration file skipped. This does not satisfy row 6. |
+| 2 | typecheck green | PASS | E10: `next typegen && tsc --noEmit`, exit 0 after the final workflow/config contract test. |
+| 3 | Biome green | PASS | E10: 176 source/config files checked, no fixes or warnings. |
+| 4 | dependency rules green | PASS | E10: explicit `bunx depcruise --config .dependency-cruiser.json src app`, no violations, 169 modules / 304 dependencies. |
+| 5 | Vitest green | PASS | E10: 216 tests passed, 44 files passed; one real-Neon integration file skipped. This does not satisfy row 6. |
 | 6 | repository integration green on disposable Neon | PENDING | No verified disposable Neon connection was supplied. The integration suite skips with no `DATABASE_URL`; its setup deletes every signup row, so it was not pointed at an unverified environment. No migration or real DB test was run. |
 | 7 | Playwright green | FAIL | E9 full matrix: 42 passed / 9 failed of 51. Loaded-font desktop geometry, font budget and email matrix pass. Remaining failures: accepted homepage contrast, management without DB, seven WebKit/mobile-Safari launches missing host libraries. Missing real signup/error/resubscribe journeys remain. |
 | 8 | axe green | FAIL | E3: homepage serious `color-contrast` violation; Privacy and Terms pass. Accepted prototype muted/ghost colors remain unchanged. Active and unsubscribed Manage pages have no axe assertions in the current suite and were not available against a real DB. |
 | 9 | Lighthouse green | PASS | E9: final optical-size-preserving delivery, three optimized local early-access runs using unchanged Preview indexing policy: performance 0.93 / 0.93 / 0.93 (median 0.93 ≥ 0.90), accessibility 0.95, best practices 0.96, SEO 1.00 every run. `lhci assert` exits 0. No remote Preview measurement claimed. |
-| 10 | preview isolation proven | PENDING | E6 source inspection: workflow creates `pr-<number>` from `development`, CI creates `ci-<run-id>-<attempt>`, migration/cleanup and URL masking are present. No authenticated remote workflow/Neon branch lifecycle evidence was gathered for this task. |
+| 10 | preview isolation proven | PENDING | E6 source inspection: workflow creates `pr-<number>` from `development`, CI creates `ci-<run-id>-<attempt>`, migration/cleanup and URL masking are present. E10 fixes and tests the migration environment reaching actual Drizzle config using non-URL sentinels. No authenticated remote workflow/Neon branch lifecycle evidence was gathered for this task. |
 | 11 | no real preview email/CAPTCHA | PENDING | E2 composition/fake-CAPTCHA tests and E3 local no-CAPTCHA-script/noindex check pass. `src/composition/server/early-access.test.ts` verifies environment adapter selection. Actual Vercel Preview configuration and provider inactivity remain unverified. |
 | 12 | idempotent production signup | PENDING | E2 `join-early-access.use-case.test.ts` verifies duplicate canonical row and create-race recovery with an in-memory repository. Production/real PostgreSQL partial-index concurrency and end-to-end signup remain unproven. |
 | 13 | confirmation retry policy proven | PASS | E2/E5: accepted first attempt, known retryable scheduling, terminal/ambiguous exhaustion, due second attempt with token rotation, and third-attempt exhaustion pass with fake senders. Real provider/cron execution is outside this local proof. |
@@ -32,7 +33,7 @@ remain pending. The approved landing contrast exception does not turn axe green.
 | 15 | unsubscribe/resubscribe proven | PASS | E2 `unsubscribe-early-access.use-case.test.ts`, `resubscribe-early-access.use-case.test.ts`, and repository contract with fakes prove explicit unsubscribe, token rotation, canonical-row reuse, consent refresh, and eligibility semantics. Real DB/browser evidence remains in rows 6/7/14. |
 | 16 | launch dry run proven | PASS | E5 `launch-operations.test.ts`: deterministic full-payload fingerprint, operator-only fake delivery, rendered HTML/text, no subscriber-state mutation, and production rejection of mismatched fingerprint. No actual maintainer mail or protected workflow was sent/run. |
 | 17 | launch idempotency/manual-review semantics proven | PASS | E5: sending persisted before acceptance, both known failures, actual second ambiguous execution with identical message/key, expired ambiguity → `manual_review` with zero provider calls. `runLaunchProduction` fake eligibility/log test passes. Remote Resend idempotency is not inferred. |
-| 18 | daily maintenance proven | PENDING | E2/E5 retry, retention-boundary/anonymization, authorization and aggregate-only route tests pass; `vercel.json` schedules `0 0 * * *`. No deployed Vercel Cron execution or disposable-DB maintenance run observed. |
+| 18 | daily maintenance proven | PENDING | E2/E5 retry, retention-boundary/anonymization, authorization and aggregate-only route tests pass; `vercel.json` schedules `0 5 * * *` (05:00 UTC). No deployed Vercel Cron execution or disposable-DB maintenance run observed. |
 | 19 | launched-mode transition proven | PASS | E4/E6 both optimized local builds exit 0. Browser comparison: early-access has one form/two CTA links; launched has no form/three `Get Corpus` links to the configured synthetic HTTPS destination. Hero heading and How/Lexicon/Philosophy text are identical. E2 rejects stale launched submissions before CAPTCHA/persistence. |
 | 20 | legal copy matches behavior | PENDING | E6 source/render review aligns listed processors, no sale/unrelated marketing, no email tracking, retention, and pre-release terms with implemented contracts. Real provider tracking settings, monitored reply address and postal/contact deployment values remain unverified; local legal pages omit Contact when these values are absent. |
 | 21 | production indexable / previews noindex | PENDING | E2 discovery and production-smoke fixtures prove both policies; E3 local robots blocks crawling and metadata is `noindex, nofollow`. Actual production-domain indexing headers and Preview policy await deployed readback. |
@@ -436,3 +437,49 @@ assertion results), `/tmp/task22-fix2-font-analysis.json`,
 `/tmp/task22-fix2-landing-{390,1440}.png`. The font README records regeneration;
 `tests/e2e/landing-typography.spec.ts` and `tests/unit/font-assets.test.ts`
 guard loaded geometry and actual delivered axes/glyphs respectively.
+
+## E10 — Final workflow/config and documentation review fixes
+
+CI and Preview migration steps supplied `DATABASE_URL`, but the actual
+`drizzle.config.ts` reads only `DATABASE_URL_UNPOOLED`. The earlier masking
+step's environment does not persist into the migration step. On a fresh runner,
+the unpooled value was therefore absent and Drizzle selected its generate-only
+placeholder. The production migration step already uses the correct unpooled
+name and served as the working comparison.
+
+Both affected migration steps now set `DATABASE_URL_UNPOOLED` from Neon's
+direct `steps.neon.outputs.db_url`. Drizzle config, pooled application/test
+connections, masking, branch creation/cleanup, conditions and migration
+commands are unchanged. The new `migration-workflow-config.test.ts` parses
+each actual workflow, derives the migration step's effective environment,
+resolves direct/pooled outputs to distinct non-URL sentinels and imports the
+actual Drizzle config. Both cases failed before the fix and pass afterward.
+Boolean-only credential assertions print no connection value. The installed
+`defineConfig` only constructs configuration; no migration, driver call or
+database connection was made by this test.
+
+Corrected two documentation drifts: row 18 now records the existing
+`0 5 * * *` schedule (05:00 UTC), and Architecture references
+`maintenance.wiring.ts` / `launch.wiring.ts`. `vercel.json` and the actual
+schedule were not changed. Direct readback verifies both paths exist, the
+cron evidence matches configuration, and row 18 remains PENDING. No existing
+human-document assertion suite was present; no prose-only regression was added.
+
+Final validation:
+
+- Focused workflow/config tests: 2 passed / 1 file, 189ms; initial RED was
+  2 failed / 1 file on the expected missing direct credential.
+- Full Vitest: 216 passed / 44 files, 3.33s; one real-Neon file skipped with
+  database URL variables explicitly unset.
+- `bun run check`: exit 0; typecheck and Biome 176 files pass without warnings.
+- Depcruise: exit 0; 169 modules / 304 dependencies, no violations.
+- Actual stack JSON: construction green (3 obligations), zero RED, `ciRed:[]`,
+  `standard:false`; the same five YELLOW findings keep row 1 FAIL.
+- `git diff --check`: exit 0. All 26 requirement labels/order and all ten
+  PENDING row IDs remain unchanged; overall 13 PASS / 3 FAIL / 10 PENDING.
+
+These results establish local configuration correctness only. Rows 6, 10,
+18 and all other remote-dependent rows remain PENDING. No database connection,
+migration, workflow dispatch, provider send, deployment or remote mutation was
+performed. Browser/Lighthouse evidence remains the E9 measurement; this fix
+does not change application rendering, fonts, contrast or performance gates.

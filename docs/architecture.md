@@ -81,7 +81,7 @@ may import core contracts; core never imports adapters or composition.
 `src/composition/root.ts` loads validated server configuration and provides
 persistence, notification, CAPTCHA, logging, and token capabilities.
 `src/composition/server/early-access.ts` narrows that context for signup,
-confirmation, and management. `src/composition/server/maintenance.ts` builds
+confirmation, and management. `src/composition/server/maintenance.wiring.ts` builds
 the daily retry and anonymization operation from those same core use cases.
 
 In non-production environments, capability providers select deterministic,
@@ -92,7 +92,7 @@ Neon branches.
 
 ### Launch operations
 
-`src/composition/ops/launch.ts` is separate from the web composition root. It
+`src/composition/ops/launch.wiring.ts` is separate from the web composition root. It
 explicitly requests real email delivery, constructs the launch-only stable
 management-token derivation, and exposes dry-run and production operations to
 `scripts/launch-email.ts`. The public web request path cannot invoke this root.

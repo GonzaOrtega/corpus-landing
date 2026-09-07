@@ -59,7 +59,7 @@ jobs:
       - name: Apply migrations to preview Neon branch
         if: ${{ steps.neon.outputs.branch_id != '' }}
         env:
-          DATABASE_URL: ${{ steps.neon.outputs.db_url }}
+          DATABASE_URL_UNPOOLED: ${{ steps.neon.outputs.db_url }}
         run: bun run db:migrate
       - name: Install Vercel CLI
         if: ${{ steps.neon.outputs.branch_id != '' }}
