@@ -71,18 +71,22 @@ describe('disposable-branch migration configuration', () => {
       readFileSync(new URL('../../.github/workflows/preview.yml', import.meta.url), 'utf8'),
     ) as Workflow;
     const steps = definition.jobs.preview.steps;
-    const createIndex = steps.findIndex((step) => step.name === 'Create or reuse preview Neon branch');
-    const refreshIndex = steps.findIndex((step) => step.name === 'Refresh preview branch expiration');
+    const createIndex = steps.findIndex(
+      (step) => step.name === 'Create or reuse preview Neon branch',
+    );
+    const refreshIndex = steps.findIndex(
+      (step) => step.name === 'Refresh preview branch expiration',
+    );
 
     expect(createIndex).toBeGreaterThanOrEqual(0);
     expect(refreshIndex).toBe(createIndex + 1);
 
     const refresh = steps[refreshIndex];
     expect(refresh.env).toMatchObject({
-      NEON_API_KEY: '${{ secrets.NEON_API_KEY }}',
-      NEON_PROJECT_ID: '${{ vars.NEON_PROJECT_ID }}',
-      NEON_BRANCH_ID: '${{ steps.neon.outputs.branch_id }}',
-      NEON_EXPIRES_AT: '${{ steps.expiry.outputs.rfc3339 }}',
+      NEON_API_KEY: `\${{ secrets.NEON_API_KEY }}`,
+      NEON_PROJECT_ID: `\${{ vars.NEON_PROJECT_ID }}`,
+      NEON_BRANCH_ID: `\${{ steps.neon.outputs.branch_id }}`,
+      NEON_EXPIRES_AT: `\${{ steps.expiry.outputs.rfc3339 }}`,
     });
     expect(refresh.run).toContain('--request PATCH');
     expect(refresh.run).toContain(
