@@ -3,7 +3,8 @@
 This records specification §39 in its original order. Initial verification
 baseline: `454d4877ede963cfe792c648d693ed9a4a3244d8`; fix round 1 starts from
 `d6f0b9e12df2ac5fee55f41d6a90efab5e67801c`. E1–E7 preserve the initial evidence;
-E8 records the production fixes and supersedes their affected results.
+E8 records fix round 1; E9 corrects its typography finding and supersedes its
+font solution and affected verification results. Fix round 2 starts from `0f309fb`.
 The release is **not verified complete**.
 
 PASS means the stated local scope was observed. FAIL means observed contrary
@@ -15,14 +16,14 @@ remain pending. The approved landing contrast exception does not turn axe green.
 | # | Specification requirement | State | Evidence and remaining boundary |
 | --- | --- | --- | --- |
 | 1 | stack conformance green | FAIL | E8: construction fixed and green; actual JSON has zero RED and `ciRed:[]`. It still reports `standard:false` / `NOT STANDARD (v4)` because five YELLOW findings remain: config-secrets detection, adapter naming, no Vercel link, no seed script, missing overview/concepts docs. The rule is unchanged. |
-| 2 | typecheck green | PASS | E8: `next typegen && tsc --noEmit`, exit 0 after production/test fixes. |
-| 3 | Biome green | PASS | E8: 173 source/config files checked, no fixes. Generated Lighthouse artifacts were moved to `/tmp` before checking source. |
-| 4 | dependency rules green | PASS | E8: explicit `bunx depcruise --config .dependency-cruiser.json src app`, no violations, 168 modules / 303 dependencies. |
-| 5 | Vitest green | PASS | E8: 210 tests passed, 42 files passed; one real-Neon integration file skipped. This does not satisfy row 6. |
+| 2 | typecheck green | PASS | E9: `next typegen && tsc --noEmit`, exit 0 after the final optical-size delivery fix. |
+| 3 | Biome green | PASS | E9: 175 source/config files checked, no fixes. Generated Lighthouse artifacts were moved to `/tmp` before checking source. |
+| 4 | dependency rules green | PASS | E9: explicit `bunx depcruise --config .dependency-cruiser.json src app`, no violations, 169 modules / 304 dependencies. |
+| 5 | Vitest green | PASS | E9: 214 tests passed, 43 files passed; one real-Neon integration file skipped. This does not satisfy row 6. |
 | 6 | repository integration green on disposable Neon | PENDING | No verified disposable Neon connection was supplied. The integration suite skips with no `DATABASE_URL`; its setup deletes every signup row, so it was not pointed at an unverified environment. No migration or real DB test was run. |
-| 7 | Playwright green | FAIL | E8 full matrix: 41 passed / 9 failed of 50. Added email matrix and font-budget tests pass. Remaining failures: accepted homepage contrast, management without DB, seven WebKit/mobile-Safari launches missing host libraries. Missing real signup/error/resubscribe journeys remain. |
+| 7 | Playwright green | FAIL | E9 full matrix: 42 passed / 9 failed of 51. Loaded-font desktop geometry, font budget and email matrix pass. Remaining failures: accepted homepage contrast, management without DB, seven WebKit/mobile-Safari launches missing host libraries. Missing real signup/error/resubscribe journeys remain. |
 | 8 | axe green | FAIL | E3: homepage serious `color-contrast` violation; Privacy and Terms pass. Accepted prototype muted/ghost colors remain unchanged. Active and unsubscribed Manage pages have no axe assertions in the current suite and were not available against a real DB. |
-| 9 | Lighthouse green | PASS | E8: three optimized local early-access runs using Preview indexing policy: performance 0.95 / 0.92 / 0.96 (median 0.95 ≥ 0.90), accessibility 0.95, best practices 0.96, SEO 1.00 every run. `lhci assert` exits 0. No remote Preview measurement claimed. |
+| 9 | Lighthouse green | PASS | E9: final optical-size-preserving delivery, three optimized local early-access runs using unchanged Preview indexing policy: performance 0.93 / 0.93 / 0.93 (median 0.93 ≥ 0.90), accessibility 0.95, best practices 0.96, SEO 1.00 every run. `lhci assert` exits 0. No remote Preview measurement claimed. |
 | 10 | preview isolation proven | PENDING | E6 source inspection: workflow creates `pr-<number>` from `development`, CI creates `ci-<run-id>-<attempt>`, migration/cleanup and URL masking are present. No authenticated remote workflow/Neon branch lifecycle evidence was gathered for this task. |
 | 11 | no real preview email/CAPTCHA | PENDING | E2 composition/fake-CAPTCHA tests and E3 local no-CAPTCHA-script/noindex check pass. `src/composition/server/early-access.test.ts` verifies environment adapter selection. Actual Vercel Preview configuration and provider inactivity remain unverified. |
 | 12 | idempotent production signup | PENDING | E2 `join-early-access.use-case.test.ts` verifies duplicate canonical row and create-race recovery with an in-memory repository. Production/real PostgreSQL partial-index concurrency and end-to-end signup remain unproven. |
@@ -232,7 +233,7 @@ printed. Scanner success is bounded secret-pattern evidence, not proof of all
 possible PII absence.
 
 Initial unresolved release evidence (performance and local email parity are
-subsequently resolved in E8): full stack conformance, landing axe, performance
+subsequently resolved in E8/E9): full stack conformance, landing axe, performance
 gate, email reference/dark parity, disposable Neon migration/contracts, complete
 browser/Manage axe inventory, WebKit host dependencies, live Preview isolation
 and cleanup, production signup/indexing/cron/provider settings, all-path log
@@ -243,7 +244,8 @@ made in the initial verification task; concrete defects were reported to the con
 
 ## E8 — Fix round 1 and post-fix verification
 
-Four scoped fixes address the reported production causes. Maintenance now
+Four scoped fixes were attempted; the font approach below was rejected in
+review and is superseded by E9. Maintenance now
 uses `maintenance.wiring.ts`; launch constructs its use case in
 `launch.wiring.ts` and injects it into the operation. The actual audit runs in
 a regression and checks construction green plus every result for RED, rather
@@ -285,18 +287,19 @@ lost at most another 1.8 points. The LCP element was `p.lede`. Raw observed
 LCP was before the hero animation, so no choreography changes were justified.
 On a fresh early-access build, three controlled baseline runs scored
 0.84/0.89/0.84 with LCP 4368/3757/4356ms. Four initial font files accounted for
-406,516 body bytes. The extra `opsz` axis in Newsreader enlarged critical font
-downloads; the reference only requested weight/style, and installed Next
-documentation explicitly describes the smaller weight-only default.
+406,516 body bytes. Newsreader's full variable font payload enlarged critical
+downloads. The round-1 claim that the landing reference omitted `opsz` was
+incorrect: its Google request explicitly includes `opsz` 6..72. The email
+reference's different request was mistakenly generalized to the landing.
 
-Removing that optional axis is the only landing-performance source change.
-Initial font bodies now total 194,556 bytes (52.1% less), while preserving
-Newsreader/Karla, normal/italic, Next self-hosting, preloads and fallback fonts.
-Final desktop/mobile landing captures at `/tmp/task22-fix1-landing-{1440,390}.png`
-were directly inspected: paper/ink hierarchy and section geometry are retained;
-computed font families remain Newsreader/Karla and neither viewport overflows.
-The new 200KiB browser budget failed at 406,516 bytes, then passed after the
-fix. Three post-fix measurements on the otherwise idle host:
+Round 1 removed the optical-size axis, reducing font bodies to 194,556 bytes
+(52.1% less). Although families, normal/italic styles and colors remained,
+outline metrics and wrapping changed. The claim of retained geometry from
+`/tmp/task22-fix1-landing-{1440,390}.png` is retracted: the desktop philosophy
+heading changed from one line (512×59.84375px) to two (496×119.6875px). This was
+not an acceptable reference-parity tradeoff. The 200KiB budget regression
+passed, but did not guard loaded-font typography. Historical measurements of
+that now-superseded artifact on the otherwise idle host:
 
 | Run | Performance | LCP | TBT | Accessibility | Best practices | SEO |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -342,3 +345,94 @@ Safari 0/7 due to the same missing libraries in E3. Total 41 passed / 9 failed,
 41.0s. Landing colors and axe assertions remain unchanged. No remote service,
 real provider sends, database mutation or deployment was performed. All ten
 remote-dependent PENDING rows remain PENDING.
+
+## E9 — Fix round 2: optical typography retained, delivery subset measured
+
+Root cause and RED: the authoritative `landing-lexicon.html` line 11 requests
+`Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..500`. Removing `opsz`
+fixed optical outlines instead of allowing the browser's default automatic
+optical sizing. Existing philosophy CSS stayed italic 300, 54.4px at 1440px,
+line-height 1.1 and max-width 16ch. Before production edits, the new loaded-font
+geometry test failed: expected width 512, received 496. Reviewer measurements
+also established the doubled line height above. No CSS geometry was changed.
+
+Final solution: `next/font/local` delivers pinned, self-hosted Newsreader WOFF2
+subsets with the **full optical-size axis 6–72**, normal weight 300–600 and
+italic weight 300–500. Installed Next/google supports full variable weight or
+fixed weights, but cannot express these narrowed variable ranges with `opsz`.
+The upstream source is revision `1ece6a8bfe5db1a2b90c76cc1fe5d3b2eed5dcf3`,
+Newsreader version 1.003, matching the original local Google font. The script
+verifies source hashes and pins fonttools/Brotli/Zopfli; repeat regeneration
+produced byte-identical output. The OFL license and coverage policy are vendored.
+Karla remains on `next/font/google`; both families retain preload and swap.
+
+The subset preserves current English text, punctuation, default Latin shaping
+and available pronunciation glyphs. Before finalization, an actual-WOFF2 test
+caught missing U+014B (ŋ), outside the IPA block; it failed with codepoint 331,
+then passed after inclusion. Upstream Newsreader supplies ə/ŋ/ð from current
+pronunciations; its other IPA symbols already need system fallback. This is
+not a claim of full IPA/script coverage. Future non-English copy or optional
+stylistic features require reviewing/regenerating the subset.
+
+Independent Chromium comparison rendered the authoritative HTML with its
+original fully loaded optical-size local font files and unchanged reference
+CSS. The final implementation matches desktop heading x=270, y=4501.71875,
+width=512 and height=59.84375px exactly: one line. The automated regression also
+checks that the italic face is actually loaded. At 390px, final heading is
+320×38.4375px. Geometry evidence is bounded to the measured heading; it is not
+a blanket claim of pixel parity for every state. Reference scripts were
+disabled for this isolated typography comparison, so its screenshot does not
+exercise scroll-driven inversion. The existing inversion browser test passes.
+
+Both 390px and 1440px initial-load measurements fetched exactly three
+same-origin preloads, with no Google runtime request and no extra Latin-extended
+font request. Browser encoded and decoded body sizes agree:
+
+| File | Body bytes |
+| --- | --- |
+| Karla Latin | 32,196 |
+| Newsreader normal subset | 78,148 |
+| Newsreader italic subset | 91,700 |
+| Total | 202,044 (197.31KiB; 50.3% below original 406,516) |
+
+The unchanged budget is strictly below 200KiB (204,800 bytes). Lighthouse's
+network audit confirms the same 202,044 resource bytes in each run; with its
+reported response overhead, font transfers total 205,046 bytes. This distinction
+is intentional: the regression budgets font response bodies, not HTTP headers.
+
+Three optimized, otherwise idle-host early-access runs, using the exact E8
+collection/assert commands and unchanged Preview indexing policy:
+
+| Run | Performance | LCP (ms) | TBT (ms) | Accessibility | Best practices | SEO |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.93 | 3157.0843 | 88 | 0.95 | 0.96 | 1.00 |
+| 2 | 0.93 | 3157.2580 | 83 | 0.95 | 0.96 | 1.00 |
+| 3 | 0.93 | 3156.8094 | 90.5 | 0.95 | 0.96 | 1.00 |
+
+Collection and `lhci assert` exit 0; median performance 0.93. CLS is
+0.0000067563 every run. Benchmark indices 2946/2841/2819.5 differ from E8's
+baseline: these are observed local measurements, not a claim of identical CPU
+conditions or remote performance. The font reduction is directly measured;
+the final artifact satisfies both typography and existing Lighthouse gates.
+No threshold, run count, audit, section spacing/width, animation, color or
+Preview policy was changed. No report was uploaded.
+
+Final validation: optimized build passes (11 static pages); `bun run check`
+passes (175 files); depcruise passes (169 modules/304 dependencies); full
+Vitest passes 214 tests/43 files in 2.66s with one real-Neon file skipped.
+Focused font/stack unit checks pass 5 tests/2 files in 859ms; focused Chromium
+typography/font-budget/email checks pass all 11 tests in 4.5s.
+Actual JSON construction is green (3 obligations), zero RED, `ciRed:[]`;
+`standard:false` and the same five named YELLOW findings keep row 1 FAIL.
+Full browser matrix: 42 pass/9 fail of 51 in 44.9s; Chromium 35/37, Firefox
+3/3, mobile Chrome 4/4. Same nine known failures: accepted contrast, absent
+disposable DB and seven missing WebKit/mobile-Safari host-library launches.
+No new application failure. Whitespace checks pass. All ten remote-dependent
+PENDING rows remain PENDING; no remote state, provider or DB was mutated.
+
+Evidence retained locally: `/tmp/task22-fix2-lhci-asserted` (three LHRs plus
+assertion results), `/tmp/task22-fix2-font-analysis.json`,
+`/tmp/task22-fix2-{reference,final}-philosophy.png`, and
+`/tmp/task22-fix2-landing-{390,1440}.png`. The font README records regeneration;
+`tests/e2e/landing-typography.spec.ts` and `tests/unit/font-assets.test.ts`
+guard loaded geometry and actual delivered axes/glyphs respectively.
