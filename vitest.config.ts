@@ -9,7 +9,9 @@ export default defineConfig({
       'tests/unit/**/*.test.ts',
       'tests/integration/**/*.test.ts',
       'src/**/*.test.ts',
+      'src/**/*.test.tsx',
       'app/**/*.test.ts',
+      'app/**/*.test.tsx',
     ],
     // No behavior task has landed yet (TDD starts at Task 2/3) — without this,
     // `vitest run` treats zero test files as a failure and the `test` CI
