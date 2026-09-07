@@ -21,7 +21,7 @@ const RECAPTCHA_CONNECT_ORIGINS = ['https://www.google.com/recaptcha/'];
  * needs: Fast Refresh needs `unsafe-eval`, and the HMR client needs a
  * websocket back to the dev server.
  */
-function buildContentSecurityPolicy(isDev: boolean): string {
+export function buildContentSecurityPolicy(isDev: boolean): string {
   const scriptSrc = ["'self'", "'unsafe-inline'", ...RECAPTCHA_SCRIPT_ORIGINS];
   const connectSrc = ["'self'", ...RECAPTCHA_CONNECT_ORIGINS];
   if (isDev) {
@@ -29,7 +29,7 @@ function buildContentSecurityPolicy(isDev: boolean): string {
     connectSrc.push('ws:', 'wss:');
   }
 
-  return [
+  const directives = [
     "default-src 'self'",
     "base-uri 'self'",
     "object-src 'none'",
@@ -41,8 +41,9 @@ function buildContentSecurityPolicy(isDev: boolean): string {
     `script-src ${scriptSrc.join(' ')}`,
     `frame-src ${RECAPTCHA_FRAME_ORIGINS.join(' ')}`,
     `connect-src ${connectSrc.join(' ')}`,
-    'upgrade-insecure-requests',
-  ].join('; ');
+  ];
+  if (!isDev) directives.push('upgrade-insecure-requests');
+  return directives.join('; ');
 }
 
 const nextConfig: NextConfig = {

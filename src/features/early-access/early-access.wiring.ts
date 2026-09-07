@@ -1,8 +1,10 @@
 import { buildContext } from '../../composition/root';
 import { wireEarlyAccess } from '../../composition/server/early-access';
 import { JoinEarlyAccessUseCase } from '../../core/use-cases/join-early-access.use-case';
+import { ResolveEarlyAccessManagementUseCase } from '../../core/use-cases/resolve-early-access-management.use-case';
 import { ResubscribeEarlyAccessUseCase } from '../../core/use-cases/resubscribe-early-access.use-case';
 import { SendConfirmationEmailUseCase } from '../../core/use-cases/send-confirmation-email.use-case';
+import { UnsubscribeEarlyAccessUseCase } from '../../core/use-cases/unsubscribe-early-access.use-case';
 import type { EarlyAccessBackend } from './backend/early-access-backend';
 import { LocalEarlyAccessBackend } from './backend/local-early-access-backend';
 
@@ -38,4 +40,12 @@ export function getEarlyAccessBackend(): EarlyAccessBackend {
     join,
     requestConfirmation,
   );
+}
+
+export function getManagementUseCases() {
+  const deps = wireEarlyAccess(buildContext());
+  return {
+    resolve: new ResolveEarlyAccessManagementUseCase(deps.repository, deps.tokenHasher),
+    unsubscribe: new UnsubscribeEarlyAccessUseCase(deps.repository, deps.tokenHasher, deps.clock),
+  };
 }
