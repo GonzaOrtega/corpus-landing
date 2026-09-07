@@ -9,7 +9,7 @@ export const buildContext = () => {
     ...configSecrets,
     ...providePersistence(configSecrets.serverConfig),
     ...provideExternalApi(configSecrets.serverConfig),
-    ...provideNotifications(),
+    ...provideNotifications(configSecrets.serverConfig),
   };
 };
 

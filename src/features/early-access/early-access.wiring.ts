@@ -2,6 +2,7 @@ import { buildContext } from '../../composition/root';
 import { wireEarlyAccess } from '../../composition/server/early-access';
 import { JoinEarlyAccessUseCase } from '../../core/use-cases/join-early-access.use-case';
 import { ResubscribeEarlyAccessUseCase } from '../../core/use-cases/resubscribe-early-access.use-case';
+import { SendConfirmationEmailUseCase } from '../../core/use-cases/send-confirmation-email.use-case';
 import type { EarlyAccessBackend } from './backend/early-access-backend';
 import { LocalEarlyAccessBackend } from './backend/local-early-access-backend';
 
@@ -22,8 +23,15 @@ export function getEarlyAccessBackend(): EarlyAccessBackend {
     resubscribe,
   );
 
-  // Task 8 replaces this bounded seam with the confirmation delivery use case.
-  const requestConfirmation = async () => undefined;
+  const sendConfirmation = new SendConfirmationEmailUseCase(
+    deps.repository,
+    deps.emailSender,
+    deps.clock,
+    deps.logger,
+    { siteUrl: deps.serverConfig.siteUrl },
+  );
+  const requestConfirmation = (result: { signupId: string; managementToken: string }) =>
+    sendConfirmation.execute(result);
   return new LocalEarlyAccessBackend(
     deps.serverConfig.releaseStage,
     deps.captchaVerifier,
