@@ -21,3 +21,11 @@ export function loadPublicConfig(env: { RECAPTCHA_SITE_KEY?: string }): PublicCo
     recaptchaSiteKey: raw && raw.length > 0 ? raw : null,
   };
 }
+
+/** Local, test, and preview deployments keep the deterministic fake CAPTCHA path. */
+export function productionRecaptchaSiteKey(
+  deploymentEnvironment: string | undefined,
+  config: PublicConfig,
+): string | null {
+  return deploymentEnvironment === 'production' ? config.recaptchaSiteKey : null;
+}

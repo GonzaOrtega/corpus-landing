@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { loadPublicConfig } from './public-env';
+import { loadPublicConfig, productionRecaptchaSiteKey } from './public-env';
 import { isSignupOpen, parseReleaseStage } from './release-stage';
 import { loadServerConfig } from './server-env';
 
@@ -141,5 +141,13 @@ describe('loadPublicConfig', () => {
 
   it('is null when the site key is unset', () => {
     expect(loadPublicConfig({})).toEqual({ recaptchaSiteKey: null });
+  });
+
+  it('only passes the reCAPTCHA site key to a production deployment', () => {
+    const config = loadPublicConfig({ RECAPTCHA_SITE_KEY: 'public-site-key' });
+
+    expect(productionRecaptchaSiteKey('production', config)).toBe('public-site-key');
+    expect(productionRecaptchaSiteKey('preview', config)).toBeNull();
+    expect(productionRecaptchaSiteKey(undefined, config)).toBeNull();
   });
 });

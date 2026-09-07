@@ -1,5 +1,10 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('../../early-access/actions/join-early-access.action', () => ({
+  joinEarlyAccessAction: async () => ({ status: 'idle' }),
+}));
+
 import { LandingShell } from './landing-shell';
 
 describe('LandingShell', () => {
@@ -21,5 +26,20 @@ describe('LandingShell', () => {
     expect(html).toContain('Near: luminous, radiant, translucent');
     expect(html).toContain('The water was');
     expect(html).toContain('in the late afternoon.');
+  });
+
+  it('changes only early-access surfaces when the product is launched', () => {
+    const html = renderToStaticMarkup(
+      <LandingShell
+        downloadUrl={new URL('https://download.example/corpus')}
+        recaptchaSiteKey={null}
+        releaseStage="launched"
+      />,
+    );
+
+    expect(html).toContain('Get Corpus');
+    expect(html).toContain('Early access is open on Android.');
+    expect(html).not.toContain('Join the list');
+    expect(html).not.toContain('No newsletter. Unsubscribe anytime.');
   });
 });

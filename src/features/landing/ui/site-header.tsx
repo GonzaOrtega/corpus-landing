@@ -1,8 +1,15 @@
 import Link from 'next/link';
+import type { ReleaseStage } from '../../../config/release-stage';
 import { landingContent } from '../content/landing-content';
 import { CorpusMark } from './corpus-mark';
+import { ReleaseCta } from './release-cta';
 
-export function SiteHeader() {
+interface SiteHeaderProps {
+  releaseStage: ReleaseStage;
+  downloadUrl?: URL | null;
+}
+
+export function SiteHeader({ releaseStage, downloadUrl = null }: SiteHeaderProps) {
   return (
     <header className="site-header">
       <div className="wrap header-inner">
@@ -16,9 +23,11 @@ export function SiteHeader() {
               {item.label}
             </Link>
           ))}
-          <Link className="button button-solid" href="#early-access">
-            Join early access
-          </Link>
+          <ReleaseCta
+            className="button button-solid"
+            downloadUrl={downloadUrl}
+            releaseStage={releaseStage}
+          />
         </nav>
       </div>
     </header>

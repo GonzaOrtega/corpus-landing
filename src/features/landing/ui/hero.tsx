@@ -1,8 +1,15 @@
 import Link from 'next/link';
+import type { ReleaseStage } from '../../../config/release-stage';
 import { landingContent } from '../content/landing-content';
 import { HeroMotion } from '../motion/hero-motion';
+import { ReleaseCta } from './release-cta';
 
-export function Hero() {
+interface HeroProps {
+  releaseStage: ReleaseStage;
+  downloadUrl?: URL | null;
+}
+
+export function Hero({ releaseStage, downloadUrl = null }: HeroProps) {
   return (
     <HeroMotion>
       <div className="wrap hero-grid">
@@ -15,15 +22,20 @@ export function Hero() {
             {landingContent.hero.lede}
           </p>
           <div className="hero-actions" data-hero="cta">
-            <Link className="button button-solid" data-magnetic href="#early-access">
-              Join early access
-            </Link>
+            <ReleaseCta
+              className="button button-solid"
+              downloadUrl={downloadUrl}
+              magnetic
+              releaseStage={releaseStage}
+            />
             <Link className="button button-quiet" href="#how">
               See how it works
             </Link>
           </div>
           <p className="hero-note" data-hero="note">
-            {landingContent.hero.note}
+            {releaseStage === 'launched'
+              ? 'Early access is open on Android.'
+              : landingContent.hero.note}
           </p>
         </div>
         <div className="hero-figure">

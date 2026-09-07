@@ -1,3 +1,5 @@
+import type { ReleaseStage } from '../../../config/release-stage';
+import { EarlyAccessSection } from '../../early-access/ui/early-access-section';
 import { CaptureEnrichPractice } from './capture-enrich-practice';
 import { Hero } from './hero';
 import { LivingLexicon } from './living-lexicon';
@@ -6,29 +8,34 @@ import { ProgressSpine } from './progress-spine';
 import { SiteFooter } from './site-footer';
 import { SiteHeader } from './site-header';
 
-export function LandingShell() {
+interface LandingShellProps {
+  releaseStage?: ReleaseStage;
+  downloadUrl?: URL | null;
+  recaptchaSiteKey?: string | null;
+}
+
+export function LandingShell({
+  releaseStage = 'early-access',
+  downloadUrl = null,
+  recaptchaSiteKey = null,
+}: LandingShellProps) {
   return (
     <>
       <a className="skip-link" href="#main">
         Skip to content
       </a>
       <ProgressSpine />
-      <SiteHeader />
+      <SiteHeader downloadUrl={downloadUrl} releaseStage={releaseStage} />
       <main id="main">
-        <Hero />
+        <Hero downloadUrl={downloadUrl} releaseStage={releaseStage} />
         <CaptureEnrichPractice />
         <LivingLexicon />
         <PhilosophySection />
-        <section className="section early-access" id="early-access">
-          <div className="wrap column">
-            <p className="eyebrow">Early access</p>
-            <h2>Be there for the first build.</h2>
-            <p className="lede">
-              Corpus is still in private development. Leave your email and we'll write once, when
-              there's a build worth trying.
-            </p>
-          </div>
-        </section>
+        <EarlyAccessSection
+          downloadUrl={downloadUrl}
+          recaptchaSiteKey={recaptchaSiteKey}
+          releaseStage={releaseStage}
+        />
       </main>
       <SiteFooter />
     </>

@@ -1,3 +1,5 @@
+'use server';
+
 import { getEarlyAccessBackend } from '../early-access.wiring';
 import { handleJoinEarlyAccess } from './join-early-access.handler';
 
@@ -12,7 +14,5 @@ export async function joinEarlyAccessAction(
   _previousState: SignupActionState,
   formData: FormData,
 ): Promise<SignupActionState> {
-  'use server';
-
   return handleJoinEarlyAccess(getEarlyAccessBackend(), formData);
 }

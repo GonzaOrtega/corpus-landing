@@ -229,6 +229,50 @@ p {
 .early-access {
   background: var(--surface);
 }
+.signup-form {
+  max-width: 34rem;
+  margin-top: 2.4rem;
+}
+.signup-field {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+.signup-field label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.signup-field input {
+  flex: 1 1 14rem;
+  min-width: 0;
+  padding: 0.7rem 0.9rem;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  font: inherit;
+}
+.signup-field input:disabled,
+.signup-field button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.signup-consent {
+  max-width: 45ch;
+  margin-top: 0.95rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.signup-status {
+  min-height: 1.6em;
+  margin-top: 1rem;
+}
+.early-access-cta {
+  margin-top: 2.25rem;
+}
 .site-footer {
   border-top: 1px solid var(--rule);
 }
