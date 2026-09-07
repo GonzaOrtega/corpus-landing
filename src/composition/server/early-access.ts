@@ -12,6 +12,8 @@ export interface EarlyAccessDeps {
   tokenGenerator: TokenGenerator;
   tokenHasher: TokenHasher;
   logger: Logger;
+  serverConfig: ServerConfig;
+  captchaVerifier: CaptchaVerifier;
 }
 
 /**
@@ -28,5 +30,10 @@ export function wireEarlyAccess(ctx: AppContext): EarlyAccessDeps {
     tokenGenerator: ctx.tokenGenerator,
     tokenHasher: ctx.tokenHasher,
     logger: ctx.logger,
+    serverConfig: ctx.serverConfig,
+    captchaVerifier: ctx.captchaVerifier,
   };
 }
+
+import type { ServerConfig } from '../../config/server-env';
+import type { CaptchaVerifier } from '../../core/ports/captcha-verifier.port';

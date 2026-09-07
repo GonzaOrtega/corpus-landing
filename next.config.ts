@@ -46,6 +46,13 @@ function buildContentSecurityPolicy(isDev: boolean): string {
 }
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // @typescript/typescript6 delegates its CLI through a compatibility wrapper
+    // whose stdout is not capturable by Next 16.3's CLI type-check runner.
+    // The package still exposes the full TS 6 compiler API, which avoids that
+    // wrapper and is the same compiler used by the repository typecheck.
+    useTypeScriptCli: false,
+  },
   async headers() {
     const isDev = process.env.NODE_ENV !== 'production';
     return [

@@ -8,7 +8,7 @@ export const buildContext = () => {
   return {
     ...configSecrets,
     ...providePersistence(configSecrets.serverConfig),
-    ...provideExternalApi(),
+    ...provideExternalApi(configSecrets.serverConfig),
     ...provideNotifications(),
   };
 };

@@ -10,3 +10,17 @@ export class PersistenceConflictError extends Error {
     this.name = 'PersistenceConflictError';
   }
 }
+
+export class SignupClosedError extends Error {
+  constructor() {
+    super('Early-access signup is closed');
+    this.name = 'SignupClosedError';
+  }
+}
+
+export class CaptchaRejectedError extends Error {
+  constructor() {
+    super('CAPTCHA verification rejected');
+    this.name = 'CaptchaRejectedError';
+  }
+}
