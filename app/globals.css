@@ -670,25 +670,26 @@ section {
 .lex-controls {
   position: relative;
   margin-top: 0.9rem;
-  min-height: 1.4rem;
+  min-height: 2rem;
 }
 .lex-pause {
-  position: absolute;
-  left: -9999px;
-  top: 0;
+  min-height: 2rem;
+  margin-left: -0.25rem;
   background: none;
   border: 0;
-  padding: 0;
+  padding: 0.25rem;
   font-family: var(--sans);
   font-size: var(--step--1);
   color: var(--muted);
   cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--rule);
+  text-underline-offset: 0.2em;
 }
-.lex-pause:focus {
-  left: 0;
-}
+.lex-pause:focus-visible,
 .lex-pause:hover {
   color: var(--accent);
+  text-decoration-color: currentColor;
 }
 
 .sr-only {

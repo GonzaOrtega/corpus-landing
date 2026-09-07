@@ -49,23 +49,44 @@ test.describe('Living Lexicon', () => {
 
     const control = page.getByRole('button', { name: 'Pause the word browser' });
     await expect(control).toHaveAttribute('aria-pressed', 'false');
+    await page.locator('.lex-controls').scrollIntoViewIfNeeded();
+    await expect(control).toBeInViewport();
 
-    await control.focus();
     await control.click();
 
     const playControl = page.getByRole('button', { name: 'Play the word browser' });
     await expect(playControl).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.browser')).toHaveAttribute('data-autoplay-running', 'false');
+
+    const pausedWord = await page.locator('.lex-item[aria-current="true"]').textContent();
+    await page.waitForTimeout(5_250);
+    await expect(page.locator('.lex-item[aria-current="true"]')).toHaveText(pausedWord ?? '');
+
+    await playControl.click();
+    await expect(page.locator('.browser')).toHaveAttribute('data-autoplay-running', 'true');
+    await expect
+      .poll(() => page.locator('.lex-item[aria-current="true"]').textContent(), { timeout: 6_000 })
+      .not.toBe(pausedWord);
   });
 
-  test('keeps the browser usable on a narrow touch viewport', async ({ page }) => {
+  test('keeps the browser and pause control usable on a narrow touch viewport @mobile', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/');
 
     const browser = page.locator('.lex-track');
     await expect(browser).toBeVisible();
     const pause = page.getByRole('button', { name: 'Pause the word browser' });
-    await pause.focus();
-    await expect(pause).toBeVisible();
+    await page.locator('.lex-controls').scrollIntoViewIfNeeded();
+    await expect(pause).toBeInViewport();
+    const pauseBox = await pause.boundingBox();
+    expect(pauseBox?.height).toBeGreaterThanOrEqual(24);
+    await pause.click();
+    await expect(page.getByRole('button', { name: 'Play the word browser' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
     expect(await browser.evaluate((track) => track.scrollWidth > track.clientWidth)).toBe(true);
   });
 });
