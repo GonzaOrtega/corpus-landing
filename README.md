@@ -75,9 +75,13 @@ bun run db:migrate
 bun run dev
 ```
 
-Local, test, and Preview environments select deterministic, non-network fake
-email and CAPTCHA adapters automatically. They do not need Resend or Google
-credentials and cannot send email or call reCAPTCHA. Persistence is not faked:
+Local, test, and Preview web/maintenance flows select deterministic,
+non-network fake email and CAPTCHA adapters automatically. Those flows do not
+need Resend or Google credentials and cannot send email or call reCAPTCHA. The
+privileged launch operations are the intentional exception: their separate
+operations composition constructs the real email adapter, including when run
+locally, and a dry run sends only to `LAUNCH_DRY_RUN_RECIPIENT` as described in
+[the launch runbook](docs/operations/launch-email.md). Persistence is not faked:
 flows that touch signup data still require an isolated or development database.
 
 ## Environment variables
