@@ -20,9 +20,11 @@ not a stack default override) — styling is plain CSS per feature.
 Hexagonal: `core` declares ports, `adapters` implement them, `core` never
 imports `adapters`. Adapter construction only happens under
 `composition/capabilities/`. See spec §13–§14 for the full source shape and
-`docs/execution/stages.md` for which packet builds which layer.
+`docs/architecture.md` for the implemented request and operations boundaries.
 
-No public signup REST API — signup is a Server Action only.
+No public signup REST API — signup and management are Server Actions. Launch
+email uses the separate `composition/ops` root; the only API route is the
+authorized Vercel Cron maintenance entry point.
 
 ## Commands
 
@@ -39,6 +41,8 @@ No public signup REST API — signup is a Server Action only.
   behavior, copy, or semantics (spec §1, §38).
 - `.github/workflows/secret-scan.yml` and `docs/operations/branch-protection.md`
   — this repo is private now, public later; both encode why and how.
+- `LICENSE`, `SECURITY.md`, `docs/architecture.md`, and the launch/privacy
+  runbooks — public contracts and safety procedures; update them deliberately.
 - Anything under `docs/design/prototypes/` — visual sources of truth, not
   shipped code.
 

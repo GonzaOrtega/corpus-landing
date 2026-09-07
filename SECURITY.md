@@ -6,7 +6,8 @@ Please **do not** open a public issue for security reports.
 
 Use GitHub's private vulnerability reporting: the **Security** tab →
 **Report a vulnerability**. This opens a private advisory visible only to the
-maintainers.
+maintainers. Maintainers must enable private vulnerability reporting before
+making the repository public.
 
 You can expect an acknowledgement within 7 days.
 
@@ -31,8 +32,9 @@ safe descriptions, never values. See the configuration contract in
 
 ## Automated enforcement
 
-A [gitleaks](https://github.com/gitleaks/gitleaks) scan runs on every push and
-pull request against the **full commit history**, not just the diff. Because
+A [gitleaks](https://github.com/gitleaks/gitleaks) scan runs on every pull
+request, every push to `main`, and manual dispatch against the **full commit
+history**, not just the diff. Because
 this repository is private today and public later, a secret introduced now
 would still be exposed at the moment visibility flips — history is not rewritten
 by changing visibility. The full-history scan is what makes that flip safe.
@@ -42,6 +44,7 @@ Removing the commit is not sufficient remediation on its own.
 
 ## Handling of personal data
 
-The service stores early-access email addresses. Retention, anonymization, and
-deletion semantics are specified in §10 of the design specification and will be
-documented for operators in `docs/operations/privacy-retention.md`.
+The service stores early-access email addresses. Retention and anonymization
+semantics are specified in §10 of the design specification and implemented by
+the daily protected maintenance operation. Operators must follow
+[`docs/operations/privacy-retention.md`](docs/operations/privacy-retention.md).

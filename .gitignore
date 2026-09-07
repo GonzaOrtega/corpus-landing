@@ -30,6 +30,9 @@ next-env.d.ts
 *.pfx
 secrets.json
 .secrets/
+credentials*.json
+gitleaks-report.*
+/ops/launch-review/
 
 # Platform / tooling caches
 .vercel
