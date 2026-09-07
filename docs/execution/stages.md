@@ -203,6 +203,21 @@ here), unrelated to this scaffold. Worth raising `max_user_instances` on this
 machine at some point — every Turbopack-based project here will hit the same
 wall.
 
+**Real CI failure caught post-push, then fixed:** the first push had `check`
+green but `test` red — `vitest run` treats zero test files as a failure by
+default (`No test files found, exiting with code 1`), and no tests exist yet
+(TDD starts at Task 2/3). `test` is one of spec §31's five required checks;
+leaving it permanently red on a scaffold-only commit would have blocked every
+PR the moment branch protection goes live. Fixed with a minimal
+`vitest.config.ts` setting `passWithNoTests: true` — it only changes the
+zero-tests case, a real failing test still fails the build. While in there,
+also added `"type": "module"` to `package.json`: Vite's native config loader
+warned that ESM syntax in a `.ts` config loaded as CommonJS "is planned to
+become the default" to require in a future major version, and `corpus` (the
+sibling canonical-brand repo) already sets it. Verified `drizzle-kit
+generate` still produces byte-identical SQL after that change before
+committing it.
+
 ## Original P0 handoff note — read this before scaffolding a *different* repo
 
 `create-next-app` refuses to scaffold into a directory containing files
