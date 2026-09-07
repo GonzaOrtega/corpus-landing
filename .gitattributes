@@ -1,0 +1,23 @@
+# Normalize line endings on checkin; check out native.
+* text=auto eol=lf
+
+# Binary assets — never diff or merge these.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.avif binary
+*.woff binary
+*.woff2 binary
+*.ico binary
+
+# Lockfiles: keep out of diffs and review noise.
+bun.lock      -diff linguist-generated
+bun.lockb     -diff binary linguist-generated
+
+# Generated Drizzle migrations are reviewable but not "source".
+drizzle/**    linguist-generated
+
+# Design prototypes are reference material, not shipped source.
+# Without this, GitHub reports the repo as ~90% HTML.
+docs/design/prototypes/*.html linguist-documentation

@@ -1,0 +1,8 @@
+# Default owner for everything in the repository.
+*                       @GonzaOrtega
+
+# Security-sensitive surfaces — never merge these without an explicit review,
+# even when the rest of the diff is mechanical.
+/.github/workflows/     @GonzaOrtega
+/SECURITY.md            @GonzaOrtega
+/docs/operations/       @GonzaOrtega
