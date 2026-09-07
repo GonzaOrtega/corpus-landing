@@ -13,7 +13,6 @@ import './globals.css';
 const serif = Newsreader({
   subsets: ['latin'],
   style: ['normal', 'italic'],
-  axes: ['opsz'],
   variable: '--font-serif',
 });
 const sans = Karla({ subsets: ['latin'], variable: '--font-sans' });

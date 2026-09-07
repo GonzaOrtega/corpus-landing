@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import type { MaintenanceResult } from '../../../../src/composition/server/maintenance';
+import type { MaintenanceResult } from '../../../../src/composition/server/maintenance.wiring';
 
 function digest(value: string): Buffer {
   return createHash('sha256').update(value).digest();

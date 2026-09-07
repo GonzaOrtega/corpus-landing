@@ -1,6 +1,6 @@
 /// <reference types="bun-types" />
 import { readFile } from 'node:fs/promises';
-import { getLaunchOperations } from '../src/composition/ops/launch';
+import { getLaunchOperations } from '../src/composition/ops/launch.wiring';
 
 function requiredArgument(name: string): string {
   const index = Bun.argv.indexOf(name);

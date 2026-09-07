@@ -1,12 +1,11 @@
 import type { ServerConfig } from '../config/server-env';
 import { EarlyAccessSignup } from '../core/entities/early-access-signup';
 import type { Clock } from '../core/ports/clock.port';
-import type { EmailSender } from '../core/ports/email-sender.port';
 import type { Logger } from '../core/ports/logger.port';
 import type { ManagementTokenDeriver } from '../core/ports/management-token-deriver.port';
 import type { TokenHasher } from '../core/ports/token-hasher.port';
 import type { EarlyAccessSignupRepository } from '../core/repositories/early-access-signup.repository';
-import { SendLaunchEmailUseCase } from '../core/use-cases/send-launch-email.use-case';
+import type { SendLaunchEmailUseCase } from '../core/use-cases/send-launch-email.use-case';
 import { fingerprintLaunchInput, parseLaunchInput } from './launch-fingerprint';
 
 const BATCH_SIZE = 100;
@@ -19,7 +18,7 @@ export interface LaunchProductionResult {
 type LaunchProductionDeps = {
   config: Pick<ServerConfig, 'releaseStage' | 'siteUrl'>;
   repository: EarlyAccessSignupRepository;
-  sender: EmailSender;
+  sendLaunch: Pick<SendLaunchEmailUseCase, 'execute'>;
   clock: Clock;
   tokenHasher: TokenHasher;
   tokenDeriver: ManagementTokenDeriver;
@@ -48,7 +47,6 @@ export async function runLaunchProduction(
     throw new Error('Production release input does not match the approved dry-run fingerprint');
   }
 
-  const sendLaunch = new SendLaunchEmailUseCase(deps.repository, deps.sender, deps.clock);
   let afterId: string | undefined;
   let processed = 0;
   let skipped = 0;
@@ -73,7 +71,7 @@ export async function runLaunchProduction(
           updatedAt: deps.clock.now(),
         }),
       );
-      await sendLaunch.execute({
+      await deps.sendLaunch.execute({
         signupId: signup.id,
         managementUrl: managementUrl(deps.config.siteUrl, token),
         input,

@@ -1,26 +1,28 @@
 # Definition-of-Done evidence — 2026-09-07
 
-This records specification §39 in its original order. Verification baseline:
-`454d4877ede963cfe792c648d693ed9a4a3244d8`. Only documentation and test assertions
-changed during this task. The release is **not verified complete**.
+This records specification §39 in its original order. Initial verification
+baseline: `454d4877ede963cfe792c648d693ed9a4a3244d8`; fix round 1 starts from
+`d6f0b9e12df2ac5fee55f41d6a90efab5e67801c`. E1–E7 preserve the initial evidence;
+E8 records the production fixes and supersedes their affected results.
+The release is **not verified complete**.
 
 PASS means the stated local scope was observed. FAIL means observed contrary
 evidence. PENDING means required evidence is unavailable or incomplete; local
-fakes never establish a remote deployment or database result. Email visual
-defects below remain release blockers even though §39 has no dedicated email
-visual-parity row. The approved landing contrast exception does not turn axe green.
+fakes never establish a remote deployment or database result. Email reference
+and dark-mode defects are fixed in local renders; actual email-client checks
+remain pending. The approved landing contrast exception does not turn axe green.
 
 | # | Specification requirement | State | Evidence and remaining boundary |
 | --- | --- | --- | --- |
-| 1 | stack conformance green | FAIL | E1: `stack:check` exits 0 but reports `NOT STANDARD (v4)`. JSON has `standard:false`, `ciRed:[]`, and RED `blueprint-construction` in `src/composition/server/maintenance.ts` and `src/ops/launch-production.ts`; use cases are constructed outside permitted wiring files. |
-| 2 | typecheck green | PASS | E1 clean committed-tree install: `next typegen && tsc --noEmit`, exit 0. E7 final active-tree static verification also checks the test-only changes. |
-| 3 | Biome green | PASS | E1: 167 files checked, no fixes. E7 reruns Biome on final work. |
-| 4 | dependency rules green | PASS | E1: explicit `bunx depcruise --config .dependency-cruiser.json src app`, no violations, 166 modules / 294 dependencies. The stack script alone is not substituted for running this command. |
-| 5 | Vitest green | PASS | E2/E7: 201 tests passed, 39 files passed; one real-Neon integration file skipped. This does not satisfy row 6. |
+| 1 | stack conformance green | FAIL | E8: construction fixed and green; actual JSON has zero RED and `ciRed:[]`. It still reports `standard:false` / `NOT STANDARD (v4)` because five YELLOW findings remain: config-secrets detection, adapter naming, no Vercel link, no seed script, missing overview/concepts docs. The rule is unchanged. |
+| 2 | typecheck green | PASS | E8: `next typegen && tsc --noEmit`, exit 0 after production/test fixes. |
+| 3 | Biome green | PASS | E8: 173 source/config files checked, no fixes. Generated Lighthouse artifacts were moved to `/tmp` before checking source. |
+| 4 | dependency rules green | PASS | E8: explicit `bunx depcruise --config .dependency-cruiser.json src app`, no violations, 168 modules / 303 dependencies. |
+| 5 | Vitest green | PASS | E8: 210 tests passed, 42 files passed; one real-Neon integration file skipped. This does not satisfy row 6. |
 | 6 | repository integration green on disposable Neon | PENDING | No verified disposable Neon connection was supplied. The integration suite skips with no `DATABASE_URL`; its setup deletes every signup row, so it was not pointed at an unverified environment. No migration or real DB test was run. |
-| 7 | Playwright green | FAIL | E3 final full matrix: 31 passed / 9 failed of 40. One actual homepage contrast failure, one management test blocked by missing DB, seven WebKit/mobile-Safari launches blocked by host libraries. Existing browser inventory also lacks several §28 successful signup/error/resubscribe journeys; unit coverage is not browser coverage. |
+| 7 | Playwright green | FAIL | E8 full matrix: 41 passed / 9 failed of 50. Added email matrix and font-budget tests pass. Remaining failures: accepted homepage contrast, management without DB, seven WebKit/mobile-Safari launches missing host libraries. Missing real signup/error/resubscribe journeys remain. |
 | 8 | axe green | FAIL | E3: homepage serious `color-contrast` violation; Privacy and Terms pass. Accepted prototype muted/ghost colors remain unchanged. Active and unsubscribed Manage pages have no axe assertions in the current suite and were not available against a real DB. |
-| 9 | Lighthouse green | FAIL | E4: three mobile production-artifact runs with Preview indexing policy. Performance 0.87 / 0.89 / 0.88 (median 0.88 < 0.90); accessibility 0.95, best practices 0.96, SEO 1.00 in every run. `lhci assert` exits 1. No remote Preview run claimed. |
+| 9 | Lighthouse green | PASS | E8: three optimized local early-access runs using Preview indexing policy: performance 0.95 / 0.92 / 0.96 (median 0.95 ≥ 0.90), accessibility 0.95, best practices 0.96, SEO 1.00 every run. `lhci assert` exits 0. No remote Preview measurement claimed. |
 | 10 | preview isolation proven | PENDING | E6 source inspection: workflow creates `pr-<number>` from `development`, CI creates `ci-<run-id>-<attempt>`, migration/cleanup and URL masking are present. No authenticated remote workflow/Neon branch lifecycle evidence was gathered for this task. |
 | 11 | no real preview email/CAPTCHA | PENDING | E2 composition/fake-CAPTCHA tests and E3 local no-CAPTCHA-script/noindex check pass. `src/composition/server/early-access.test.ts` verifies environment adapter selection. Actual Vercel Preview configuration and provider inactivity remain unverified. |
 | 12 | idempotent production signup | PENDING | E2 `join-early-access.use-case.test.ts` verifies duplicate canonical row and create-race recovery with an in-memory repository. Production/real PostgreSQL partial-index concurrency and end-to-end signup remain unproven. |
@@ -229,11 +231,114 @@ scanner's cached executable was outside the repository; no secret values were
 printed. Scanner success is bounded secret-pattern evidence, not proof of all
 possible PII absence.
 
-Unresolved release evidence: full stack conformance, landing axe, performance
+Initial unresolved release evidence (performance and local email parity are
+subsequently resolved in E8): full stack conformance, landing axe, performance
 gate, email reference/dark parity, disposable Neon migration/contracts, complete
 browser/Manage axe inventory, WebKit host dependencies, live Preview isolation
 and cleanup, production signup/indexing/cron/provider settings, all-path log
 capture, external GitHub protections, and actual stage/smoke/promote. Deferred
 Minor from the brief remains: signup-result CSS expects `data-state="ok"` or
 `"error"`, while the rendered output does not supply it. No production fix was
-made in this verification task; concrete defects were reported to the controller.
+made in the initial verification task; concrete defects were reported to the controller.
+
+## E8 — Fix round 1 and post-fix verification
+
+Four scoped fixes address the reported production causes. Maintenance now
+uses `maintenance.wiring.ts`; launch constructs its use case in
+`launch.wiring.ts` and injects it into the operation. The actual audit runs in
+a regression and checks construction green plus every result for RED, rather
+than trusting the command's exit code. The test first failed on RED
+construction; focused architecture/launch/maintenance verification passes
+11 tests. Full STANDARD remains unmet for the five YELLOW findings in row 1.
+
+Both email templates now follow the authoritative table-based masthead,
+vertical spine, square panels, Newsreader/Karla fallback stacks, hierarchy,
+and #F1EFE9/#FBFAF6 palette. Confirmation restores pronunciation, encounter
+history and separate Capture/Enrich/Practice details in HTML and text. The
+approved confirmation wording, dynamic launch payload, Get Corpus destination,
+management links and postal footer remain. Explicit `ink`, `muted`, `clay`,
+`panel`, `rule` and `spine` classes override inline light colors in supported
+dark-mode clients; outer table and body both carry the paper background.
+Outlook conditional fallback CSS is static trusted head markup; dynamic
+content remains React-escaped. Layout does not depend on web fonts, flex/grid,
+CSS variables, rounded cards or browser-only layout features.
+
+The three new email assertions failed before implementation. Nine Chromium
+render checks pass: two emails × 390/1440px × light/dark, plus stripped
+stylesheets/body-style fallback. References and implementation use identical
+blocked external-font requests for deterministic fallback rendering. Checks
+compare computed background/heading/panel colors, font family/size, heading
+position, spine count, overflow and management URL. Dark heading is
+`rgb(231, 228, 221)`; panel is `rgb(20, 20, 25)`, matching the references.
+Mobile confirmation/light and launch/dark screenshots were directly inspected;
+16 final images are preserved in `/tmp/task22-fix1-email-final-renders`. Actual Apple Mail,
+Gmail/Outlook inversion and email screen-reader testing remain pending.
+
+The signup output now emits `data-state="ok"` for success and `"error"` for
+invalid-email/retry/closed, while idle has no state attribute. Four rendering
+regressions failed before the change; all five result tests now pass. Action,
+CAPTCHA, live-region and signup semantics are unchanged.
+
+Performance root cause was application font payload. Original saved reports
+showed LCP 3756–3769ms with score .56 and 25% weight, losing 11 points; TBT
+lost at most another 1.8 points. The LCP element was `p.lede`. Raw observed
+LCP was before the hero animation, so no choreography changes were justified.
+On a fresh early-access build, three controlled baseline runs scored
+0.84/0.89/0.84 with LCP 4368/3757/4356ms. Four initial font files accounted for
+406,516 body bytes. The extra `opsz` axis in Newsreader enlarged critical font
+downloads; the reference only requested weight/style, and installed Next
+documentation explicitly describes the smaller weight-only default.
+
+Removing that optional axis is the only landing-performance source change.
+Initial font bodies now total 194,556 bytes (52.1% less), while preserving
+Newsreader/Karla, normal/italic, Next self-hosting, preloads and fallback fonts.
+Final desktop/mobile landing captures at `/tmp/task22-fix1-landing-{1440,390}.png`
+were directly inspected: paper/ink hierarchy and section geometry are retained;
+computed font families remain Newsreader/Karla and neither viewport overflows.
+The new 200KiB browser budget failed at 406,516 bytes, then passed after the
+fix. Three post-fix measurements on the otherwise idle host:
+
+| Run | Performance | LCP | TBT | Accessibility | Best practices | SEO |
+| --- | --- | --- | --- | --- | --- | --- |
+| Run 1 | 0.95 | 2712ms | 115ms | 0.95 | 0.96 | 1.00 |
+| Run 2 | 0.92 | 3317ms | 108ms | 0.95 | 0.96 | 1.00 |
+| Run 3 | 0.96 | 2556ms | 102ms | 0.95 | 0.96 | 1.00 |
+
+Host benchmark indices were 2645–2691 before and 2579–2667 after; improvement
+does not depend on a faster host. CLS remained approximately 0.0000071.
+Lighthouse thresholds, run count, audits and Preview indexing policy are
+unchanged. Baseline reports: `/tmp/task22-fix1-early-access-baseline-lhci`;
+post-fix reports: `/tmp/task22-fix1-lhci-asserted` (also copied before assertion
+to `/tmp/task22-fix1-postfix-lhci`). LHCI collection rotates its output directory;
+the original E4 reports were inspected before the diagnostic recollection.
+No public report upload was run.
+
+Commands use `SITE_URL=http://localhost:3025`, `CORPUS_RELEASE_STAGE=early-access`
+and inert loopback DB placeholders for `bun run build` / `bun run start --port
+3025`. The optimized build passes (11 static pages, maintenance dynamic).
+
+```sh
+CHROME_PATH=/home/gonza/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome \
+  LHCI_URL=http://localhost:3025 LHCI_DEPLOYMENT_ENV=preview \
+  bunx lhci collect --settings.chromeFlags=--no-sandbox
+bunx lhci assert
+bun run check
+bunx depcruise --config .dependency-cruiser.json src app
+env -u DATABASE_URL -u DATABASE_URL_TEST -u DATABASE_URL_UNPOOLED bun run test
+DATABASE_URL= DATABASE_URL_UNPOOLED= DATABASE_URL_TEST= \
+  PLAYWRIGHT_BASE_URL=http://localhost:3025 SITE_URL=http://localhost:3025 \
+  CORPUS_RELEASE_STAGE=early-access bun run e2e -- --workers=1 --reporter=line
+git diff --check
+```
+
+`check`, dependency rules, full Vitest, Lighthouse assertion and whitespace
+checks pass. Full Vitest initially hit `spawnSync bun EPERM` in the audit
+subprocess under the process sandbox; the identical suite outside that
+sandbox passes 210/210 in 2.55s. Generated Lighthouse HTML/JSON also caused
+an initial Biome scan failure; moving those generated artifacts to the named
+temporary evidence directory restored the source check without changing rules.
+Browser matrix: Chromium 34/36, Firefox 3/3, mobile Chrome 4/4; WebKit/mobile
+Safari 0/7 due to the same missing libraries in E3. Total 41 passed / 9 failed,
+41.0s. Landing colors and axe assertions remain unchanged. No remote service,
+real provider sends, database mutation or deployment was performed. All ten
+remote-dependent PENDING rows remain PENDING.

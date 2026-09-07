@@ -71,7 +71,14 @@ export function SignupForm({ recaptchaSiteKey }: SignupFormProps) {
         By joining, you agree to receive a confirmation email and one launch notification when
         Corpus is ready. No newsletter. Unsubscribe anytime.
       </p>
-      <output aria-atomic="true" aria-live="polite" className="signup-status">
+      <output
+        aria-atomic="true"
+        aria-live="polite"
+        className="signup-status"
+        data-state={
+          state.status === 'idle' ? undefined : state.status === 'success' ? 'ok' : 'error'
+        }
+      >
         {message}
       </output>
     </form>

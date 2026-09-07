@@ -6,6 +6,7 @@ import type { EmailMessage } from '../core/ports/email-sender.port';
 import type { EarlyAccessLogFields } from '../core/ports/logger.port';
 import { FixedClockAdapter } from '../core/testing/fixed-clock.adapter';
 import { InMemoryEarlyAccessSignupRepository } from '../core/testing/in-memory-early-access-signup.repository';
+import { SendLaunchEmailUseCase } from '../core/use-cases/send-launch-email.use-case';
 import { runLaunchDryRun } from './launch-dry-run';
 import { fingerprintLaunchInput } from './launch-fingerprint';
 import { runLaunchProduction } from './launch-production';
@@ -73,14 +74,15 @@ describe('launch operations', () => {
     const repository = new InMemoryEarlyAccessSignupRepository();
     const sender = new RecordingEmailSender();
     const logger = new RecordingLogger();
+    const clock = new FixedClockAdapter(new Date('2026-09-07T00:00:00.000Z'));
 
     await expect(
       runLaunchProduction(
         {
           config: launchedConfig,
           repository,
-          sender,
-          clock: new FixedClockAdapter(new Date('2026-09-07T00:00:00.000Z')),
+          sendLaunch: new SendLaunchEmailUseCase(repository, sender, clock),
+          clock,
           tokenHasher: new Sha256TokenHasherAdapter(),
           tokenDeriver: new HmacManagementTokenDeriver(launchedConfig.managementTokenSecret),
           logger,
@@ -96,6 +98,7 @@ describe('launch operations', () => {
     const sender = new RecordingEmailSender();
     const logger = new RecordingLogger();
     const now = new Date('2026-09-07T00:00:00.000Z');
+    const clock = new FixedClockAdapter(now);
     const eligible = await repository.create({
       emailOriginal: 'eligible@example.com',
       emailNormalized: 'eligible@example.com',
@@ -121,8 +124,8 @@ describe('launch operations', () => {
       {
         config: launchedConfig,
         repository,
-        sender,
-        clock: new FixedClockAdapter(now),
+        sendLaunch: new SendLaunchEmailUseCase(repository, sender, clock),
+        clock,
         tokenHasher: new Sha256TokenHasherAdapter(),
         tokenDeriver: new HmacManagementTokenDeriver(launchedConfig.managementTokenSecret),
         logger,
