@@ -1,5 +1,47 @@
 import { expect, test } from '@playwright/test';
 
+test('mobile specimens stay paired with their stages across desktop resizing @mobile', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  const pairs = page.locator('.stage > .state');
+  await expect(pairs).toHaveCount(3);
+  expect(
+    await pairs.evaluateAll((states) =>
+      states.map((state) => [
+        state.parentElement?.getAttribute('data-stage'),
+        state.getAttribute('data-state'),
+      ]),
+    ),
+  ).toEqual([
+    ['0', '0'],
+    ['1', '1'],
+    ['2', '2'],
+  ]);
+  for (const index of [0, 1]) {
+    const specimen = await page.locator(`[data-state="${index}"]`).boundingBox();
+    const nextStage = await page.locator(`[data-stage="${index + 1}"]`).boundingBox();
+    expect(specimen).not.toBeNull();
+    expect(nextStage).not.toBeNull();
+    expect((specimen?.y ?? 0) + (specimen?.height ?? 0)).toBeLessThanOrEqual(nextStage?.y ?? 0);
+  }
+  const reveal = page.getByRole('button', { name: 'Reveal the answer' });
+  await reveal.click();
+  await expect(reveal).toHaveText('lucent');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(page.locator('.sticky > .state')).toHaveCount(3);
+  await expect(reveal).toHaveText('lucent');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(pairs).toHaveCount(3);
+  await reveal.scrollIntoViewIfNeeded();
+  await expect(reveal).toBeVisible();
+  await expect(page.locator('[data-state="2"]')).toHaveCSS('opacity', '1');
+  await expect(reveal).toHaveText('lucent');
+  await page.getByRole('button', { name: 'lucent', exact: true }).click();
+  await expect(page.getByText('Solid — practised just now')).toBeVisible();
+});
+
 test('document scrolling drives the sticky header, progress rail, and philosophy theme', async ({
   page,
 }) => {

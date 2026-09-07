@@ -507,7 +507,7 @@ section {
   font-size: var(--step-2);
   line-height: 1.1;
 }
-.stage p {
+.stage > p {
   margin-top: 0.9rem;
   max-width: 38ch;
   color: color-mix(in srgb, var(--fg) 80%, transparent);

@@ -3,6 +3,16 @@ import { expect, test } from '@playwright/test';
 test.describe('landing motion progressive enhancement', () => {
   test.use({ javaScriptEnabled: false });
 
+  test('pairs each mobile stage with its readable specimen in server HTML', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    for (const index of [0, 1, 2]) {
+      const state = page.locator(`[data-stage="${index}"] > [data-state="${index}"]`);
+      await expect(state).toBeVisible();
+    }
+    await expect(page.locator('.sticky > .state')).toHaveCount(0);
+  });
+
   test('keeps the hero, navigation, and all three learning states readable without JavaScript', async ({
     page,
   }) => {

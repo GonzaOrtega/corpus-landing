@@ -8,6 +8,31 @@ export function ScrollytellingMotion({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const root = rootRef.current;
+    const sticky = root?.querySelector<HTMLElement>('.sticky');
+    if (!root || !sticky) return;
+
+    const states = Array.from(root.querySelectorAll<HTMLElement>('[data-state]'));
+    const homes = states.map((state) => state.parentElement);
+    const narrow = window.matchMedia('(max-width: 880px)');
+    const layoutStates = () => {
+      for (const [index, state] of states.entries()) {
+        const home = narrow.matches ? homes[index] : sticky;
+        if (home && state.parentElement !== home) home.appendChild(state);
+        if (narrow.matches) state.style.removeProperty('opacity');
+      }
+    };
+
+    layoutStates();
+    narrow.addEventListener('change', layoutStates);
+    return () => {
+      narrow.removeEventListener('change', layoutStates);
+      // Restore React's server-rendered parents before the subtree unmounts.
+      for (const [index, state] of states.entries()) homes[index]?.appendChild(state);
+    };
+  }, []);
+
+  useEffect(() => {
+    const root = rootRef.current;
     if (!root || !motionIsAllowed()) return;
 
     let disposed = false;
@@ -21,7 +46,7 @@ export function ScrollytellingMotion({ children }: { children: ReactNode }) {
       const desktop = gsap.matchMedia();
       const context = gsap.context(() => {
         for (const stage of root.querySelectorAll<HTMLElement>('[data-stage]')) {
-          gsap.from(stage.children, {
+          gsap.from(stage.querySelectorAll(':scope > :not(.state)'), {
             opacity: 0,
             y: 18,
             duration: 0.7,
