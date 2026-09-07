@@ -25,6 +25,8 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun run lint
+      - name: Workflow configuration regressions
+        run: bun run test tests/unit/migration-workflow-config.test.ts
       - name: Dependency-cruiser
         run: bunx depcruise --config .dependency-cruiser.json src app --output-type err
       - name: Stack conformance
