@@ -16,6 +16,7 @@
 html,
 body {
   height: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -215,17 +216,15 @@ p {
 .lexicon {
   border-block: 1px solid var(--rule);
 }
-.word-strip {
-  overflow: hidden;
-  margin-top: 3rem;
-  color: var(--clay);
-  font-family: var(--font-serif), serif;
-  font-size: clamp(2rem, 5vw, 4rem);
-  white-space: nowrap;
-}
 .philosophy {
   background: var(--ink);
   color: #e7e4dd;
+}
+.philosophy .principles {
+  display: grid;
+  gap: 1rem;
+  max-width: 42ch;
+  color: color-mix(in srgb, #e7e4dd 72%, transparent);
 }
 .early-access {
   background: var(--surface);
@@ -431,6 +430,136 @@ p {
   color: var(--muted);
   font-size: 0.875rem;
 }
+.blank {
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+.browser {
+  margin-top: clamp(2rem, 5vw, 3rem);
+}
+.lex-track {
+  display: flex;
+  gap: clamp(1.7rem, 4vw, 4rem);
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  padding: 0 clamp(1.25rem, 9vw, 9rem) 1rem;
+  scroll-padding-left: clamp(1.25rem, 9vw, 9rem);
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  touch-action: pan-y;
+  user-select: none;
+}
+.lex-track::-webkit-scrollbar {
+  display: none;
+}
+.lex-track[data-dragging="true"] {
+  cursor: grabbing;
+  scroll-snap-type: none;
+}
+.lex-item {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--font-serif), serif;
+  font-size: clamp(2rem, 5vw, 4rem);
+  line-height: 1.1;
+  padding: 0;
+  transition:
+    color 180ms ease,
+    opacity 180ms ease;
+}
+.lex-item[aria-current="true"],
+.lex-item:focus-visible {
+  color: var(--clay);
+  opacity: 1;
+}
+.lex-underline {
+  position: relative;
+  height: 1px;
+  background: var(--rule);
+}
+.lex-underline i {
+  display: block;
+  width: 26%;
+  height: 1px;
+  background: var(--clay);
+}
+.lex-underline b {
+  position: absolute;
+  left: 26%;
+  top: -3px;
+  width: 6px;
+  height: 6px;
+  background: var(--clay);
+  transform: rotate(45deg);
+}
+.lex-controls {
+  min-height: 1.6rem;
+  margin-top: 0.8rem;
+}
+.lex-pause {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 0;
+}
+.lex-pause:hover {
+  color: var(--clay);
+}
+.lex-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: clamp(2rem, 6vw, 6rem);
+  min-height: 13rem;
+  margin-top: 2.4rem;
+}
+.lex-gram {
+  color: var(--muted);
+  font-family: var(--font-serif), serif;
+  font-size: 1.15rem;
+  font-style: italic;
+}
+.lex-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1.2rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.lex-state i {
+  width: 5px;
+  height: 5px;
+  background: var(--clay);
+  transform: rotate(45deg);
+}
+.lex-encounters {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+}
+.encounter {
+  display: grid;
+  gap: 0.2rem;
+  border-left: 1px solid var(--rule);
+  padding-left: 1rem;
+}
+.encounter .when {
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.encounter[data-empty="true"] .where {
+  color: var(--muted);
+}
 [data-motion-island="hero"][data-motion-ready="true"] [data-hero],
 [data-motion-island="hero"][data-motion-ready="true"] [data-hero="entry"] > * {
   opacity: 0;
@@ -468,5 +597,10 @@ p {
     position: static;
     min-height: 0;
     margin-top: 1.5rem;
+  }
+  .lex-detail {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    min-height: 0;
   }
 }

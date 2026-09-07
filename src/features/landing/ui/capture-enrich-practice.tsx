@@ -1,5 +1,6 @@
 import { landingContent } from '../content/landing-content';
 import { ScrollytellingMotion } from '../motion/scrollytelling-motion';
+import { ClozeDemo } from './cloze-demo';
 
 export function CaptureEnrichPractice() {
   return (
@@ -46,10 +47,7 @@ export function CaptureEnrichPractice() {
               </article>
               <article className="state" data-state="2">
                 <div className="specimen state-specimen">
-                  <p className="cloze">
-                    The water was <span className="blank">lucent</span> in the late afternoon.
-                  </p>
-                  <p className="practice-hint">A word returns in the context where it belongs.</p>
+                  <ClozeDemo />
                 </div>
               </article>
             </div>
