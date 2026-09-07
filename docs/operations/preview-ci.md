@@ -36,10 +36,15 @@ migrations using the direct `db_url`, runs Vitest with the pooled URL, and
 deletes the branch in an `always()` cleanup step. A one-day expiration is an
 independent fallback if a runner is terminated before cleanup.
 
-`preview` creates or reuses `pr-<number>` from `development`, migrates it with
-the direct URL, and deploys the Preview runtime with the pooled URL. Its
-seven-day expiration guards against interrupted workflows. `Preview cleanup`
-deletes the deterministic branch on PR close without checking out PR code.
+`preview` creates or reuses `pr-<number>` from `development`, then explicitly
+refreshes that branch's expiration to seven days from the current workflow run
+through Neon's branch-update API. This refresh is required because the pinned
+create-branch action returns an existing named branch without updating its
+original `expires_at`. The workflow then migrates the branch with the direct
+URL and deploys the Preview runtime with the pooled URL. The rolling seven-day
+expiration guards against abandoned or interrupted PR workflows, while
+`Preview cleanup` deletes the deterministic branch promptly when the PR closes
+without checking out PR code.
 
 Generated database URLs are masked before use, remain in their originating
 job, and are never job outputs or artifacts. Only the non-secret Vercel Preview
