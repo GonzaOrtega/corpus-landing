@@ -276,6 +276,39 @@ p {
 .site-footer {
   border-top: 1px solid var(--rule);
 }
+.legal-page {
+  max-width: 48rem;
+  padding-top: clamp(3rem, 10vw, 7rem);
+  padding-bottom: clamp(4rem, 12vw, 8rem);
+}
+.legal-back {
+  display: inline-block;
+  margin-bottom: 4rem;
+  color: var(--muted);
+  text-decoration: none;
+}
+.legal-page h1 {
+  margin: 0.75rem 0 1rem;
+  font-size: clamp(3rem, 2.1rem + 4vw, 5.25rem);
+  line-height: 1;
+}
+.legal-description {
+  max-width: 38ch;
+  color: var(--muted);
+  font-size: 1.15rem;
+}
+.legal-page section {
+  margin-top: 3.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--rule);
+}
+.legal-page h2 {
+  margin: 0 0 1rem;
+  font-size: 1.6rem;
+}
+.legal-page section p + p {
+  margin-top: 1rem;
+}
 .footer-inner {
   color: var(--muted);
   font-size: 0.875rem;
