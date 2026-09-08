@@ -49,6 +49,12 @@ services:
     build:
       context: .
       dockerfile: docker/e2e.Dockerfile
+      # Same expressions as `user:` below, so the image's baked-in
+      # node_modules ownership (see the Dockerfile) can never diverge from
+      # the uid the container actually runs as.
+      args:
+        E2E_UID: ${E2E_UID:-1000}
+        E2E_GID: ${E2E_GID:-1000}
     # The bind mount below is the host repo tree, owned by uid:gid 1000:1000.
     # A writer uid that doesn't match cannot create .next/, test-results/,
     # playwright-report/, or updated snapshots in it — default to the host's
