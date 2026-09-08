@@ -1,6 +1,9 @@
 /** @type {import('@lhci/cli/src/types').LHCIConfig} */
 const previewUrl = process.env.LHCI_URL;
 const isPreview = process.env.LHCI_DEPLOYMENT_ENV === 'preview';
+// Preview deployments are behind Vercel Authentication; without the bypass
+// Lighthouse would score the login page. Unset for local/default runs.
+const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
 
 module.exports = {
   ci: {
@@ -18,6 +21,9 @@ module.exports = {
         // Preview must remain nonindexable; E2E asserts its robots policy.
         // Production/default runs retain the indexing audit and all score gates.
         ...(isPreview ? { skipAudits: ['is-crawlable'] } : {}),
+        ...(bypassSecret
+          ? { extraHeaders: JSON.stringify({ 'x-vercel-protection-bypass': bypassSecret }) }
+          : {}),
         formFactor: 'mobile',
         screenEmulation: { mobile: true, width: 412, height: 823, deviceScaleFactor: 1 },
       },

@@ -60,6 +60,10 @@ jobs:
           project_id: ${{ vars.NEON_PROJECT_ID }}
           api_key: ${{ secrets.NEON_API_KEY }}
           parent_branch: development
+          # This Neon project's database is corpus_landing, not the action's neondb
+          # default. Without these the branch is created and connection lookup 404s.
+          database: corpus_landing
+          role: corpus_landing_owner
           branch_name: ci-${{ github.run_id }}-${{ github.run_attempt }}
           expires_at: ${{ steps.expiry.outputs.rfc3339 }}
       - name: Mask dynamic Neon URLs

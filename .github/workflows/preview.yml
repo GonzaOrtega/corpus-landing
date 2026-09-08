@@ -46,6 +46,10 @@ jobs:
           project_id: ${{ vars.NEON_PROJECT_ID }}
           api_key: ${{ secrets.NEON_API_KEY }}
           parent_branch: development
+          # This Neon project's database is corpus_landing, not the action's neondb
+          # default. Without these the branch is created and connection lookup 404s.
+          database: corpus_landing
+          role: corpus_landing_owner
           branch_name: pr-${{ github.event.pull_request.number }}
           expires_at: ${{ steps.expiry.outputs.rfc3339 }}
       - name: Refresh preview branch expiration
@@ -142,6 +146,10 @@ jobs:
           project_id: ${{ vars.NEON_PROJECT_ID }}
           api_key: ${{ secrets.NEON_API_KEY }}
           parent_branch: development
+          # This Neon project's database is corpus_landing, not the action's neondb
+          # default. Without these the branch is created and connection lookup 404s.
+          database: corpus_landing
+          role: corpus_landing_owner
           branch_name: pr-${{ github.event.pull_request.number }}
       - name: Mask E2E Neon URLs
         if: ${{ needs.preview.result == 'success' && steps.neon.outputs.branch_id != '' }}
@@ -165,6 +173,7 @@ jobs:
         env:
           PLAYWRIGHT_BASE_URL: ${{ needs.preview.outputs.url }}
           DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: bun run e2e
 
   # Stable required PR check — do not rename. The URL comes directly from the
@@ -200,4 +209,5 @@ jobs:
         env:
           LHCI_URL: ${{ needs.preview.outputs.url }}
           LHCI_DEPLOYMENT_ENV: preview
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: bun run lighthouse

@@ -6,6 +6,11 @@ nextEnv.loadEnvConfig(process.cwd());
 const previewBaseUrl = process.env.PLAYWRIGHT_BASE_URL;
 const baseURL = previewBaseUrl ?? 'http://localhost:3018';
 
+// Preview deployments sit behind Vercel Authentication, which answers with a
+// 200 login page rather than a 401 — assertions would fail somewhere far from
+// the cause. Unset locally, where the run targets the webServer instead.
+const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: false,
@@ -14,6 +19,14 @@ export default defineConfig({
   use: {
     baseURL,
     trace: 'retain-on-failure',
+    ...(bypassSecret
+      ? {
+          extraHTTPHeaders: {
+            'x-vercel-protection-bypass': bypassSecret,
+            'x-vercel-set-bypass-cookie': 'true',
+          },
+        }
+      : {}),
   },
   projects: [
     // Chromium is the release gate. The remaining projects exercise the

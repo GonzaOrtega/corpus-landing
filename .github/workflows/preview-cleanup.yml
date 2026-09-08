@@ -19,6 +19,9 @@ jobs:
         run: echo 'Fork previews never receive a repository Neon branch.'
       - name: Delete PR Neon branch
         if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        # A PR can close before any preview branch was created, and the action
+        # exits 1 on a missing branch. Absent is the desired end state here.
+        continue-on-error: true
         uses: neondatabase/delete-branch-action@4468d825d5a88ef4012f1705a82f02ec3072f776 # v3.2.1
         with:
           project_id: ${{ vars.NEON_PROJECT_ID }}
