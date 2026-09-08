@@ -146,11 +146,12 @@ agree. This is the payoff that makes the whole exercise worth it, and it is why
 construction, with one conflict to resolve upstream:
 
 **`compose-image-pinned` (red) requires "a concrete tag — not `:latest`, not
-bare". The proxy publishes only `:main`, a moving tag.** Pinning by digest
-(`@sha256:…`) is strictly stronger than a tag, but whether the check accepts a
-digest-pinned image without a tag must be verified against `standard.ts`. If it
-does not, the check needs a small amendment in claude-stack — the correct
-outcome, since digest pinning is what the rule is trying to achieve.
+bare", and the proxy publishes only `:main`, a moving tag.** Resolved: the check
+already accepts a digest pin — `checks-compose.test.ts:233`, *"accepts a digest
+pin, which is stricter than a tag"*. No amendment upstream is needed. The proxy
+is pinned at
+`ghcr.io/timowilhelm/local-neon-http-proxy@sha256:cd2ae14edf2feafbc3330492de5c80506f77274c3bd013154cdef697bdeb768a`
+(resolved from `:main`, 2026-09-08).
 
 `db` publishes to `127.0.0.1` only (`compose-db-loopback`). `name:` is pinned
 (`compose-name`). No `WATCHPACK_POLLING` (`compose-dead-polling`; this repo is
