@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadPublicConfig, productionRecaptchaSiteKey } from './public-env';
 import { isSignupOpen, parseReleaseStage } from './release-stage';
-import { loadServerConfig } from './server-env';
+import { loadServerConfig, loadSiteConfig } from './server-env';
 
 // server-env.ts imports 'server-only', which throws unconditionally outside
 // Next.js's own server bundling (it only resolves to a no-op under the
@@ -122,6 +122,32 @@ describe('loadServerConfig', () => {
     expect(config.emailPostalAddress).toBeNull();
     expect(config.cronSecret).toBeNull();
     expect(config.launchDryRunRecipient).toBeNull();
+  });
+});
+
+describe('loadSiteConfig', () => {
+  it('uses safe presentation defaults during local development', () => {
+    const config = loadSiteConfig({ NODE_ENV: 'development', PORT: '3018' });
+
+    expect(config.siteUrl.href).toBe('http://localhost:3018/');
+    expect(config.releaseStage).toBe('early-access');
+    expect(config.downloadUrl).toBeNull();
+    expect(config.replyTo).toBeNull();
+    expect(config.emailPostalAddress).toBeNull();
+  });
+
+  it('uses a Vercel deployment origin when SITE_URL is absent in production', () => {
+    const config = loadSiteConfig({
+      NODE_ENV: 'production',
+      VERCEL_PROJECT_PRODUCTION_URL: 'corpus.example',
+    });
+
+    expect(config.siteUrl.href).toBe('https://corpus.example/');
+    expect(config.releaseStage).toBe('early-access');
+  });
+
+  it('does not make database configuration optional', () => {
+    expect(() => loadServerConfig({ NODE_ENV: 'development' })).toThrow();
   });
 });
 

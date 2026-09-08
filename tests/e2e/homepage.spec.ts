@@ -1,5 +1,17 @@
 import { expect, test } from '@playwright/test';
 
+test('boots locally without render-time console errors', async ({ page }) => {
+  const renderErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') renderErrors.push(message.text());
+  });
+
+  const response = await page.goto('/');
+  expect(response?.status()).toBe(200);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  expect(renderErrors).toEqual([]);
+});
+
 test('stays at the hero through hydration while the Lexicon is off-screen', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toBeInViewport();
