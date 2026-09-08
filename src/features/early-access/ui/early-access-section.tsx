@@ -16,7 +16,7 @@ export function EarlyAccessSection({
   const launched = releaseStage === 'launched';
 
   return (
-    <section className="section early-access" id="early-access">
+    <section className="section early-access" data-index="4" data-section id="early-access">
       <div className="wrap column">
         <p className="eyebrow">{launched ? 'Corpus' : 'Early access'}</p>
         <h2>{launched ? 'Get Corpus.' : 'Be there for the first build.'}</h2>

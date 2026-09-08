@@ -1,11 +1,16 @@
 'use client';
 
-import { useState } from 'react';
-
-const PRACTICE_EVENT = 'corpus:practice-lucent';
+import { useEffect, useState } from 'react';
+import { PRACTICE_EVENT } from '../content/practice-event';
 
 export function ClozeDemo() {
   const [revealed, setRevealed] = useState(false);
+
+  useEffect(() => {
+    const synchronize = () => setRevealed(true);
+    window.addEventListener(PRACTICE_EVENT, synchronize);
+    return () => window.removeEventListener(PRACTICE_EVENT, synchronize);
+  }, []);
 
   const reveal = () => {
     if (revealed) return;
@@ -17,7 +22,13 @@ export function ClozeDemo() {
     <>
       <p className="cloze">
         The water was{' '}
-        <button aria-label="Reveal the answer" className="blank" onClick={reveal} type="button">
+        <button
+          aria-label="Reveal the answer"
+          className="blank"
+          data-revealed={revealed}
+          onClick={reveal}
+          type="button"
+        >
           {revealed ? 'lucent' : '\u00a0'}
         </button>{' '}
         in the late afternoon.

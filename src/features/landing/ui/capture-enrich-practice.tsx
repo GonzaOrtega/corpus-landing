@@ -2,6 +2,40 @@ import { landingContent } from '../content/landing-content';
 import { ScrollytellingMotion } from '../motion/scrollytelling-motion';
 import { ClozeDemo } from './cloze-demo';
 
+export function StageVisual({ index }: { index: number }) {
+  if (index === 0) {
+    return (
+      <div className="specimen state-specimen">
+        <div className="spec-word">lucent</div>
+        <p className="spec-def muted">Saved. Nothing else needed.</p>
+      </div>
+    );
+  }
+  if (index === 1) {
+    return (
+      <div className="specimen state-specimen">
+        <div>
+          <span className="spec-word">lucent</span>
+          <span className="spec-gram">adjective</span>
+        </div>
+        <p className="spec-ipa">/ˈluːs(ə)nt/</p>
+        <p className="spec-def">Softly bright; glowing with, or reflecting, light.</p>
+        <div className="spec-meta">
+          <p>Near: luminous, radiant, translucent</p>
+          <p>
+            Register: <strong>literary</strong>
+          </p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="specimen state-specimen">
+      <ClozeDemo />
+    </div>
+  );
+}
+
 export function CaptureEnrichPractice() {
   return (
     <ScrollytellingMotion>
@@ -19,37 +53,19 @@ export function CaptureEnrichPractice() {
                 </p>
                 <h3>{heading}</h3>
                 <p>{body}</p>
+                <div className="mobile-stage-visual">
+                  <StageVisual index={index} />
+                </div>
               </article>
             ))}
           </div>
-          <div className="loop-stage-visual">
+          <div className="desktop-stage-visual">
             <div className="sticky">
-              <article className="state" data-state="0">
-                <div className="specimen state-specimen">
-                  <h3 className="spec-word">lucent</h3>
-                  <p className="spec-def muted">Saved. Nothing else needed.</p>
-                </div>
-              </article>
-              <article className="state" data-state="1">
-                <div className="specimen state-specimen">
-                  <h3 className="spec-word">
-                    lucent <em className="spec-gram">adjective</em>
-                  </h3>
-                  <p className="spec-ipa">/ˈluːs(ə)nt/</p>
-                  <p className="spec-def">Softly bright; glowing with, or reflecting, light.</p>
-                  <div className="spec-meta">
-                    <p>Near: luminous, radiant, translucent</p>
-                    <p>
-                      Register: <strong>literary</strong>
-                    </p>
-                  </div>
-                </div>
-              </article>
-              <article className="state" data-state="2">
-                <div className="specimen state-specimen">
-                  <ClozeDemo />
-                </div>
-              </article>
+              {[0, 1, 2].map((index) => (
+                <article className="state" data-state={index} key={index}>
+                  <StageVisual index={index} />
+                </article>
+              ))}
             </div>
           </div>
         </div>
