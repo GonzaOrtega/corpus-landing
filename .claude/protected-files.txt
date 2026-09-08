@@ -4,3 +4,8 @@ docs/superpowers/specs/**
 .github/workflows/secret-scan.yml
 docs/operations/branch-protection.md
 docs/design/prototypes/**
+LICENSE
+SECURITY.md
+docs/architecture.md
+docs/operations/launch-email.md
+docs/operations/privacy-retention.md

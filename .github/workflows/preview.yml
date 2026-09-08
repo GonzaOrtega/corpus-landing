@@ -1,0 +1,203 @@
+name: Preview
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # Stable required PR check — do not rename. Forks cannot receive deployment
+  # credentials, so this required deployment gate fails closed.
+  preview:
+    name: preview
+    runs-on: ubuntu-latest
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - name: Fail closed for fork PRs
+        if: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+        run: |
+          echo 'The required Preview deployment cannot run for a fork PR.' >&2
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        with:
+          bun-version: 1.3.13
+      - name: Install dependencies
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: bun install --frozen-lockfile
+      - id: expiry
+        name: Set preview branch expiration
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: echo "rfc3339=$(date -u -d '+7 days' +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+      - id: neon
+        name: Create or reuse preview Neon branch
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: neondatabase/create-branch-action@72ed4f69a12b6be9c16aebfad893f6a21e9aba8b # v6.4.0
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          parent_branch: development
+          branch_name: pr-${{ github.event.pull_request.number }}
+          expires_at: ${{ steps.expiry.outputs.rfc3339 }}
+      - name: Refresh preview branch expiration
+        if: ${{ steps.neon.outputs.branch_id != '' }}
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_BRANCH_ID: ${{ steps.neon.outputs.branch_id }}
+          NEON_EXPIRES_AT: ${{ steps.expiry.outputs.rfc3339 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(printf '{\"branch\":{\"expires_at\":\"%s\"}}' "$NEON_EXPIRES_AT")"
+          curl --fail --silent --show-error \
+            --request PATCH \
+            --header "Authorization: Bearer $NEON_API_KEY" \
+            --header 'Content-Type: application/json' \
+            --data "$payload" \
+            --output /dev/null \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$NEON_BRANCH_ID"
+      - name: Mask dynamic Neon URLs
+        if: ${{ steps.neon.outputs.branch_id != '' }}
+        env:
+          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
+          DATABASE_URL_UNPOOLED: ${{ steps.neon.outputs.db_url }}
+        run: |
+          echo "::add-mask::$DATABASE_URL"
+          echo "::add-mask::$DATABASE_URL_UNPOOLED"
+      - name: Apply migrations to preview Neon branch
+        if: ${{ steps.neon.outputs.branch_id != '' }}
+        env:
+          DATABASE_URL_UNPOOLED: ${{ steps.neon.outputs.db_url }}
+        run: bun run db:migrate
+      - name: Install Vercel CLI
+        if: ${{ steps.neon.outputs.branch_id != '' }}
+        run: npm install --global vercel@59.11.7
+      - name: Verify Vercel CLI version
+        if: ${{ steps.neon.outputs.branch_id != '' }}
+        run: vercel --version
+      - name: Pull Vercel Preview environment
+        if: ${{ steps.neon.outputs.branch_id != '' }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel pull --yes --environment=preview
+      - name: Build preview
+        if: ${{ steps.neon.outputs.branch_id != '' }}
+        env:
+          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
+          DATABASE_URL_UNPOOLED: ${{ steps.neon.outputs.db_url }}
+        run: vercel build
+      - id: deploy
+        name: Deploy preview
+        if: ${{ steps.neon.outputs.branch_id != '' }}
+        env:
+          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
+          DATABASE_URL_UNPOOLED: ${{ steps.neon.outputs.db_url }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          preview_url="$(vercel deploy --prebuilt --yes \
+            --env DATABASE_URL="$DATABASE_URL" \
+            --env DATABASE_URL_UNPOOLED="$DATABASE_URL_UNPOOLED")"
+          printf 'url=%s\n' "$preview_url" >> "$GITHUB_OUTPUT"
+  # Stable required PR check — do not rename. This runs on the pull_request
+  # workflow's SHA and can only use the non-secret Preview URL job output.
+  e2e:
+    name: e2e
+    needs: preview
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail closed when preview is unavailable
+        if: ${{ needs.preview.result != 'success' }}
+        run: |
+          echo 'The required Preview deployment did not complete successfully.' >&2
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ needs.preview.result == 'success' }}
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: ${{ needs.preview.result == 'success' }}
+        with:
+          bun-version: 1.3.13
+      - name: Install dependencies
+        if: ${{ needs.preview.result == 'success' }}
+        run: bun install --frozen-lockfile
+      - id: neon
+        name: Reuse preview Neon branch for management E2E setup
+        if: ${{ needs.preview.result == 'success' }}
+        uses: neondatabase/create-branch-action@72ed4f69a12b6be9c16aebfad893f6a21e9aba8b # v6.4.0
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          parent_branch: development
+          branch_name: pr-${{ github.event.pull_request.number }}
+      - name: Mask E2E Neon URLs
+        if: ${{ needs.preview.result == 'success' && steps.neon.outputs.branch_id != '' }}
+        env:
+          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
+          DATABASE_URL_UNPOOLED: ${{ steps.neon.outputs.db_url }}
+        run: |
+          echo "::add-mask::$DATABASE_URL"
+          echo "::add-mask::$DATABASE_URL_UNPOOLED"
+      - name: Verify Preview URL
+        if: ${{ needs.preview.result == 'success' }}
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ needs.preview.outputs.url }}
+        run: |
+          case "$PLAYWRIGHT_BASE_URL" in https://*) ;; *) exit 1 ;; esac
+      - name: Install Playwright browsers
+        if: ${{ needs.preview.result == 'success' }}
+        run: bunx playwright install --with-deps
+      - name: Run Playwright against Preview
+        if: ${{ needs.preview.result == 'success' }}
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ needs.preview.outputs.url }}
+          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
+        run: bun run e2e
+
+  # Stable required PR check — do not rename. The URL comes directly from the
+  # Preview job; no artifact download or deployment credential is needed here.
+  lighthouse:
+    name: lighthouse
+    needs: preview
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail closed when preview is unavailable
+        if: ${{ needs.preview.result != 'success' }}
+        run: |
+          echo 'The required Preview deployment did not complete successfully.' >&2
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ needs.preview.result == 'success' }}
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: ${{ needs.preview.result == 'success' }}
+        with:
+          bun-version: 1.3.13
+      - name: Install dependencies
+        if: ${{ needs.preview.result == 'success' }}
+        run: bun install --frozen-lockfile
+      - name: Verify Preview URL
+        if: ${{ needs.preview.result == 'success' }}
+        env:
+          LHCI_URL: ${{ needs.preview.outputs.url }}
+        run: |
+          case "$LHCI_URL" in https://*) ;; *) exit 1 ;; esac
+      - name: Run Lighthouse CI against Preview
+        if: ${{ needs.preview.result == 'success' }}
+        env:
+          LHCI_URL: ${{ needs.preview.outputs.url }}
+          LHCI_DEPLOYMENT_ENV: preview
+        run: bun run lighthouse

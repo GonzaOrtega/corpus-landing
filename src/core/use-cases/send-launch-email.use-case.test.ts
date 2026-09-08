@@ -76,10 +76,15 @@ describe('SendLaunchEmailUseCase', () => {
   });
 
   it('keeps an ambiguous outcome sending for a same-key retry within 24 hours', async () => {
-    const { repository, signup, useCase } = await setup('ambiguous');
-    await useCase.execute({ signupId: signup.id, managementUrl: 'https://x.example/#t', input });
+    const { repository, signup, messages, useCase } = await setup('ambiguous');
+    const command = { signupId: signup.id, managementUrl: 'https://x.example/#t', input };
+    await useCase.execute(command);
+    await useCase.execute(command);
 
     expect((await repository.findById(signup.id))?.toProps().launchStatus).toBe('sending');
+    expect(messages).toHaveLength(2);
+    expect(messages[1]).toEqual(messages[0]);
+    expect(messages[1]?.idempotencyKey).toBe(`corpus-launch-v1/${signup.id}`);
   });
 
   it('moves an expired ambiguous send to manual review without calling the provider', async () => {

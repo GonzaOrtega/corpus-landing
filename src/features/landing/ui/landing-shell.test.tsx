@@ -17,6 +17,10 @@ describe('LandingShell', () => {
     expect(html).toContain('<footer');
     expect(html).toContain('Learn words from real life.');
     expect(html).toContain('Join early access');
+    expect(html).toContain('class="wrap"><div class="column hero-grid"');
+    expect(html).toContain('Near: luminous, radiant, translucent');
+    expect(html).not.toContain('<h2>lucent');
+    expect(html).toContain('data-stuck="false"');
   });
 
   it('keeps every Capture, Enrich, and Practice demonstration readable in server HTML', () => {
@@ -26,6 +30,18 @@ describe('LandingShell', () => {
     expect(html).toContain('Near: luminous, radiant, translucent');
     expect(html).toContain('The water was');
     expect(html).toContain('in the late afternoon.');
+  });
+
+  it('keeps specimen words out of the heading hierarchy and the browser out of landmarks', () => {
+    const html = renderToStaticMarkup(<LandingShell />);
+    const headings = [...html.matchAll(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/g)].map((match) => match[1]);
+    expect(headings).toHaveLength(8);
+    expect(headings.join(' ')).not.toContain('lucent');
+    expect(html).toContain('role="group"');
+    expect(html).toContain('<em>a lucent morning</em>');
+    expect(html).toContain('data-running="false"');
+    expect(html).toContain('class="wrap"><div class="column hero-grid"');
+    expect(html).toContain('No newsletter. Unsubscribe anytime.');
   });
 
   it('changes only early-access surfaces when the product is launched', () => {

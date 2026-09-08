@@ -3,7 +3,7 @@ import { LivingLexiconClient } from './living-lexicon.client';
 
 export function LivingLexicon() {
   return (
-    <section className="section lexicon" id="lexicon">
+    <section className="section lexicon" data-index="2" data-section id="lexicon">
       <div className="wrap column">
         <p className="eyebrow">Your living lexicon</p>
         <h2>Your vocabulary isn't a list.</h2>

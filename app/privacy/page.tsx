@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { LegalPage, privacySections } from '@/src/components/legal-page';
-import { loadServerConfig } from '@/src/config/server-env';
+import { loadSiteConfig } from '@/src/config/server-env';
 
 export const metadata: Metadata = {
   title: 'Privacy',
@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 };
 
 export default function PrivacyPage() {
-  const config = loadServerConfig(process.env);
+  const config = loadSiteConfig(process.env);
   return (
     <LegalPage
       contactEmail={config.replyTo}

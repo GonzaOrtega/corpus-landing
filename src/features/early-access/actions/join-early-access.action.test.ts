@@ -1,6 +1,13 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CaptchaRejectedError, SignupClosedError } from '../../../core/errors/early-access-errors';
+import { joinEarlyAccessAction } from './join-early-access.action';
 import { handleJoinEarlyAccess } from './join-early-access.handler';
+
+vi.mock('../early-access.wiring', () => ({
+  getEarlyAccessBackend: () => {
+    throw new Error('DATABASE_URL is not configured');
+  },
+}));
 
 let joinCalls = 0;
 let joinBehavior: () => Promise<void>;
@@ -76,6 +83,17 @@ describe('joinEarlyAccessAction mapping', () => {
 
     await expect(handleJoinEarlyAccess(backend, form('person@example.com'))).resolves.toEqual({
       status: 'closed',
+    });
+  });
+});
+
+describe('joinEarlyAccessAction composition boundary', () => {
+  it('returns the generic retry state when credentials are not configured', async () => {
+    await expect(
+      joinEarlyAccessAction({ status: 'idle' }, form('person@example.com')),
+    ).resolves.toEqual({
+      status: 'retry',
+      message: "We couldn't complete that signup. Please try again.",
     });
   });
 });

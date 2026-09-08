@@ -9,11 +9,11 @@ export function SiteFooter() {
           <CorpusMark />
           <span>Corpus</span>
         </Link>
-        <nav aria-label="Legal">
+        <nav aria-label="Legal" className="footer-links">
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
         </nav>
-        <p>© 2026 Corpus</p>
+        <p className="footer-copyright">© 2026 Corpus</p>
       </div>
     </footer>
   );

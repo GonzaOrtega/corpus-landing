@@ -1,4 +1,5 @@
 import { HmacManagementTokenDeriver } from '../../adapters/security/hmac-management-token-deriver.adapter';
+import { SendLaunchEmailUseCase } from '../../core/use-cases/send-launch-email.use-case';
 import { runLaunchDryRun } from '../../ops/launch-dry-run';
 import { runLaunchProduction } from '../../ops/launch-production';
 import { provideConfigSecrets } from '../capabilities/config-secrets';
@@ -29,7 +30,7 @@ export function getLaunchOperations() {
         {
           config: serverConfig,
           repository,
-          sender,
+          sendLaunch: new SendLaunchEmailUseCase(repository, sender, systemClock),
           clock: systemClock,
           tokenHasher,
           tokenDeriver,

@@ -1,5 +1,6 @@
 import type { ReleaseStage } from '../../../config/release-stage';
 import { EarlyAccessSection } from '../../early-access/ui/early-access-section';
+import { PageMotion } from '../motion/page-motion';
 import { CaptureEnrichPractice } from './capture-enrich-practice';
 import { Hero } from './hero';
 import { LivingLexicon } from './living-lexicon';
@@ -21,9 +22,11 @@ export function LandingShell({
 }: LandingShellProps) {
   return (
     <>
+      <PageMotion />
       <a className="skip-link" href="#main">
         Skip to content
       </a>
+      <PageMotion />
       <ProgressSpine />
       <SiteHeader downloadUrl={downloadUrl} releaseStage={releaseStage} />
       <main id="main">

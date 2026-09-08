@@ -11,7 +11,7 @@ interface SiteHeaderProps {
 
 export function SiteHeader({ releaseStage, downloadUrl = null }: SiteHeaderProps) {
   return (
-    <header className="site-header">
+    <header className="site-header" data-stuck="false">
       <div className="wrap header-inner">
         <Link aria-label="Corpus, home" className="brand" href="#top">
           <CorpusMark />
@@ -23,11 +23,7 @@ export function SiteHeader({ releaseStage, downloadUrl = null }: SiteHeaderProps
               {item.label}
             </Link>
           ))}
-          <ReleaseCta
-            className="button button-solid"
-            downloadUrl={downloadUrl}
-            releaseStage={releaseStage}
-          />
+          <ReleaseCta className="button" downloadUrl={downloadUrl} releaseStage={releaseStage} />
         </nav>
       </div>
     </header>

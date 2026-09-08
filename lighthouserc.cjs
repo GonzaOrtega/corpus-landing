@@ -1,13 +1,23 @@
 /** @type {import('@lhci/cli/src/types').LHCIConfig} */
+const previewUrl = process.env.LHCI_URL;
+const isPreview = process.env.LHCI_DEPLOYMENT_ENV === 'preview';
+
 module.exports = {
   ci: {
     collect: {
-      startServerCommand: 'bun run start -- --port 3018',
-      startServerReadyPattern: 'Ready',
-      startServerReadyTimeout: 120000,
-      url: ['http://localhost:3018/'],
+      ...(previewUrl
+        ? { url: [previewUrl] }
+        : {
+            startServerCommand: 'bun run start -- --port 3018',
+            startServerReadyPattern: 'Ready',
+            startServerReadyTimeout: 120000,
+            url: ['http://localhost:3018/'],
+          }),
       numberOfRuns: 3,
       settings: {
+        // Preview must remain nonindexable; E2E asserts its robots policy.
+        // Production/default runs retain the indexing audit and all score gates.
+        ...(isPreview ? { skipAudits: ['is-crawlable'] } : {}),
         formFactor: 'mobile',
         screenEmulation: { mobile: true, width: 412, height: 823, deviceScaleFactor: 1 },
       },

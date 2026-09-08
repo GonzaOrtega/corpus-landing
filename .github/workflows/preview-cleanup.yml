@@ -1,0 +1,26 @@
+name: Preview cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions: {}
+
+concurrency:
+  group: preview-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Safely skip fork cleanup
+        if: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+        run: echo 'Fork previews never receive a repository Neon branch.'
+      - name: Delete PR Neon branch
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: neondatabase/delete-branch-action@4468d825d5a88ef4012f1705a82f02ec3072f776 # v3.2.1
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          branch: pr-${{ github.event.pull_request.number }}

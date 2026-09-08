@@ -6,6 +6,7 @@ export function renderLaunchEmailText(props: LaunchEmailProps): string {
     '',
     "It's ready to try.",
     `You asked to hear when there was a build worth trying. This is it. ${props.releaseSummary}`,
+    "It's a first build, and it behaves like one. What that means is below — both halves of it.",
     `Get Corpus: ${props.downloadUrl.toString()}`,
     '',
     'In the first build',
