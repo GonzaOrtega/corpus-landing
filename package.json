@@ -16,6 +16,7 @@
     "lighthouse": "lhci autorun",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "e2e:migrate": "bun tests/e2e/support/migrate.mjs",
     "ops:launch-dry-run": "bun scripts/launch-email.ts dry-run",
     "ops:launch-production": "bun scripts/launch-email.ts production",
     "stack:check": "bun scripts/stack-conformance/stack-audit.ts . --ci",
@@ -48,7 +49,6 @@
     "@vitejs/plugin-react": "^6.1.1",
     "dependency-cruiser": "^18.2.0",
     "drizzle-kit": "^0.31.10",
-    "pg": "^8.23.0",
     "typescript": "npm:@typescript/typescript6",
     "vitest": "^5.0.0"
   },
