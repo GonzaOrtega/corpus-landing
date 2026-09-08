@@ -12,6 +12,14 @@ test('boots locally without render-time console errors', async ({ page }) => {
   expect(renderErrors).toEqual([]);
 });
 
+test('keeps the signup UI usable when backend credentials are absent', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('Email address').fill('person@example.com');
+  await page.getByRole('button', { name: 'Join the list' }).click();
+
+  await expect(page.getByText("We couldn't complete that signup. Please try again.")).toBeVisible();
+});
+
 test('stays at the hero through hydration while the Lexicon is off-screen', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toBeInViewport();

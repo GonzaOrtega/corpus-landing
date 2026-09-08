@@ -14,5 +14,9 @@ export async function joinEarlyAccessAction(
   _previousState: SignupActionState,
   formData: FormData,
 ): Promise<SignupActionState> {
-  return handleJoinEarlyAccess(getEarlyAccessBackend(), formData);
+  try {
+    return await handleJoinEarlyAccess(getEarlyAccessBackend(), formData);
+  } catch {
+    return { status: 'retry', message: "We couldn't complete that signup. Please try again." };
+  }
 }
