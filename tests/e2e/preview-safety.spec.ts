@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 
-test('non-production deployments disallow indexing and do not load real CAPTCHA', async ({
+// @preview: this asserts what the deployed artifact serves, so it runs against
+// the real preview URL in the preview-smoke job rather than the local build.
+test('@preview non-production deployments disallow indexing and do not load real CAPTCHA', async ({
   page,
 }) => {
   test.skip(

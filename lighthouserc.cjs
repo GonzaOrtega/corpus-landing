@@ -22,7 +22,15 @@ module.exports = {
         // Production/default runs retain the indexing audit and all score gates.
         ...(isPreview ? { skipAudits: ['is-crawlable'] } : {}),
         ...(bypassSecret
-          ? { extraHeaders: JSON.stringify({ 'x-vercel-protection-bypass': bypassSecret }) }
+          ? {
+              extraHeaders: JSON.stringify({
+                'x-vercel-protection-bypass': bypassSecret,
+                // Lighthouse fetches /robots.txt outside the main navigation.
+                // Without the cookie that request is challenged and scores the
+                // SSO page as robots.txt, which fails the SEO gate on 0.88.
+                'x-vercel-set-bypass-cookie': 'true',
+              }),
+            }
           : {}),
         formFactor: 'mobile',
         screenEmulation: { mobile: true, width: 412, height: 823, deviceScaleFactor: 1 },

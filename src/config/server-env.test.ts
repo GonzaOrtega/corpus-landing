@@ -146,6 +146,42 @@ describe('loadSiteConfig', () => {
     expect(config.releaseStage).toBe('early-access');
   });
 
+  // VERCEL_PROJECT_PRODUCTION_URL is set in every environment. Preferring it on
+  // a preview made each deployment advertise the production origin as its
+  // canonical, and hand out management links pointing at production.
+  it('is canonical for itself on a preview deployment', () => {
+    const config = loadSiteConfig({
+      NODE_ENV: 'production',
+      VERCEL_ENV: 'preview',
+      VERCEL_URL: 'corpus-landing-abc123.vercel.app',
+      VERCEL_PROJECT_PRODUCTION_URL: 'corpus.example',
+    });
+
+    expect(config.siteUrl.href).toBe('https://corpus-landing-abc123.vercel.app/');
+  });
+
+  it('keeps the stable production origin on a production deployment', () => {
+    const config = loadSiteConfig({
+      NODE_ENV: 'production',
+      VERCEL_ENV: 'production',
+      VERCEL_URL: 'corpus-landing-xyz789.vercel.app',
+      VERCEL_PROJECT_PRODUCTION_URL: 'corpus.example',
+    });
+
+    expect(config.siteUrl.href).toBe('https://corpus.example/');
+  });
+
+  it('still lets an explicit SITE_URL win on a preview', () => {
+    const config = loadSiteConfig({
+      NODE_ENV: 'production',
+      VERCEL_ENV: 'preview',
+      SITE_URL: 'https://staging.corpus.example',
+      VERCEL_URL: 'corpus-landing-abc123.vercel.app',
+    });
+
+    expect(config.siteUrl.href).toBe('https://staging.corpus.example/');
+  });
+
   it('does not make database configuration optional', () => {
     expect(() => loadServerConfig({ NODE_ENV: 'development' })).toThrow();
   });

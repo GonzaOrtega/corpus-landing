@@ -69,7 +69,15 @@ const rawServerEnvSchema = z.object({
 export function loadSiteConfig(env: Record<string, string | undefined>): SiteConfig {
   const raw = rawSiteEnvSchema.parse(env);
   const releaseStage = parseReleaseStage(raw.CORPUS_RELEASE_STAGE ?? 'early-access');
-  const deploymentHostname = raw.VERCEL_PROJECT_PRODUCTION_URL ?? raw.VERCEL_URL;
+  // VERCEL_PROJECT_PRODUCTION_URL is exposed in every environment, so preferring
+  // it unconditionally made previews claim the production origin — canonical
+  // links and, worse, subscriber management links pointing at production. A
+  // preview is canonical for itself. VERCEL_URL is a build-time variable, not
+  // an incoming proxy header, so this stays within spec §21.
+  const deploymentHostname =
+    env.VERCEL_ENV === 'production'
+      ? (raw.VERCEL_PROJECT_PRODUCTION_URL ?? raw.VERCEL_URL)
+      : (raw.VERCEL_URL ?? raw.VERCEL_PROJECT_PRODUCTION_URL);
   const siteUrl = raw.SITE_URL
     ? new URL(raw.SITE_URL)
     : deploymentHostname

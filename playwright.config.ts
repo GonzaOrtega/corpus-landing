@@ -14,7 +14,14 @@ const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: false,
-  retries: process.env.CI ? 2 : 0,
+  // Playwright defaults to a single worker under CI. Against 65 tests that was
+  // the dominant cost, and retrying twice tripled every failure. maxFailures
+  // and globalTimeout are the backstop: a broken suite reports in seconds
+  // instead of grinding through the remainder.
+  workers: process.env.CI ? 4 : undefined,
+  retries: process.env.CI ? 1 : 0,
+  maxFailures: process.env.CI ? 5 : 0,
+  globalTimeout: process.env.CI ? 8 * 60_000 : undefined,
   reporter: process.env.CI ? 'github' : 'list',
   use: {
     baseURL,
@@ -40,9 +47,13 @@ export default defineConfig({
   webServer: previewBaseUrl
     ? undefined
     : {
-        command: 'bun run dev --port 3018',
+        // The production build, not the dev server: geometry and typography
+        // assertions are calibrated against built CSS, and CI now runs this
+        // path rather than a deployment.
+        command: 'bun run build && bun run start -- --port 3018',
         url: baseURL,
         reuseExistingServer: !process.env.CI,
-        timeout: 120_000,
+        // Covers the build, not just server boot.
+        timeout: 240_000,
       },
 });
