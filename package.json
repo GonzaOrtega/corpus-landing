@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
+    "e2e:local": "docker compose run --rm e2e",
     "lighthouse": "lhci autorun",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",

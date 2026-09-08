@@ -1,5 +1,10 @@
 import nextEnv from '@next/env';
 import { defineConfig, devices } from '@playwright/test';
+// manage-early-access.spec.ts builds its own neon() client inside this
+// process, so the override has to be loaded here as well as in the app server.
+// A no-op when E2E_NEON_HTTP_ENDPOINT is unset — which is how the Neon-backed
+// run still works.
+import './tests/e2e/support/neon-local-endpoint.mjs';
 
 nextEnv.loadEnvConfig(process.cwd());
 
@@ -22,7 +27,11 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   maxFailures: process.env.CI ? 5 : 0,
   globalTimeout: process.env.CI ? 8 * 60_000 : undefined,
-  reporter: process.env.CI ? 'github' : 'list',
+  // GITHUB_ACTIONS, not CI: compose sets CI=true for the container to get its
+  // workers/retries/maxFailures discipline, but the container is not GitHub
+  // Actions and its terminal can't render `::error file=...::` annotations —
+  // GitHub Actions sets both vars, so real CI still gets the github reporter.
+  reporter: process.env.GITHUB_ACTIONS ? 'github' : 'list',
   use: {
     baseURL,
     trace: 'retain-on-failure',
@@ -54,7 +63,15 @@ export default defineConfig({
         // loadSiteConfig falls back to http://localhost:${PORT ?? 3000}, so
         // without this the app is canonical for a port nothing is serving. A
         // local .env hid that; CI has none.
-        env: { PORT: '3018' },
+        env: {
+          PORT: '3018',
+          ...(process.env.E2E_NEON_HTTP_ENDPOINT
+            ? {
+                E2E_NEON_HTTP_ENDPOINT: process.env.E2E_NEON_HTTP_ENDPOINT,
+                NODE_OPTIONS: '--import ./tests/e2e/support/neon-local-endpoint.mjs',
+              }
+            : {}),
+        },
         url: baseURL,
         reuseExistingServer: !process.env.CI,
         // Covers the build, not just server boot.
