@@ -246,56 +246,59 @@ export function LivingLexiconClient({ entries }: { entries: readonly DemoLexicon
         ))}
       </div>
 
-      <div className="wrap column">
-        <div className="lex-underline" data-running={autoplayRunning}>
-          <i key={progressKey} />
-          <b />
-        </div>
-        <div className="lex-controls">
-          <button
-            aria-pressed={userPaused}
-            className="lex-pause"
-            hidden={reducedMotion}
-            onClick={() => {
-              if (resumeTimerRef.current !== null) window.clearTimeout(resumeTimerRef.current);
-              setInteractionPaused(false);
-              setUserPaused((paused) => !paused);
-              setUserDriven(true);
-            }}
-            type="button"
-          >
-            {userPaused ? 'Play the word browser' : 'Pause the word browser'}
-          </button>
-          <span aria-live={userDriven ? 'polite' : 'off'} className="sr-only">
-            {activeIndex + 1} of {entries.length}
-          </span>
-        </div>
-        <article aria-live={userDriven ? 'polite' : 'off'} className="lex-detail">
-          <div>
-            <p className="lex-gram">
-              {activeEntry.partOfSpeech} · <span className="ipa">{activeEntry.pronunciation}</span>
-            </p>
-            <p className="spec-def">{activeEntry.definition}</p>
-            <p className="lex-state">
-              <i aria-hidden="true" /> {activeState}
-            </p>
+      <div className="wrap">
+        <div className="column">
+          <div className="lex-underline" data-running={autoplayRunning}>
+            <i key={progressKey} />
+            <b />
           </div>
-          <div className="lex-encounters">
-            {activeEntry.encounters.map((encounter) => (
-              <div
-                className="encounter"
-                data-empty={encounter.empty || undefined}
-                key={encounter.label}
-              >
-                <span className="when">{encounter.label}</span>
-                <span className="where">
-                  {encounter.detail}
-                  {encounter.emphasis && <em>{encounter.emphasis}</em>}
-                </span>
-              </div>
-            ))}
+          <div className="lex-controls">
+            <button
+              aria-pressed={userPaused}
+              className="lex-pause"
+              hidden={reducedMotion}
+              onClick={() => {
+                if (resumeTimerRef.current !== null) window.clearTimeout(resumeTimerRef.current);
+                setInteractionPaused(false);
+                setUserPaused((paused) => !paused);
+                setUserDriven(true);
+              }}
+              type="button"
+            >
+              {userPaused ? 'Play the word browser' : 'Pause the word browser'}
+            </button>
+            <span aria-live={userDriven ? 'polite' : 'off'} className="sr-only">
+              {activeIndex + 1} of {entries.length}
+            </span>
           </div>
-        </article>
+          <article aria-live={userDriven ? 'polite' : 'off'} className="lex-detail">
+            <div>
+              <p className="lex-gram">
+                {activeEntry.partOfSpeech} ·{' '}
+                <span className="ipa">{activeEntry.pronunciation}</span>
+              </p>
+              <p className="spec-def">{activeEntry.definition}</p>
+              <p className="lex-state">
+                <i aria-hidden="true" /> {activeState}
+              </p>
+            </div>
+            <div className="lex-encounters">
+              {activeEntry.encounters.map((encounter) => (
+                <div
+                  className="encounter"
+                  data-empty={encounter.empty || undefined}
+                  key={encounter.label}
+                >
+                  <span className="when">{encounter.label}</span>
+                  <span className="where">
+                    {encounter.detail}
+                    {encounter.emphasis && <em>{encounter.emphasis}</em>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </article>
+        </div>
       </div>
     </div>
   );

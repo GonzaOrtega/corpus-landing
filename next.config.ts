@@ -21,7 +21,7 @@ const RECAPTCHA_CONNECT_ORIGINS = ['https://www.google.com/recaptcha/'];
  * needs: Fast Refresh needs `unsafe-eval`, and the HMR client needs a
  * websocket back to the dev server.
  */
-export function buildContentSecurityPolicy(isDev: boolean): string {
+export function buildContentSecurityPolicy(isDev: boolean, servedOverHttps = !isDev): string {
   const scriptSrc = ["'self'", "'unsafe-inline'", ...RECAPTCHA_SCRIPT_ORIGINS];
   const connectSrc = ["'self'", ...RECAPTCHA_CONNECT_ORIGINS];
   if (isDev) {
@@ -42,7 +42,12 @@ export function buildContentSecurityPolicy(isDev: boolean): string {
     `frame-src ${RECAPTCHA_FRAME_ORIGINS.join(' ')}`,
     `connect-src ${connectSrc.join(' ')}`,
   ];
-  if (!isDev) directives.push('upgrade-insecure-requests');
+  // Only meaningful on an HTTPS origin. A production build served over
+  // http://localhost — which the E2E suite does — would otherwise tell the
+  // browser to upgrade every subresource to https. Chromium exempts localhost
+  // as a trustworthy origin; WebKit does not, so every stylesheet and script
+  // fails its TLS handshake and the page renders with no CSS at all.
+  if (servedOverHttps) directives.push('upgrade-insecure-requests');
   return directives.join('; ');
 }
 
@@ -57,6 +62,9 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     const isDev = process.env.NODE_ENV !== 'production';
+    // Every Vercel deployment is HTTPS and sets VERCEL_ENV; a local `next
+    // start` is plain HTTP and does not. Deployed behaviour is unchanged.
+    const servedOverHttps = Boolean(process.env.VERCEL_ENV);
     return [
       {
         source: '/(.*)',
@@ -66,7 +74,10 @@ const nextConfig: NextConfig = {
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
           { key: 'X-Frame-Options', value: 'DENY' },
-          { key: 'Content-Security-Policy', value: buildContentSecurityPolicy(isDev) },
+          {
+            key: 'Content-Security-Policy',
+            value: buildContentSecurityPolicy(isDev, servedOverHttps),
+          },
         ],
       },
     ];

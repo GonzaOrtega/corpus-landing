@@ -1,9 +1,20 @@
-import { expect, test } from '@playwright/test';
+import { type ConsoleMessage, expect, test } from '@playwright/test';
 
-test('boots locally without render-time console errors', async ({ page }) => {
+// `<Analytics />` and `<SpeedInsights />` request /_vercel/insights/script.js
+// and /_vercel/speed-insights/script.js, which exist only when Vercel itself is
+// serving the app. Anywhere else they 404 and log errors that say nothing about
+// our code. The bare "Failed to load resource" line carries no URL in its text,
+// so it is attributed by location() — scoping to that one prefix means a real
+// 404 on one of our own assets still fails the test.
+const isPlatformInjectedNoise = (message: ConsoleMessage) =>
+  message.location().url.includes('/_vercel/') || message.text().includes('/_vercel/');
+
+test('boots without render-time console errors', async ({ page }) => {
   const renderErrors: string[] = [];
   page.on('console', (message) => {
-    if (message.type() === 'error') renderErrors.push(message.text());
+    if (message.type() === 'error' && !isPlatformInjectedNoise(message)) {
+      renderErrors.push(message.text());
+    }
   });
 
   const response = await page.goto('/');
@@ -12,12 +23,17 @@ test('boots locally without render-time console errors', async ({ page }) => {
   expect(renderErrors).toEqual([]);
 });
 
-test('keeps the signup UI usable when backend credentials are absent', async ({ page }) => {
+// This asserted the retry message, which only appears when the backend is
+// unconfigured — true of a bare dev server, never of a run with a real Neon
+// branch. The retry path is covered deterministically in
+// join-early-access.action.test.ts, where the failure can be injected; here we
+// assert the path a visitor actually takes.
+test('accepts a signup and confirms it in the status region', async ({ page }) => {
   await page.goto('/');
-  await page.getByLabel('Email address').fill('person@example.com');
+  await page.getByLabel('Email address').fill(`e2e-${crypto.randomUUID()}@example.com`);
   await page.getByRole('button', { name: 'Join the list' }).click();
 
-  await expect(page.getByText("We couldn't complete that signup. Please try again.")).toBeVisible();
+  await expect(page.locator('.signup-status')).toContainText("You're on the list.");
 });
 
 test('stays at the hero through hydration while the Lexicon is off-screen', async ({ page }) => {

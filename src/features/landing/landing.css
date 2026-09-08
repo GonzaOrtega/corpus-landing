@@ -736,4 +736,10 @@ body.theme-night {
   .lex-underline > i {
     animation: none;
   }
+  /* The night-theme inversion crossfades over --theme-t. Reduced motion asks
+     for the destination, not the journey, so it lands instantly. */
+  body,
+  .site-header {
+    transition: none;
+  }
 }

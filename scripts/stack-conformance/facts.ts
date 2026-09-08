@@ -59,6 +59,9 @@ export function runGit(args: string[], cwd: string): GitResult {
 const WALK_IGNORE = new Set([
   'node_modules', '.git', '.next', 'dist', 'build', 'out',
   '.turbo', '.vercel', 'cdk.out', 'coverage', '.expo', '.cache', 'test-results',
+  // Nested git worktrees are separate checkouts of OTHER branches. Walking them
+  // audits unmerged work against this branch's report.
+  '.worktrees',
 ])
 
 export interface PackageJson {

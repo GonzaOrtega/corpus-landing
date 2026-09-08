@@ -10,6 +10,8 @@ const { safeLoad } = createRequire(import.meta.url)('js-yaml') as {
 interface WorkflowStep {
   name?: string;
   run?: string;
+  uses?: string;
+  with?: Record<string, string>;
   env?: Record<string, string>;
 }
 
@@ -64,6 +66,27 @@ describe('disposable-branch migration configuration', () => {
       credentials && 'url' in credentials && credentials.url === 'direct-neon-output',
       "Drizzle must receive the migration step's direct branch output",
     ).toBe(true);
+  });
+
+  // The action defaults to neondb/neondb_owner. Against this project that
+  // creates the branch and then 404s on connection lookup, which reads like a
+  // Neon outage rather than a configuration error — pin it in every workflow.
+  it.each([
+    ['ci'],
+    ['preview'],
+  ])('%s pins the real Neon database and role on every create-branch step', (workflow) => {
+    const definition = safeLoad(
+      readFileSync(new URL(`../../.github/workflows/${workflow}.yml`, import.meta.url), 'utf8'),
+    ) as Workflow;
+    const creates = Object.values(definition.jobs)
+      .flatMap((job) => job.steps)
+      .filter((step) => step.uses?.includes('neondatabase/create-branch-action'));
+
+    expect(creates.length).toBeGreaterThan(0);
+    for (const step of creates) {
+      expect(step.with?.database).toBe('corpus_landing');
+      expect(step.with?.role).toBe('corpus_landing_owner');
+    }
   });
 
   it('refreshes the deterministic Preview Neon branch expiration after create or reuse', () => {

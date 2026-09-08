@@ -1,8 +1,26 @@
 # Preview CI operations
 
-The five stable PR checks are `check`, `test`, `preview`, `e2e`, and
-`lighthouse`. They use ordinary `pull_request` events only; no workflow uses
-`pull_request_target`.
+The six stable PR checks are `check`, `test`, `preview`, `e2e`,
+`preview-smoke`, and `lighthouse`. They use ordinary `pull_request` events
+only; no workflow uses `pull_request_target`.
+
+## What runs where
+
+`e2e` runs the suite against a **local production build inside the runner**
+(`playwright.config.ts` builds and serves it when `PLAYWRIGHT_BASE_URL` is
+unset). It therefore does not depend on `preview` and starts immediately. This
+is deliberate: pointing 65 tests at a deployment made every action a network
+round-trip and, with Playwright's single CI worker and two retries, projected to
+roughly twenty minutes per PR.
+
+`preview-smoke` is the only check that exercises the deployed artifact. It runs
+just the `@preview`-tagged tests — the ones whose assertions are meaningless
+anywhere else, such as the deployed robots policy. Keep that set small; add a
+test there only when a local build genuinely cannot answer the question.
+
+`e2e` migrates the shared `pr-<number>` Neon branch itself rather than relying
+on `preview` having done so, because the two jobs now run concurrently.
+`drizzle-kit` takes a session advisory lock, so the two migrations serialise.
 
 ## Required GitHub configuration
 
@@ -20,8 +38,21 @@ or production management secret to these workflows.
 In Vercel Project Settings, set these values in the **Preview** scope only:
 
 - `CORPUS_RELEASE_STAGE=early-access`;
-- a valid non-production `SITE_URL`;
 - any other non-production configuration required by the build.
+
+Do **not** set `SITE_URL` in the Preview scope. Each preview derives its own
+origin from `VERCEL_URL`, so it is canonical for itself; a fixed value there
+made every preview advertise the production origin as its canonical and hand
+out management links pointing at production.
+
+Variables read while prerendering must **not** be marked Sensitive. Sensitive
+values are write-only, so `vercel pull` receives the literal `[SENSITIVE]` and
+the CI build validates that string instead of the value — `SITE_URL` fails as
+an invalid URL, `CORPUS_RELEASE_STAGE` throws out of `parseReleaseStage`, and
+`REPLY_TO`/`EMAIL_POSTAL_ADDRESS` render literally on the legal pages. None of
+those is a secret; all of them are published in the page or its emails. Real
+secrets are read at runtime by the composition root, never through
+`vercel pull`, so they stay Sensitive.
 
 Enable Vercel's automatically exposed system environment variables. The
 deployed Preview receives `VERCEL_ENV=preview`; the application consequently
