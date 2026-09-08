@@ -1,0 +1,42 @@
+# E2E runtime only. `bun run dev` against Neon remains the everyday path — see
+# docs/superpowers/specs/2026-09-08-e2e-container-runtime-design.md.
+#
+# name: is pinned so volume names never depend on the directory name; renaming
+# the folder would otherwise orphan the data.
+name: corpus-landing
+
+services:
+  # Credentials are deliberately worthless: this database holds only synthetic
+  # e2e-<uuid>@example.com rows, and the repo becomes public.
+  db:
+    image: postgres:17
+    ports:
+      # Loopback only. Docker publishes ports by writing DNAT rules into
+      # iptables' nat table, traversed before the filter table where ufw's
+      # rules live — an unbound port answers the LAN whatever the host
+      # firewall says.
+      - '127.0.0.1:55432:5432'
+    environment:
+      POSTGRES_USER: corpus
+      POSTGRES_PASSWORD: corpus
+      POSTGRES_DB: corpus_landing
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U corpus -d corpus_landing']
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  # Translates Neon's SQL-over-HTTP to plain Postgres so the app keeps using
+  # drizzle-orm/neon-http exactly as production does. Digest-pinned: upstream
+  # publishes only a moving :main tag.
+  proxy:
+    image: ghcr.io/timowilhelm/local-neon-http-proxy@sha256:cd2ae14edf2feafbc3330492de5c80506f77274c3bd013154cdef697bdeb768a
+    environment:
+      PG_CONNECTION_STRING: postgres://corpus:corpus@db:5432/corpus_landing
+    ports:
+      - '127.0.0.1:4444:4444'
+    depends_on:
+      db:
+        condition: service_healthy
+    # No healthcheck: the image ships no probe-capable binary. compose-healthcheck
+    # is amber, not red, and `e2e` still gates on db being healthy.
