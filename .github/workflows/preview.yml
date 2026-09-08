@@ -91,18 +91,23 @@ jobs:
         run: vercel --version
       - name: Pull Vercel Preview environment
         if: ${{ steps.neon.outputs.branch_id != '' }}
-        # Neither VERCEL_ORG_ID nor VERCEL_PROJECT_ID, on purpose. VERCEL_TOKEN
-        # is scoped to this project and infers its own team and project. The CLI
-        # takes those two ids as both-or-neither, and supplying the team id makes
-        # it resolve through the team, which a project-scoped token cannot do.
+        # Both ids plus a TEAM-scoped token. `pull` and `build` link the project
+        # through an owner lookup that a project-scoped token is denied, and the
+        # CLI reports that denial as "Could not retrieve Project Settings"
+        # regardless of what the ids say. Only `deploy` carries a fallback.
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: vercel pull --yes --environment=preview
       - name: Build preview
         if: ${{ steps.neon.outputs.branch_id != '' }}
         env:
           DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
           DATABASE_URL_UNPOOLED: ${{ steps.neon.outputs.db_url }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: vercel build
       - id: deploy
         name: Deploy preview
@@ -110,8 +115,9 @@ jobs:
         env:
           DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
           DATABASE_URL_UNPOOLED: ${{ steps.neon.outputs.db_url }}
-          # Linked by the preceding vercel pull; the scoped token supplies context.
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           preview_url="$(vercel deploy --prebuilt --yes \
             --env DATABASE_URL="$DATABASE_URL" \
