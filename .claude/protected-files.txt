@@ -1,6 +1,11 @@
 # One glob per line. Files listed here are blocked from edits by the
 # gonza-stack guard hook; mirror the CLAUDE.md "What NOT to change" list.
-docs/superpowers/specs/**
+#
+# The approved product spec is the contract, not the directory. Guarding the
+# whole glob also blocked *adding* an unrelated design doc, which reinterprets
+# nothing — so this names the contract itself and leaves the directory usable
+# for the specs the Superpowers flow writes there.
+docs/superpowers/specs/2026-09-06-corpus-landing-design.md
 .github/workflows/secret-scan.yml
 docs/operations/branch-protection.md
 docs/design/prototypes/**
