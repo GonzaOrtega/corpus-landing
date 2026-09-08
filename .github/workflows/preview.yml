@@ -113,9 +113,15 @@ jobs:
           set -euo pipefail
           masked="$(grep -oP '^[A-Z0-9_]+(?==\"\[SENSITIVE\]\")' .vercel/.env.preview.local || true)"
           [ -n "$masked" ] && printf 'pulled as [SENSITIVE]: %s\n' "$(echo "$masked" | tr '\n' ' ')"
+          # CORPUS_DOWNLOAD_URL is only parsed inside the launched branch of
+          # loadSiteConfig, so it is inert — and allowed to stay Sensitive —
+          # while the pulled stage is early-access.
+          stage="$(grep -oP '^CORPUS_RELEASE_STAGE="\K[^"]*' .vercel/.env.preview.local || true)"
+          required=(SITE_URL CORPUS_RELEASE_STAGE REPLY_TO EMAIL_POSTAL_ADDRESS)
+          [ "$stage" = launched ] && required+=(CORPUS_DOWNLOAD_URL)
           needed="$(comm -12 \
             <(echo "$masked" | sort -u) \
-            <(printf '%s\n' SITE_URL CORPUS_RELEASE_STAGE CORPUS_DOWNLOAD_URL REPLY_TO EMAIL_POSTAL_ADDRESS | sort -u))"
+            <(printf '%s\n' "${required[@]}" | sort -u))"
           if [ -n "$needed" ]; then
             echo "These are read while prerendering and cannot be Sensitive in Vercel:" >&2
             printf '  %s\n' $needed >&2
