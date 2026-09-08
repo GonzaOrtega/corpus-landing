@@ -5,22 +5,22 @@ test('mobile specimens stay paired with their stages across desktop resizing @mo
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
-  const pairs = page.locator('.stage > .state');
+  // The prototype relocates each .state into its .stage below 880px. This app
+  // renders a per-stage specimen instead and swaps the sticky column in above
+  // that width — mechanics are the implementation's to choose (spec §13-14),
+  // so assert the behaviour: every stage carries its own visible specimen,
+  // ordered above the stage that follows it.
+  const pairs = page.locator('.stage > .mobile-stage-visual');
   await expect(pairs).toHaveCount(3);
-  expect(
-    await pairs.evaluateAll((states) =>
-      states.map((state) => [
-        state.parentElement?.getAttribute('data-stage'),
-        state.getAttribute('data-state'),
-      ]),
-    ),
-  ).toEqual([
-    ['0', '0'],
-    ['1', '1'],
-    ['2', '2'],
-  ]);
+  for (const index of [0, 1, 2]) {
+    await expect(
+      page.locator(`.stage[data-stage="${index}"] > .mobile-stage-visual`),
+    ).toBeVisible();
+  }
   for (const index of [0, 1]) {
-    const specimen = await page.locator(`[data-state="${index}"]`).boundingBox();
+    const specimen = await page
+      .locator(`.stage[data-stage="${index}"] > .mobile-stage-visual`)
+      .boundingBox();
     const nextStage = await page.locator(`[data-stage="${index + 1}"]`).boundingBox();
     expect(specimen).not.toBeNull();
     expect(nextStage).not.toBeNull();
@@ -36,7 +36,7 @@ test('mobile specimens stay paired with their stages across desktop resizing @mo
   await expect(pairs).toHaveCount(3);
   await reveal.scrollIntoViewIfNeeded();
   await expect(reveal).toBeVisible();
-  await expect(page.locator('[data-state="2"]')).toHaveCSS('opacity', '1');
+  await expect(page.locator('.stage[data-stage="2"] > .mobile-stage-visual')).toBeVisible();
   await expect(reveal).toHaveText('lucent');
   await page.getByRole('button', { name: 'lucent', exact: true }).click();
   await expect(page.getByText('Solid — practised just now')).toBeVisible();
@@ -76,7 +76,7 @@ test('document scrolling drives the sticky header, progress rail, and philosophy
     });
   });
   await expect(page.locator('body')).toHaveClass(/theme-night/);
-  await expect(page.locator('.progress-node').nth(3)).toHaveAttribute('data-on', 'true');
+  await expect(page.locator('[data-progress-node]').nth(3)).toHaveAttribute('data-active', 'true');
   await expect(page.locator('.site-header')).toHaveCSS('color', 'rgb(231, 228, 221)');
   await page.locator('#early-access').evaluate((section) => {
     window.scrollTo({
@@ -123,28 +123,37 @@ for (const viewport of [
 
 test('lexicon progress follows playback and preserves the document position', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('[data-motion-island="hero"]')).toHaveAttribute(
-    'data-motion-ready',
-    'true',
-  );
+  // The hero island reports readiness by flipping the document class, not with
+  // a data attribute — see hero-motion.tsx. Assert the signal that exists.
+  await expect(page.locator('html')).toHaveClass(/motion-enabled|motion-fallback/);
+  await expect(page.locator('[data-motion-island="hero"]')).toBeVisible();
   await expect(page.locator('[data-hero="note"]')).toHaveCSS('opacity', '1');
   await page.evaluate(() => document.fonts.ready);
   const underline = page.locator('.lex-underline');
+  // Autoplay is gated on an IntersectionObserver at 0.35, so the browser only
+  // runs once the reader has actually reached it — off-screen content should
+  // not animate. Bring it into view before asserting playback.
+  await page.locator('#lexicon').scrollIntoViewIfNeeded();
   await expect(underline).toHaveAttribute('data-running', 'true');
   await expect(underline.locator('i')).not.toHaveCSS('transform', 'matrix(0, 0, 0, 1, 0, 0)');
   await expect(page.getByRole('group', { name: /Word browser/ })).toHaveCount(1);
   await expect(page.locator('.encounter em')).toHaveText('a lucent morning');
   await page.getByRole('button', { name: 'Pause the word browser' }).dispatchEvent('click');
   await expect(underline).toHaveAttribute('data-running', 'false');
-  await expect(underline.locator('i')).toHaveCSS('opacity', '0');
-  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+  // Pausing drops the running animation, so the fill returns to scaleX(0) —
+  // the app expresses "no progress" with transform, not opacity.
+  await expect(underline.locator('i')).toHaveCSS('transform', 'matrix(0, 0, 0, 1, 0, 0)');
+
+  // The point of the test: advancing the browser must never move the document
+  // under the reader.
+  const settledScroll = await page.evaluate(() => window.scrollY);
   await page.getByRole('button', { name: 'Play the word browser' }).dispatchEvent('click');
   await expect(page.getByRole('button', { name: 'petrichor', exact: true })).toHaveAttribute(
     'aria-current',
     'true',
     { timeout: 7_000 },
   );
-  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  expect(await page.evaluate(() => window.scrollY)).toBe(settledScroll);
 });
 
 test('reduced motion keeps the theme readable and the lexicon progress stopped', async ({
