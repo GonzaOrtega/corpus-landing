@@ -40,3 +40,38 @@ services:
         condition: service_healthy
     # No healthcheck: the image ships no probe-capable binary. compose-healthcheck
     # is amber, not red, and `e2e` still gates on db being healthy.
+
+  # One-shot runner: no ports, exits when the suite finishes, so the standard's
+  # long-running-service definition exempts it from a healthcheck. Profiled so
+  # `docker compose up` never starts a test run.
+  e2e:
+    profiles: ['e2e']
+    build:
+      context: .
+      dockerfile: docker/e2e.Dockerfile
+    # The bind mount below is the host repo tree, owned by uid:gid 1000:1000.
+    # A writer uid that doesn't match cannot create .next/, test-results/,
+    # playwright-report/, or updated snapshots in it — default to the host's
+    # uid/gid, overridable for hosts where that's wrong.
+    user: "${E2E_UID:-1000}:${E2E_GID:-1000}"
+    depends_on:
+      db:
+        condition: service_healthy
+      proxy:
+        # The proxy has no healthcheck (see above); only wait for it to start.
+        condition: service_started
+    environment:
+      DATABASE_URL: postgres://corpus:corpus@db:5432/corpus_landing
+      DATABASE_URL_UNPOOLED: postgres://corpus:corpus@db:5432/corpus_landing
+      E2E_NEON_HTTP_ENDPOINT: http://proxy:4444/sql
+      PORT: '3018'
+      CI: 'true'
+    volumes:
+      - .:/work
+      # Container-side node_modules: the host's may hold darwin or glibc-
+      # mismatched binaries, and Playwright's browsers are Linux-only.
+      - e2emodules:/work/node_modules
+    command: sh -c "bun install --frozen-lockfile && bun run e2e:migrate && bun run e2e -- --grep-invert @preview"
+
+volumes:
+  e2emodules:
