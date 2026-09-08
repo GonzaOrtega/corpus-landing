@@ -39,33 +39,35 @@ export function StageVisual({ index }: { index: number }) {
 export function CaptureEnrichPractice() {
   return (
     <ScrollytellingMotion>
-      <div className="wrap column">
-        <div className="section-head">
-          <p className="eyebrow">How it works</p>
-          <h2>One word, three moments.</h2>
-        </div>
-        <div className="loop-grid">
-          <div className="loop-stages">
-            {landingContent.stages.map(([label, heading, body], index) => (
-              <article className="stage" data-stage={index} key={label}>
-                <p className="stage-index">
-                  <i aria-hidden="true" /> {label}
-                </p>
-                <h3>{heading}</h3>
-                <p>{body}</p>
-                <div className="mobile-stage-visual">
-                  <StageVisual index={index} />
-                </div>
-              </article>
-            ))}
+      <div className="wrap">
+        <div className="column">
+          <div className="section-head">
+            <p className="eyebrow">How it works</p>
+            <h2>One word, three moments.</h2>
           </div>
-          <div className="desktop-stage-visual">
-            <div className="sticky">
-              {[0, 1, 2].map((index) => (
-                <article className="state" data-state={index} key={index}>
-                  <StageVisual index={index} />
+          <div className="loop-grid">
+            <div className="loop-stages">
+              {landingContent.stages.map(([label, heading, body], index) => (
+                <article className="stage" data-stage={index} key={label}>
+                  <p className="stage-index">
+                    <i aria-hidden="true" /> {label}
+                  </p>
+                  <h3>{heading}</h3>
+                  <p>{body}</p>
+                  <div className="mobile-stage-visual">
+                    <StageVisual index={index} />
+                  </div>
                 </article>
               ))}
+            </div>
+            <div className="desktop-stage-visual">
+              <div className="sticky">
+                {[0, 1, 2].map((index) => (
+                  <article className="state" data-state={index} key={index}>
+                    <StageVisual index={index} />
+                  </article>
+                ))}
+              </div>
             </div>
           </div>
         </div>
