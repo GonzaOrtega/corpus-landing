@@ -179,14 +179,23 @@ export async function runProductionSmoke(options: SmokeOptions, fetcher: Fetch =
     'Production robots metadata must allow index and follow',
   );
   const links = html.match(/<link\b[^>]*>/gi) ?? [];
-  requireCheck(
-    links.some(
-      (tag) =>
-        attribute(tag, 'rel') === 'canonical' &&
-        attribute(tag, 'href') === new URL(options.siteUrl).href,
-    ),
-    'Production canonical URL missing or incorrect',
-  );
+  // Compare parsed origins, not raw strings: Next renders the site root as
+  // "https://host" while new URL().href yields "https://host/". Parsing both
+  // sides normalises that without loosening the check — a canonical pointing
+  // at any other origin or path still fails.
+  const canonicalHref = links
+    .filter((tag) => attribute(tag, 'rel') === 'canonical')
+    .map((tag) => attribute(tag, 'href'))
+    .find((href): href is string => href !== undefined);
+  let canonicalMatches = false;
+  if (canonicalHref !== undefined) {
+    try {
+      canonicalMatches = new URL(canonicalHref).href === new URL(options.siteUrl).href;
+    } catch {
+      canonicalMatches = false;
+    }
+  }
+  requireCheck(canonicalMatches, 'Production canonical URL missing or incorrect');
   const stylesheet = links.find((tag) => attribute(tag, 'rel') === 'stylesheet');
   const asset = stylesheet && attribute(stylesheet, 'href');
   requireCheck(
