@@ -51,6 +51,10 @@ export default defineConfig({
         // assertions are calibrated against built CSS, and CI now runs this
         // path rather than a deployment.
         command: 'bun run build && bun run start -- --port 3018',
+        // loadSiteConfig falls back to http://localhost:${PORT ?? 3000}, so
+        // without this the app is canonical for a port nothing is serving. A
+        // local .env hid that; CI has none.
+        env: { PORT: '3018' },
         url: baseURL,
         reuseExistingServer: !process.env.CI,
         // Covers the build, not just server boot.
