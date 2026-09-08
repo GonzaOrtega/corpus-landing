@@ -22,7 +22,10 @@ WORKDIR /work
 # directory with the right owner is what lets bun write into it as a
 # non-root user. These args and compose.yaml's `user:` are fed from the same
 # ${E2E_UID:-1000}/${E2E_GID:-1000} expressions (see compose.yaml's `build.args`),
-# so build-time ownership and the runtime uid can never diverge.
+# so build-time ownership agrees with the runtime uid on a freshly created
+# volume. It does NOT retroactively fix a volume that already exists from an
+# earlier build with a different uid — see the note on `e2emodules:` in
+# compose.yaml's top-level `volumes:` block.
 ARG E2E_UID=1000
 ARG E2E_GID=1000
 RUN mkdir -p /work/node_modules && chown "${E2E_UID}:${E2E_GID}" /work/node_modules

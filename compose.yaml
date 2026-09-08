@@ -50,8 +50,11 @@ services:
       context: .
       dockerfile: docker/e2e.Dockerfile
       # Same expressions as `user:` below, so the image's baked-in
-      # node_modules ownership (see the Dockerfile) can never diverge from
-      # the uid the container actually runs as.
+      # node_modules ownership (see the Dockerfile) agrees with the uid the
+      # container runs as on a freshly created `e2emodules` volume. Docker
+      # only seeds a named volume's ownership when it creates it — an
+      # already-existing volume keeps whatever uid built it. See the note
+      # on `e2emodules:` below.
       args:
         E2E_UID: ${E2E_UID:-1000}
         E2E_GID: ${E2E_GID:-1000}
@@ -80,4 +83,9 @@ services:
     command: sh -c "bun install --frozen-lockfile && bun run e2e:migrate && bun run e2e -- --grep-invert @preview"
 
 volumes:
+  # Ownership is set once, when this volume is first created, from the
+  # `e2e` service's build args (see compose.yaml above). If you change
+  # E2E_UID/E2E_GID after the stack has already run, this volume keeps its
+  # old owner and `bun install` fails on it — run `docker compose down -v`
+  # (or `docker volume rm corpus-landing_e2emodules`) before rebuilding.
   e2emodules:
