@@ -100,6 +100,25 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: vercel pull --yes --environment=preview
+      - name: Verify pulled Preview SITE_URL
+        if: ${{ steps.neon.outputs.branch_id != '' }}
+        # SITE_URL is the public canonical origin, not a secret. Vercel's own
+        # builds inject env directly; `vercel build` reads what `vercel pull`
+        # serialized, so a value that survives one path can break on the other.
+        # Reject it here, where the cause is legible, rather than three steps
+        # later as a prerender stack trace.
+        shell: bash
+        run: |
+          set -euo pipefail
+          line="$(grep -E '^SITE_URL=' .vercel/.env.preview.local || true)"
+          printf 'pulled: %s\n' "${line:-<SITE_URL absent>}"
+          value="${line#SITE_URL=}"
+          value="${value%\"}"; value="${value#\"}"
+          case "$value" in
+            '') echo 'SITE_URL unset; build falls back to the deployment origin' ;;
+            http://*|https://*) echo 'SITE_URL is an absolute URL' ;;
+            *) echo 'Preview SITE_URL must be an absolute URL including the scheme' >&2; exit 1 ;;
+          esac
       - name: Build preview
         if: ${{ steps.neon.outputs.branch_id != '' }}
         env:
