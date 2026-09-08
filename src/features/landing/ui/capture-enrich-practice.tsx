@@ -2,15 +2,17 @@ import { landingContent } from '../content/landing-content';
 import { ScrollytellingMotion } from '../motion/scrollytelling-motion';
 import { ClozeDemo } from './cloze-demo';
 
-export function CaptureEnrichPractice() {
-  const specimens = [
-    <article className="state" data-state="0" key="capture">
+export function StageVisual({ index }: { index: number }) {
+  if (index === 0) {
+    return (
       <div className="specimen state-specimen">
-        <span className="spec-word">lucent</span>
+        <div className="spec-word">lucent</div>
         <p className="spec-def muted">Saved. Nothing else needed.</p>
       </div>
-    </article>,
-    <article className="state" data-state="1" key="enrich">
+    );
+  }
+  if (index === 1) {
+    return (
       <div className="specimen state-specimen">
         <div>
           <span className="spec-word">lucent</span>
@@ -25,36 +27,45 @@ export function CaptureEnrichPractice() {
           </p>
         </div>
       </div>
-    </article>,
-    <article className="state" data-state="2" key="practice">
-      <div className="specimen state-specimen">
-        <ClozeDemo />
-      </div>
-    </article>,
-  ];
+    );
+  }
+  return (
+    <div className="specimen state-specimen">
+      <ClozeDemo />
+    </div>
+  );
+}
+
+export function CaptureEnrichPractice() {
   return (
     <ScrollytellingMotion>
-      <div className="wrap">
-        <div className="column">
-          <div className="section-head">
-            <p className="eyebrow">How it works</p>
-            <h2>One word, three moments.</h2>
+      <div className="wrap column">
+        <div className="section-head">
+          <p className="eyebrow">How it works</p>
+          <h2>One word, three moments.</h2>
+        </div>
+        <div className="loop-grid">
+          <div className="loop-stages">
+            {landingContent.stages.map(([label, heading, body], index) => (
+              <article className="stage" data-stage={index} key={label}>
+                <p className="stage-index">
+                  <i aria-hidden="true" /> {label}
+                </p>
+                <h3>{heading}</h3>
+                <p>{body}</p>
+                <div className="mobile-stage-visual">
+                  <StageVisual index={index} />
+                </div>
+              </article>
+            ))}
           </div>
-          <div className="loop-grid">
-            <div className="loop-stages">
-              {landingContent.stages.map(([label, heading, body], index) => (
-                <article className="stage" data-stage={index} key={label}>
-                  <span className="stage-index">
-                    <i aria-hidden="true" /> {label}
-                  </span>
-                  <h3>{heading}</h3>
-                  <p>{body}</p>
-                  {specimens[index]}
+          <div className="desktop-stage-visual">
+            <div className="sticky">
+              {[0, 1, 2].map((index) => (
+                <article className="state" data-state={index} key={index}>
+                  <StageVisual index={index} />
                 </article>
               ))}
-            </div>
-            <div className="loop-stage-visual">
-              <div className="sticky" />
             </div>
           </div>
         </div>

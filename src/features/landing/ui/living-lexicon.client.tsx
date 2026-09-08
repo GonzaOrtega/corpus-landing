@@ -1,120 +1,160 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DemoLexiconEntry } from '../content/demo-lexicon';
+import { PRACTICE_EVENT } from '../content/practice-event';
 
 const AUTOPLAY_MS = 5_000;
 const RESUME_AFTER_IDLE_MS = 7_000;
-const PRACTICE_EVENT = 'corpus:practice-lucent';
+
+export function scrollLexiconItem(track: HTMLElement, item: HTMLElement, behavior: ScrollBehavior) {
+  const inset = Number.parseFloat(getComputedStyle(track).paddingLeft) || 0;
+  track.scrollTo({ left: item.offsetLeft - inset, behavior });
+}
 
 export function LivingLexiconClient({ entries }: { entries: readonly DemoLexiconEntry[] }) {
   const [activeIndex, setActiveIndex] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
-  const [isHydrated, setIsHydrated] = useState(false);
+  const [userPaused, setUserPaused] = useState(false);
+  const [interactionPaused, setInteractionPaused] = useState(false);
+  const [isInView, setIsInView] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const [practised, setPractised] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [userDriven, setUserDriven] = useState(false);
+  const [progressKey, setProgressKey] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
-  const progressRef = useRef<HTMLElement>(null);
   const resumeTimerRef = useRef<number | null>(null);
+  const scrollFrameRef = useRef<number | null>(null);
+  const directionRef = useRef<1 | -1>(1);
+  const scrollSelectionRef = useRef(false);
+  const programmaticTargetRef = useRef<number | null>(null);
   const dragRef = useRef<{
     pointerId: number;
     startX: number;
     startScrollLeft: number;
-    startIndex: number;
     moved: boolean;
   } | null>(null);
 
   const activeEntry = entries[activeIndex] ?? entries[0];
   const activeState =
     activeEntry.word === 'lucent' && practised ? 'Solid — practised just now' : activeEntry.state;
+  const autoplayRunning =
+    hydrated && isInView && !userPaused && !interactionPaused && !reducedMotion;
+
+  const select = useCallback(
+    (index: number, fromUser = false, scroll = true) => {
+      scrollSelectionRef.current = !scroll;
+      setActiveIndex(Math.max(0, Math.min(entries.length - 1, index)));
+      setUserDriven(fromUser);
+    },
+    [entries.length],
+  );
+
+  const pauseForInteraction = useCallback(() => {
+    if (reducedMotion) return;
+    if (resumeTimerRef.current !== null) window.clearTimeout(resumeTimerRef.current);
+    setInteractionPaused(true);
+    resumeTimerRef.current = window.setTimeout(() => {
+      setInteractionPaused(false);
+      setUserDriven(false);
+    }, RESUME_AFTER_IDLE_MS);
+  }, [reducedMotion]);
 
   useEffect(() => {
-    setIsHydrated(true);
+    setHydrated(true);
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const updateMotionPreference = () => setReducedMotion(media.matches);
-    updateMotionPreference();
-    media.addEventListener('change', updateMotionPreference);
-
+    const updateMotion = () => setReducedMotion(media.matches);
+    updateMotion();
+    media.addEventListener('change', updateMotion);
     const markPractised = () => setPractised(true);
     window.addEventListener(PRACTICE_EVENT, markPractised);
     return () => {
-      window.clearTimeout(resumeTimerRef.current ?? undefined);
-      media.removeEventListener('change', updateMotionPreference);
+      media.removeEventListener('change', updateMotion);
       window.removeEventListener(PRACTICE_EVENT, markPractised);
     };
   }, []);
 
   useEffect(() => {
-    if (isPaused || reducedMotion || !isHydrated) return;
-    let frame = 0;
-    let started = performance.now();
-    const paintProgress = (now: number) => {
-      if (progressRef.current) {
-        progressRef.current.style.transform = `scaleX(${Math.min(1, (now - started) / AUTOPLAY_MS)})`;
-      }
-      frame = window.requestAnimationFrame(paintProgress);
-    };
-    frame = window.requestAnimationFrame(paintProgress);
-    const interval = window.setInterval(() => {
-      started = performance.now();
-      setActiveIndex((current) => (current === entries.length - 1 ? current - 1 : current + 1));
-    }, AUTOPLAY_MS);
-    return () => {
-      window.clearInterval(interval);
-      window.cancelAnimationFrame(frame);
-    };
-  }, [entries.length, isHydrated, isPaused, reducedMotion]);
-
-  useEffect(() => {
-    const track = trackRef.current;
-    if (!track) return;
-    const paint = () => {
-      const inset = Number.parseFloat(getComputedStyle(track).paddingLeft);
-      const focusX = track.getBoundingClientRect().left + inset;
-      const reach = Math.max(200, Math.min(track.clientWidth * 0.4, 320));
-      for (const item of track.querySelectorAll<HTMLElement>('.lex-item')) {
-        const distance = Math.min(Math.abs(item.getBoundingClientRect().left - focusX) / reach, 1);
-        item.style.opacity = String(0.06 + (1 - distance) ** 1.6 * 0.94);
-      }
-    };
-    track.addEventListener('scroll', paint, { passive: true });
-    const observer = new ResizeObserver(paint);
-    observer.observe(track);
-    paint();
-    return () => {
-      track.removeEventListener('scroll', paint);
-      observer.disconnect();
-    };
+    const root = rootRef.current;
+    if (!root) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsInView(entry?.isIntersecting ?? false),
+      { threshold: 0.35 },
+    );
+    observer.observe(root);
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
-    const track = trackRef.current;
-    const activeButton = track?.querySelector<HTMLButtonElement>(
-      `[data-lexicon-index="${activeIndex}"]`,
-    );
-    if (track && activeButton) {
-      const inset = Number.parseFloat(getComputedStyle(track).paddingLeft);
-      // Move only the archive: autoplay must never move the document.
-      track.scrollTo({
-        left:
-          track.scrollLeft +
-          activeButton.getBoundingClientRect().left -
-          track.getBoundingClientRect().left -
-          inset,
-        behavior: reducedMotion ? 'auto' : 'smooth',
+    if (!autoplayRunning) return;
+    setProgressKey((key) => key + 1);
+    const interval = window.setInterval(() => {
+      scrollSelectionRef.current = false;
+      setUserDriven(false);
+      setActiveIndex((current) => {
+        if (current >= entries.length - 1) directionRef.current = -1;
+        else if (current <= 0) directionRef.current = 1;
+        return current + directionRef.current;
       });
+      setProgressKey((key) => key + 1);
+    }, AUTOPLAY_MS);
+    return () => window.clearInterval(interval);
+  }, [autoplayRunning, entries.length]);
+
+  useEffect(() => {
+    if (scrollSelectionRef.current) {
+      scrollSelectionRef.current = false;
+      return;
+    }
+    const track = trackRef.current;
+    const item = track?.querySelector<HTMLElement>(`[data-lexicon-index="${activeIndex}"]`);
+    if (track && item) {
+      const inset = Number.parseFloat(getComputedStyle(track).paddingLeft) || 0;
+      const target = item.offsetLeft - inset;
+      programmaticTargetRef.current = Math.abs(track.scrollLeft - target) <= 1 ? null : target;
+      scrollLexiconItem(track, item, reducedMotion ? 'auto' : 'smooth');
     }
   }, [activeIndex, reducedMotion]);
 
-  const stopThenResume = () => {
-    if (isPaused || reducedMotion) return;
-    window.clearTimeout(resumeTimerRef.current ?? undefined);
-    setIsPaused(true);
-    resumeTimerRef.current = window.setTimeout(() => setIsPaused(false), RESUME_AFTER_IDLE_MS);
-  };
+  useEffect(
+    () => () => {
+      if (resumeTimerRef.current !== null) window.clearTimeout(resumeTimerRef.current);
+      if (scrollFrameRef.current !== null) window.cancelAnimationFrame(scrollFrameRef.current);
+    },
+    [],
+  );
 
-  const select = (index: number) => {
-    setActiveIndex(Math.max(0, Math.min(entries.length - 1, index)));
+  const synchronizeFromTrack = () => {
+    if (scrollFrameRef.current !== null) return;
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      const track = trackRef.current;
+      if (!track) return;
+      const inset = Number.parseFloat(getComputedStyle(track).paddingLeft) || 0;
+      const focus = track.scrollLeft + inset;
+      const items = Array.from(track.querySelectorAll<HTMLElement>('[data-lexicon-index]'));
+      let nearestIndex = activeIndex;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+      const range = Math.max(track.clientWidth * 0.55, 1);
+      for (const [index, item] of items.entries()) {
+        const distance = Math.abs(item.offsetLeft - focus);
+        const ratio = Math.min(distance / range, 1);
+        item.style.opacity = String(0.5 + (1 - ratio) ** 1.6 * 0.5);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestIndex = index;
+        }
+      }
+      const programmaticTarget = programmaticTargetRef.current;
+      if (programmaticTarget !== null) {
+        if (Math.abs(track.scrollLeft - programmaticTarget) <= 1) {
+          programmaticTargetRef.current = null;
+        }
+        return;
+      }
+      if (nearestIndex !== activeIndex) select(nearestIndex, userDriven, false);
+    });
   };
 
   const finishDrag = () => {
@@ -123,50 +163,50 @@ export function LivingLexiconClient({ entries }: { entries: readonly DemoLexicon
     if (!drag || !track) return;
     dragRef.current = null;
     delete track.dataset.dragging;
-    if (!drag.moved) return;
-    stopThenResume();
+    const item = track.querySelector<HTMLElement>(`[data-lexicon-index="${activeIndex}"]`);
+    if (item) scrollLexiconItem(track, item, reducedMotion ? 'auto' : 'smooth');
+    if (drag.moved) pauseForInteraction();
   };
 
   return (
-    <div className="browser" data-autoplay-running={isHydrated && !isPaused && !reducedMotion}>
-      {/* biome-ignore lint/a11y/useSemanticElements: This is a word navigation group, not a form fieldset. */}
+    <div
+      className="browser"
+      data-autoplay-running={autoplayRunning}
+      data-running={autoplayRunning}
+      ref={rootRef}
+    >
+      {/* biome-ignore lint/a11y/useSemanticElements: This is a word navigation group, not a page landmark. */}
       <div
         role="group"
-        aria-label="Word browser. Drag, or use the previous and next controls, to move through your lexicon."
+        aria-label="Word browser. Drag, swipe, click a word, or use the arrow keys to move through your lexicon."
         className="lex-track"
         onKeyDown={(event) => {
-          if (event.key === 'ArrowRight') {
-            event.preventDefault();
-            const nextIndex = Math.min(entries.length - 1, activeIndex + 1);
-            select(nextIndex);
-            trackRef.current
-              ?.querySelector<HTMLButtonElement>(`[data-lexicon-index="${nextIndex}"]`)
-              ?.focus();
-            stopThenResume();
-          }
-          if (event.key === 'ArrowLeft') {
-            event.preventDefault();
-            const nextIndex = Math.max(0, activeIndex - 1);
-            select(nextIndex);
-            trackRef.current
-              ?.querySelector<HTMLButtonElement>(`[data-lexicon-index="${nextIndex}"]`)
-              ?.focus();
-            stopThenResume();
-          }
+          if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+          event.preventDefault();
+          const next = Math.max(
+            0,
+            Math.min(entries.length - 1, activeIndex + (event.key === 'ArrowRight' ? 1 : -1)),
+          );
+          select(next, true);
+          pauseForInteraction();
+          trackRef.current
+            ?.querySelector<HTMLButtonElement>(`[data-lexicon-index="${next}"]`)
+            ?.focus();
         }}
         onPointerDown={(event) => {
           const track = trackRef.current;
           if (!track) return;
+          programmaticTargetRef.current = null;
           dragRef.current = {
             pointerId: event.pointerId,
             startX: event.clientX,
             startScrollLeft: track.scrollLeft,
-            startIndex: activeIndex,
             moved: false,
           };
           track.dataset.dragging = 'true';
           track.setPointerCapture(event.pointerId);
-          stopThenResume();
+          setUserDriven(true);
+          pauseForInteraction();
         }}
         onPointerMove={(event) => {
           const drag = dragRef.current;
@@ -174,13 +214,15 @@ export function LivingLexiconClient({ entries }: { entries: readonly DemoLexicon
           if (!drag || drag.pointerId !== event.pointerId || !track) return;
           const distance = event.clientX - drag.startX;
           drag.moved ||= Math.abs(distance) > 8;
-          if (Math.abs(distance) > 80) {
-            select(drag.startIndex + (distance < 0 ? 1 : -1));
-          }
           track.scrollLeft = drag.startScrollLeft - distance;
         }}
         onPointerUp={finishDrag}
         onPointerCancel={finishDrag}
+        onScroll={synchronizeFromTrack}
+        onWheel={() => {
+          setUserDriven(true);
+          pauseForInteraction();
+        }}
         ref={trackRef}
       >
         {entries.map((entry, index) => (
@@ -190,10 +232,13 @@ export function LivingLexiconClient({ entries }: { entries: readonly DemoLexicon
             data-lexicon-index={index}
             key={entry.word}
             onClick={() => {
-              select(index);
-              stopThenResume();
+              select(index, true);
+              pauseForInteraction();
             }}
-            onFocus={() => select(index)}
+            onFocus={() => {
+              select(index, true);
+              pauseForInteraction();
+            }}
             type="button"
           >
             {entry.word}
@@ -201,61 +246,56 @@ export function LivingLexiconClient({ entries }: { entries: readonly DemoLexicon
         ))}
       </div>
 
-      <div className="wrap">
-        <div className="column">
-          <div
-            aria-hidden="true"
-            className="lex-underline"
-            data-running={isHydrated && !isPaused && !reducedMotion}
-          >
-            <i ref={progressRef} />
-            <b />
-          </div>
-          <div className="lex-controls">
-            <button
-              aria-pressed={isPaused}
-              className="lex-pause"
-              hidden={!isHydrated || reducedMotion}
-              onClick={() => {
-                window.clearTimeout(resumeTimerRef.current ?? undefined);
-                setIsPaused((paused) => !paused);
-              }}
-              type="button"
-            >
-              {isPaused ? 'Play the word browser' : 'Pause the word browser'}
-            </button>
-            <span aria-live="polite" className="sr-only">
-              {activeIndex + 1} of {entries.length}
-            </span>
-          </div>
-          <article aria-live={isPaused ? 'polite' : 'off'} className="lex-detail">
-            <div>
-              <p className="lex-gram">
-                {activeEntry.partOfSpeech} ·{' '}
-                <span className="ipa">{activeEntry.pronunciation}</span>
-              </p>
-              <p className="spec-def">{activeEntry.definition}</p>
-              <p className="lex-state">
-                <i aria-hidden="true" /> {activeState}
-              </p>
-            </div>
-            <div className="lex-encounters">
-              {activeEntry.encounters.map((encounter) => (
-                <div
-                  className="encounter"
-                  data-empty={encounter.empty || undefined}
-                  key={encounter.label}
-                >
-                  <span className="when">{encounter.label}</span>
-                  <span className="where">
-                    {encounter.detail}
-                    {encounter.emphasis && <em>{encounter.emphasis}</em>}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </article>
+      <div className="wrap column">
+        <div className="lex-underline" data-running={autoplayRunning}>
+          <i key={progressKey} />
+          <b />
         </div>
+        <div className="lex-controls">
+          <button
+            aria-pressed={userPaused}
+            className="lex-pause"
+            hidden={reducedMotion}
+            onClick={() => {
+              if (resumeTimerRef.current !== null) window.clearTimeout(resumeTimerRef.current);
+              setInteractionPaused(false);
+              setUserPaused((paused) => !paused);
+              setUserDriven(true);
+            }}
+            type="button"
+          >
+            {userPaused ? 'Play the word browser' : 'Pause the word browser'}
+          </button>
+          <span aria-live={userDriven ? 'polite' : 'off'} className="sr-only">
+            {activeIndex + 1} of {entries.length}
+          </span>
+        </div>
+        <article aria-live={userDriven ? 'polite' : 'off'} className="lex-detail">
+          <div>
+            <p className="lex-gram">
+              {activeEntry.partOfSpeech} · <span className="ipa">{activeEntry.pronunciation}</span>
+            </p>
+            <p className="spec-def">{activeEntry.definition}</p>
+            <p className="lex-state">
+              <i aria-hidden="true" /> {activeState}
+            </p>
+          </div>
+          <div className="lex-encounters">
+            {activeEntry.encounters.map((encounter) => (
+              <div
+                className="encounter"
+                data-empty={encounter.empty || undefined}
+                key={encounter.label}
+              >
+                <span className="when">{encounter.label}</span>
+                <span className="where">
+                  {encounter.detail}
+                  {encounter.emphasis && <em>{encounter.emphasis}</em>}
+                </span>
+              </div>
+            ))}
+          </div>
+        </article>
       </div>
     </div>
   );

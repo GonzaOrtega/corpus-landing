@@ -21,3 +21,15 @@ for (const [path, name] of [
     await expectNoSeriousAxeViolations(page);
   });
 }
+
+test('moving Lexicon content exposes an accurate keyboard pause control', async ({ page }) => {
+  await page.goto('/#lexicon');
+  const control = page.getByRole('button', { name: 'Pause the word browser' });
+  await expect(control).not.toBeInViewport();
+  await control.focus();
+  await expect(control).toBeInViewport();
+  await expect(control).toHaveAttribute('aria-pressed', 'false');
+  await page.getByRole('button', { name: 'petrichor' }).click();
+  await expect(control).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('.lex-detail')).toHaveAttribute('aria-live', 'polite');
+});

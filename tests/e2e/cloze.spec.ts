@@ -5,16 +5,28 @@ test('reveals the deterministic practice answer locally and reflects it in the l
 }) => {
   await page.goto('/');
 
-  const reveal = page.getByRole('button', { name: 'Reveal the answer' });
+  const desktop = page.locator('.desktop-stage-visual');
+  const reveal = desktop.getByRole('button', { name: 'Reveal the answer' });
   await reveal.click();
 
   await expect(reveal).toHaveText('lucent');
   await expect(
-    page.getByText(
+    desktop.getByText(
       'Correct. That word is now marked solid in your lexicon — you can find it below.',
     ),
   ).toBeVisible();
 
   await page.getByRole('button', { name: 'lucent' }).click();
   await expect(page.getByText('Solid — practised just now')).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobilePractice = page.locator('[data-stage="2"]');
+  await expect(mobilePractice.getByRole('button', { name: 'Reveal the answer' })).toHaveText(
+    'lucent',
+  );
+  await expect(
+    mobilePractice.getByText(
+      'Correct. That word is now marked solid in your lexicon — you can find it below.',
+    ),
+  ).toBeVisible();
 });

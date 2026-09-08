@@ -24,6 +24,12 @@ export interface ServerConfig {
   managementTokenSecret: string | null;
 }
 
+/** Non-secret configuration needed to render pages and discovery metadata. */
+export type SiteConfig = Pick<
+  ServerConfig,
+  'siteUrl' | 'releaseStage' | 'downloadUrl' | 'replyTo' | 'emailPostalAddress'
+>;
+
 /** Blank and unset both mean "not configured" for these — never bare `''`. */
 const emptyToUndefined = (value: unknown): unknown =>
   typeof value === 'string' && value.length === 0 ? undefined : value;
@@ -31,10 +37,18 @@ const emptyToUndefined = (value: unknown): unknown =>
 const optionalString = () =>
   z.preprocess(emptyToUndefined, z.string().optional()).transform((v) => v ?? null);
 
-const rawServerEnvSchema = z.object({
-  SITE_URL: z.string().url(),
-  CORPUS_RELEASE_STAGE: z.string(),
+const rawSiteEnvSchema = z.object({
+  SITE_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
+  CORPUS_RELEASE_STAGE: z.preprocess(emptyToUndefined, z.string().optional()),
   CORPUS_DOWNLOAD_URL: z.preprocess(emptyToUndefined, z.string().optional()),
+  VERCEL_PROJECT_PRODUCTION_URL: z.preprocess(emptyToUndefined, z.string().optional()),
+  VERCEL_URL: z.preprocess(emptyToUndefined, z.string().optional()),
+  PORT: z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).max(65_535).optional()),
+  REPLY_TO: optionalString(),
+  EMAIL_POSTAL_ADDRESS: optionalString(),
+});
+
+const rawServerEnvSchema = z.object({
   DATABASE_URL: z.string().min(1),
   DATABASE_URL_UNPOOLED: z.string().min(1),
   RECAPTCHA_SECRET_KEY: optionalString(),
@@ -47,16 +61,20 @@ const rawServerEnvSchema = z.object({
   ),
   RESEND_API_KEY: optionalString(),
   EMAIL_FROM: optionalString(),
-  REPLY_TO: optionalString(),
-  EMAIL_POSTAL_ADDRESS: optionalString(),
   CRON_SECRET: optionalString(),
   LAUNCH_DRY_RUN_RECIPIENT: optionalString(),
   MANAGEMENT_TOKEN_SECRET: optionalString(),
 });
 
-export function loadServerConfig(env: Record<string, string | undefined>): ServerConfig {
-  const raw = rawServerEnvSchema.parse(env);
-  const releaseStage = parseReleaseStage(raw.CORPUS_RELEASE_STAGE);
+export function loadSiteConfig(env: Record<string, string | undefined>): SiteConfig {
+  const raw = rawSiteEnvSchema.parse(env);
+  const releaseStage = parseReleaseStage(raw.CORPUS_RELEASE_STAGE ?? 'early-access');
+  const deploymentHostname = raw.VERCEL_PROJECT_PRODUCTION_URL ?? raw.VERCEL_URL;
+  const siteUrl = raw.SITE_URL
+    ? new URL(raw.SITE_URL)
+    : deploymentHostname
+      ? new URL(`https://${deploymentHostname}`)
+      : new URL(`http://localhost:${raw.PORT ?? 3000}`);
 
   // §3.2: CORPUS_DOWNLOAD_URL only means anything once launched. Early-access
   // ignores whatever is set — the CTA that would use it isn't rendered yet.
@@ -73,17 +91,26 @@ export function loadServerConfig(env: Record<string, string | undefined>): Serve
   }
 
   return {
-    siteUrl: new URL(raw.SITE_URL),
+    siteUrl,
     releaseStage,
     downloadUrl,
+    replyTo: raw.REPLY_TO,
+    emailPostalAddress: raw.EMAIL_POSTAL_ADDRESS,
+  };
+}
+
+export function loadServerConfig(env: Record<string, string | undefined>): ServerConfig {
+  const siteConfig = loadSiteConfig(env);
+  const raw = rawServerEnvSchema.parse(env);
+
+  return {
+    ...siteConfig,
     databaseUrl: raw.DATABASE_URL,
     databaseUrlUnpooled: raw.DATABASE_URL_UNPOOLED,
     recaptchaSecretKey: raw.RECAPTCHA_SECRET_KEY,
     recaptchaScoreThreshold: raw.RECAPTCHA_SCORE_THRESHOLD,
     resendApiKey: raw.RESEND_API_KEY,
     emailFrom: raw.EMAIL_FROM,
-    replyTo: raw.REPLY_TO,
-    emailPostalAddress: raw.EMAIL_POSTAL_ADDRESS,
     cronSecret: raw.CRON_SECRET,
     launchDryRunRecipient: raw.LAUNCH_DRY_RUN_RECIPIENT,
     managementTokenSecret: raw.MANAGEMENT_TOKEN_SECRET,

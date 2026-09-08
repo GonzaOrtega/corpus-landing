@@ -26,6 +26,7 @@ export function LandingShell({
       <a className="skip-link" href="#main">
         Skip to content
       </a>
+      <PageMotion />
       <ProgressSpine />
       <SiteHeader downloadUrl={downloadUrl} releaseStage={releaseStage} />
       <main id="main">

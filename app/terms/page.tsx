@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { LegalPage, termsSections } from '@/src/components/legal-page';
-import { loadServerConfig } from '@/src/config/server-env';
+import { loadSiteConfig } from '@/src/config/server-env';
 
 export const metadata: Metadata = {
   title: 'Terms',
@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 };
 
 export default function TermsPage() {
-  const config = loadServerConfig(process.env);
+  const config = loadSiteConfig(process.env);
   return (
     <LegalPage
       contactEmail={config.replyTo}

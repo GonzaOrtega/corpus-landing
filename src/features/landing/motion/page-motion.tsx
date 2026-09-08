@@ -1,58 +1,102 @@
 'use client';
 
 import { useEffect } from 'react';
+import { loadMotionEngine, motionIsAllowed, splitWords } from './shared-motion';
 
-/** A single scroll observer keeps the page chrome in sync with the document. */
 export function PageMotion() {
   useEffect(() => {
+    const root = document.documentElement;
     const header = document.querySelector<HTMLElement>('.site-header');
-    const fill = document.querySelector<HTMLElement>('.progress-fill');
-    const nodes = document.querySelectorAll<HTMLElement>('.progress-node');
-    const sections = ['top', 'how', 'lexicon', 'philosophy', 'early-access'].map((id) =>
-      document.getElementById(id),
+    const philosophy = document.querySelector<HTMLElement>('[data-theme-inversion]');
+    const nodes = Array.from(document.querySelectorAll<HTMLElement>('[data-progress-node]'));
+    const sections = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-section][data-index]'),
     );
     let frame = 0;
     let disposed = false;
+    let teardownMotion = () => undefined;
+
     const update = () => {
       frame = 0;
-      const height = window.innerHeight;
-      const available = document.documentElement.scrollHeight - height;
-      const progress = available > 0 ? Math.max(0, Math.min(1, window.scrollY / available)) : 0;
-      if (header) header.dataset.stuck = String(window.scrollY > 8);
-      if (fill) fill.style.transform = `scaleY(${progress})`;
-      for (const [index, section] of sections.entries()) {
-        const rect = section?.getBoundingClientRect();
-        if (!rect) continue;
-        const node = nodes[index];
-        if (node) node.dataset.on = String(rect.top < height * 0.55 && rect.bottom > height * 0.45);
-        if (section?.id === 'philosophy') {
-          document.body.classList.toggle(
-            'theme-night',
-            rect.top < height * 0.5 && rect.bottom > height * 0.5,
-          );
-        }
+      header?.setAttribute('data-stuck', String(window.scrollY > 8));
+      const midpoint = window.innerHeight / 2;
+      const philosophyBounds = philosophy?.getBoundingClientRect();
+      document.body.classList.toggle(
+        'theme-night',
+        Boolean(
+          philosophyBounds &&
+            philosophyBounds.top <= midpoint &&
+            philosophyBounds.bottom >= midpoint,
+        ),
+      );
+      for (const node of nodes) {
+        const index = Number(node.dataset.progressNode);
+        const section = sections.find((candidate) => Number(candidate.dataset.index) === index);
+        const bounds = section?.getBoundingClientRect();
+        node.dataset.active = String(
+          Boolean(bounds && bounds.top <= midpoint && bounds.bottom >= midpoint),
+        );
       }
     };
-    const schedule = () => {
-      if (!disposed && !frame) frame = window.requestAnimationFrame(update);
+    const scheduleUpdate = () => {
+      if (!frame) frame = window.requestAnimationFrame(update);
     };
-    const observer = new ResizeObserver(schedule);
-    observer.observe(document.body);
-    window.addEventListener('scroll', schedule, { passive: true });
-    window.addEventListener('resize', schedule);
-    void document.fonts.ready.then(schedule);
+    window.addEventListener('scroll', scheduleUpdate, { passive: true });
+    window.addEventListener('resize', scheduleUpdate);
     update();
+
+    if (motionIsAllowed()) {
+      void loadMotionEngine()
+        .then(({ gsap, ScrollTrigger }) => {
+          if (disposed) return;
+          gsap.registerPlugin(ScrollTrigger);
+          const heading = philosophy?.querySelector<HTMLElement>('[data-split-scroll]');
+          const split = heading ? splitWords(heading) : null;
+          if (heading) heading.style.visibility = 'visible';
+          const context = gsap.context(() => {
+            gsap.to('[data-progress-fill]', {
+              scaleY: 1,
+              ease: 'none',
+              scrollTrigger: { start: 0, end: 'max', scrub: true },
+            });
+            if (heading && split) {
+              gsap.fromTo(
+                split.wordElements,
+                { y: '110%' },
+                {
+                  y: '0%',
+                  stagger: 0.06,
+                  duration: 0.8,
+                  ease: 'power3.out',
+                  scrollTrigger: { trigger: heading, start: 'top 78%', once: true },
+                },
+              );
+            }
+          });
+          root.dataset.pageMotionReady = 'true';
+          teardownMotion = () => {
+            context.revert();
+            split?.restore();
+            delete root.dataset.pageMotionReady;
+          };
+        })
+        .catch(() => {
+          root.classList.remove('motion-enabled');
+          root.classList.add('motion-fallback');
+        });
+    }
+
     return () => {
       disposed = true;
-      window.cancelAnimationFrame(frame);
-      observer.disconnect();
-      window.removeEventListener('scroll', schedule);
-      window.removeEventListener('resize', schedule);
+      window.removeEventListener('scroll', scheduleUpdate);
+      window.removeEventListener('resize', scheduleUpdate);
+      if (frame) window.cancelAnimationFrame(frame);
+      teardownMotion();
       document.body.classList.remove('theme-night');
-      if (header) delete header.dataset.stuck;
-      fill?.style.removeProperty('transform');
-      for (const node of nodes) delete node.dataset.on;
+      header?.setAttribute('data-stuck', 'false');
+      for (const node of nodes) node.dataset.active = 'false';
     };
   }, []);
+
   return null;
 }

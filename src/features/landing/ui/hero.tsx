@@ -64,20 +64,28 @@ export function Hero({ releaseStage, downloadUrl = null }: HeroProps) {
                   saved
                 </span>
               </div>
-              <article className="specimen" data-hero="entry">
+              <div className="specimen" data-hero="entry">
                 <div>
-                  <span className="spec-word">lucent</span>
-                  <span className="spec-gram">adjective</span>
+                  <span className="spec-word" data-hero="s1">
+                    lucent
+                  </span>
+                  <span className="spec-gram" data-hero="s2">
+                    adjective
+                  </span>
                 </div>
-                <p className="spec-ipa">/ˈluːs(ə)nt/</p>
-                <p className="spec-def">Softly bright; glowing with, or reflecting, light.</p>
-                <div className="spec-meta">
-                  <p>
-                    Heard in <strong>a podcast</strong>, 12 August
-                  </p>
-                  <p>Near: luminous, radiant, translucent</p>
+                <div className="spec-ipa" data-hero="s3">
+                  /ˈluːs(ə)nt/
                 </div>
-              </article>
+                <p className="spec-def" data-hero="s4">
+                  Softly bright; glowing with, or reflecting, light.
+                </p>
+                <div className="spec-meta" data-hero="s5">
+                  <div>
+                    Heard in <b>a podcast</b>, 12 August
+                  </div>
+                  <div>Near: luminous, radiant, translucent</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

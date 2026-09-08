@@ -17,6 +17,10 @@ describe('LandingShell', () => {
     expect(html).toContain('<footer');
     expect(html).toContain('Learn words from real life.');
     expect(html).toContain('Join early access');
+    expect(html).toContain('class="wrap"><div class="column hero-grid"');
+    expect(html).toContain('Near: luminous, radiant, translucent');
+    expect(html).not.toContain('<h2>lucent');
+    expect(html).toContain('data-stuck="false"');
   });
 
   it('keeps every Capture, Enrich, and Practice demonstration readable in server HTML', () => {

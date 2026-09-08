@@ -47,6 +47,7 @@ export function buildContentSecurityPolicy(isDev: boolean): string {
 }
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ['127.0.0.1'],
   experimental: {
     // @typescript/typescript6 delegates its CLI through a compatibility wrapper
     // whose stdout is not capturable by Next 16.3's CLI type-check runner.
