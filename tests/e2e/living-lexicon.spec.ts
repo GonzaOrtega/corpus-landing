@@ -28,10 +28,12 @@ test.describe('Living Lexicon', () => {
   test('autoplay ping-pongs through the whole Lexicon while visible', async ({ page }) => {
     await page.clock.install();
     await page.goto('/#lexicon');
-    await page.evaluate(() =>
-      document.querySelector('#lexicon')?.scrollIntoView({ behavior: 'instant' }),
-    );
-    await expect(page.locator('.browser')).toHaveAttribute('data-autoplay-running', 'true');
+    const browser = page.locator('.browser');
+    await browser.evaluate((element) => element.scrollIntoView({ behavior: 'instant' }));
+    // page.clock also controls requestAnimationFrame. Tick the mocked clock so
+    // Chromium can deliver the IntersectionObserver update that starts autoplay.
+    await page.clock.runFor(100);
+    await expect(browser).toHaveAttribute('data-autoplay-running', 'true');
     for (let step = 0; step < 7; step += 1) {
       await page.clock.fastForward(5_100);
       await expect(page.locator(`.lex-item[data-lexicon-index="${step + 1}"]`)).toHaveAttribute(
