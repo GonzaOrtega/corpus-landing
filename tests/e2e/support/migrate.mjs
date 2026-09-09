@@ -22,7 +22,7 @@ import { migrate } from 'drizzle-orm/neon-http/migrator';
 
 const connectionString = process.env.DATABASE_URL_UNPOOLED;
 if (!connectionString) {
-  console.error('e2e:migrate: DATABASE_URL_UNPOOLED is required and was not set.');
+  console.error('E2E migration: DATABASE_URL_UNPOOLED is required and was not set.');
   process.exit(1);
 }
 
@@ -31,7 +31,7 @@ const db = drizzle(neon(connectionString));
 try {
   await migrate(db, { migrationsFolder: './drizzle' });
 } catch (error) {
-  console.error('e2e:migrate: migration failed.');
+  console.error('E2E migration: migration failed.');
   console.error(error);
   process.exit(1);
 }

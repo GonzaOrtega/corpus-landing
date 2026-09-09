@@ -80,7 +80,7 @@ services:
       # Container-side node_modules: the host's may hold darwin or glibc-
       # mismatched binaries, and Playwright's browsers are Linux-only.
       - e2emodules:/work/node_modules
-    command: sh -c "bun install --frozen-lockfile && bun run e2e:migrate && bun run e2e -- --grep-invert @preview"
+    command: sh -c "bun install --frozen-lockfile && bun tests/e2e/support/migrate.mjs && bunx playwright test --grep-invert @preview"
 
 volumes:
   # Ownership is set once, when this volume is first created, from the

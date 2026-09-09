@@ -7,7 +7,7 @@ only; no workflow uses `pull_request_target`.
 ## What runs where
 
 E2E runs in a container image this repo owns (`docker/e2e.Dockerfile`), built
-locally by `bun run e2e:local` and published to GHCR for the CI `e2e` job. The
+locally by `bun run test:e2e` and published to GHCR for the CI `e2e` job. The
 image supplies the same bun, Playwright, browser, and system-library versions in
 both environments. That is why WebKit works locally despite the host lacking
 its system libraries, and why screenshot baselines are comparable between a
@@ -21,7 +21,7 @@ CI worker and two retries, projected to roughly twenty minutes per PR.
 
 Regenerate visual baselines **inside the image**, never on the host:
 
-    docker compose run --rm e2e sh -c "bun install --frozen-lockfile && bun run e2e:migrate && bun run e2e -- --update-snapshots --grep-invert @preview"
+    docker compose run --rm e2e sh -c "bun install --frozen-lockfile && bun tests/e2e/support/migrate.mjs && bunx playwright test --update-snapshots --grep-invert @preview"
 
 E2E uses a local Postgres reached through a Neon HTTP proxy, so the production
 driver is unchanged and no Neon branch is consumed. `ci.yml`'s `test` job keeps
@@ -33,8 +33,9 @@ anywhere else, such as the deployed robots policy. Keep that set small; add a
 test there only when a local build genuinely cannot answer the question.
 
 The `e2e` job waits for its local proxy and applies migrations through that
-proxy before Playwright starts. It uses `e2e:migrate`, not `db:migrate`, so the
-migration follows the same Neon HTTP driver path as the application.
+proxy before Playwright starts. It runs the E2E migration support module, not
+`db:migrate`, so the migration follows the same Neon HTTP driver path as the
+application.
 
 ## Required GitHub configuration
 

@@ -31,7 +31,9 @@ authorized Vercel Cron maintenance entry point.
 - `bun run dev` — dev server (port pinned once registered; see
   `/home/gonza/github/.ports.json`)
 - `bun run check` — typecheck + lint + stack conformance (the birth-certificate gate)
-- `bun run test` / `bun run e2e`
+- `bun run test` — Vitest
+- `bun run test:e2e` — containerized Playwright
+- `bun run test:all` — check + Vitest + containerized Playwright
 - `bunx drizzle-kit generate` — migrations (never hand-edit the DB)
 
 ## What NOT to change without asking

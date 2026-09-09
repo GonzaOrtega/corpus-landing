@@ -19,7 +19,7 @@ authoritative where the application intentionally differs from that prototype.
 
 ## Verification
 
-Run `bun run test`, `bun run check`, and `bun run build` for repository gates.
-Run `bun run e2e` for supported-browser journeys. Focused landing checks live in
-`tests/e2e/homepage.spec.ts`, `landing-motion.spec.ts`,
+Run `bun run test` for Vitest or `bun run test:all` for every local gate. Run
+`bun run test:e2e` for supported-browser journeys in the shared container.
+Focused landing checks live in `tests/e2e/homepage.spec.ts`, `landing-motion.spec.ts`,
 `living-lexicon.spec.ts`, and `landing-visual.spec.ts`.

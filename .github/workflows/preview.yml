@@ -217,11 +217,11 @@ jobs:
           echo 'proxy never became reachable' >&2; exit 1
       - name: Apply migrations to the E2E database
         if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
-        run: bun run e2e:migrate
+        run: bun tests/e2e/support/migrate.mjs
       - name: Run Playwright
         # No browser install step: the pinned browsers are already in the image.
         if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
-        run: bun run e2e -- --grep-invert @preview
+        run: bunx playwright test --grep-invert @preview
 
   # Deployment smoke. Small on purpose: only assertions that are meaningless
   # anywhere but the deployed artifact belong here.
@@ -260,7 +260,7 @@ jobs:
         env:
           PLAYWRIGHT_BASE_URL: ${{ needs.preview.outputs.url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-        run: bun run e2e -- --grep @preview --project=chromium
+        run: bunx playwright test --grep @preview --project=chromium
 
   # Stable required PR check — do not rename. The URL comes directly from the
   # Preview job; no artifact download or deployment credential is needed here.

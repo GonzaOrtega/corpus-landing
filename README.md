@@ -56,8 +56,8 @@ boundary details.
 Prerequisites:
 
 - Bun 1.3.13
+- Docker Engine with Docker Compose for browser tests
 - a Neon non-production database when exercising persistence
-- Chromium dependencies installed by Playwright when running browser tests
 
 Install and prepare local configuration:
 
@@ -116,14 +116,14 @@ settings, or protected GitHub Environments.
 ## Testing
 
 ```bash
-bun run check       # Next.js types, TypeScript, Biome, architecture conformance
-bun run test        # Vitest unit, component, and integration suites
-bun run e2e         # Playwright browser flows
-bun run lighthouse  # Lighthouse CI against the configured URL
+bun run test       # Vitest unit, component, and integration suites
+bun run test:e2e   # Containerized Playwright browser flows
+bun run test:all   # Static checks, Vitest, then containerized Playwright
 ```
 
-Pull requests expose five stable required checks: `check`, `test`, `preview`,
-`e2e`, and `lighthouse`. CI and Preview use disposable Neon branches; email and
+Pull requests expose six stable required checks: `check`, `test`, `preview`,
+`e2e`, `preview-smoke`, and `lighthouse`. CI and Preview use disposable Neon
+branches; E2E uses ephemeral local Postgres through a Neon HTTP proxy. Email and
 CAPTCHA remain fake. See [Preview CI operations](docs/operations/preview-ci.md).
 
 ## Database schema and migrations
