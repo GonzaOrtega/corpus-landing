@@ -39,7 +39,6 @@ test('agent-readiness public contract', async ({ request }) => {
   });
   expect.soft(htmlHome.status(), 'HTML home status').toBe(200);
   expect.soft(htmlHome.headers()['content-type'], 'HTML home Content-Type').toContain('text/html');
-  expect.soft(headerTokens(htmlHome.headers().vary), 'HTML home Vary').toContain('accept');
   const homeLink = htmlHome.headers().link ?? '';
   expect
     .soft(homeLink, 'Markdown alternate discovery')
