@@ -15,21 +15,6 @@ const RECAPTCHA_FRAME_ORIGINS = [
 ];
 const RECAPTCHA_CONNECT_ORIGINS = ['https://www.google.com/recaptcha/'];
 
-/** Next's App Router varies HTML/RSC responses by these headers. Include
- * Accept as well because Corpus adds an HTTP-negotiated Markdown variant.
- * Proxy cannot reliably extend Vary in Next 16 (vercel/next.js#85852), so
- * this is applied through Next's static response-header configuration. */
-const AGENT_CONTENT_VARY =
-  'Accept, RSC, Next-Router-State-Tree, Next-Router-Prefetch, Next-Router-Segment-Prefetch';
-const AGENT_CONTENT_PATHS = [
-  '/',
-  '/about',
-  '/contact',
-  '/developers',
-  '/privacy',
-  '/terms',
-] as const;
-
 /**
  * Spec §22. No request nonces in v1 — that would force dynamic rendering of
  * the static-first landing. Dev only relaxes what Next.js tooling actually
@@ -95,10 +80,6 @@ const nextConfig: NextConfig = {
           },
         ],
       },
-      ...AGENT_CONTENT_PATHS.map((source) => ({
-        source,
-        headers: [{ key: 'Vary', value: AGENT_CONTENT_VARY }],
-      })),
     ];
   },
 };
