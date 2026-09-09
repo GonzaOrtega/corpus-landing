@@ -224,10 +224,7 @@ export async function runProductionSmoke(options: SmokeOptions, fetcher: Fetch =
   const boundary = await get('/api/cron/maintenance', 401);
   requireCheck(boundary.body === 'Unauthorized', 'Maintenance authorization boundary is unhealthy');
 
-  await runAgentReadinessSmoke(
-    { origin, siteUrl: options.siteUrl, headers, home },
-    fetcher,
-  );
+  await runAgentReadinessSmoke({ origin, siteUrl: options.siteUrl, headers, home }, fetcher);
 
   return {
     checks: [

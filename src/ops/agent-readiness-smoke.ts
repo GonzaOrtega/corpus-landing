@@ -31,9 +31,7 @@ function visibleText(html: string): string {
 
 function verifyJsonLd(html: string): void {
   const bodies = [
-    ...html.matchAll(
-      /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
-    ),
+    ...html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi),
   ].map((match) => match[1]);
   requireCheck(bodies.length > 0, 'Corpus JSON-LD missing');
 
@@ -106,7 +104,10 @@ export async function runAgentReadinessSmoke(
 
   const llms = await get('/llms.txt', 200, 'text/markdown');
   requireCheck(llms.body.startsWith('# Corpus\n\n> '), 'llms.txt opening is invalid');
-  requireCheck(llms.body.includes('## When to use Corpus'), 'llms.txt when-to-use guidance missing');
+  requireCheck(
+    llms.body.includes('## When to use Corpus'),
+    'llms.txt when-to-use guidance missing',
+  );
 
   const sitemap = await get('/sitemap.xml', 200, 'application/xml');
   for (const path of ['/about', '/contact', '/developers', '/privacy', '/terms']) {
@@ -148,5 +149,8 @@ export async function runAgentReadinessSmoke(
     requireCheck(page.body.includes(heading), 'Markdown public page heading missing');
   }
 
-  requireCheck(new URL(options.siteUrl).protocol === 'https:', 'Production site URL must use HTTPS');
+  requireCheck(
+    new URL(options.siteUrl).protocol === 'https:',
+    'Production site URL must use HTTPS',
+  );
 }

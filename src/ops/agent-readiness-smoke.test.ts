@@ -65,9 +65,12 @@ function fetcher(overrides: Record<string, Response> = {}) {
       '/terms': 'Terms',
     };
     if (htmlHeadings[url.pathname]) {
-      return new Response(`<html><body><h1>${htmlHeadings[url.pathname]}</h1>${longText}</body></html>`, {
-        headers: { 'content-type': 'text/html; charset=utf-8' },
-      });
+      return new Response(
+        `<html><body><h1>${htmlHeadings[url.pathname]}</h1>${longText}</body></html>`,
+        {
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        },
+      );
     }
     const markdownHeadings: Record<string, string> = {
       '/index.md': '# Corpus',
