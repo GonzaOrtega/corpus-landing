@@ -40,22 +40,7 @@ function isNextInternalRequest(request: NextRequest): boolean {
 }
 
 function shouldBypass(pathname: string): boolean {
-  if (
-    pathname.startsWith('/api/') ||
-    pathname.startsWith('/_next/') ||
-    pathname.startsWith('/_vercel/') ||
-    pathname.startsWith('/brand/') ||
-    pathname === '/robots.txt' ||
-    pathname === '/sitemap.xml' ||
-    pathname === '/llms.txt' ||
-    pathname === '/favicon.ico' ||
-    pathname.startsWith('/opengraph-image') ||
-    pathname === '/motion-preflight.js' ||
-    pathname.startsWith('/early-access/manage')
-  ) {
-    return true;
-  }
-
+  if (pathname.startsWith('/early-access/manage')) return true;
   const finalSegment = pathname.split('/').at(-1) ?? '';
   return finalSegment.includes('.') && !pathname.endsWith('.md');
 }
@@ -86,7 +71,6 @@ function notAcceptable(method: string, markdownPath: string): Response {
 
 function htmlResponse(markdownPath: string): NextResponse {
   const response = NextResponse.next();
-  response.headers.set('Vary', 'Accept');
   response.headers.set('Link', discoveryLink(markdownPath));
   return response;
 }
@@ -132,5 +116,10 @@ export function proxy(request: NextRequest): Response {
 }
 
 export const config = {
-  matcher: '/:path*',
+  // Keep static assets and Next/Vercel internals off the Proxy hot path. The
+  // remaining matcher still catches every document-like unknown route, which
+  // is required for agent-friendly negotiated 404 responses.
+  matcher: [
+    '/((?!api|_next|_vercel|brand|favicon.ico|robots.txt|sitemap.xml|llms.txt|opengraph-image|motion-preflight.js).*)',
+  ],
 };

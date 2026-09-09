@@ -116,8 +116,14 @@ test('agent-readiness public contract', async ({ request }) => {
   const sitemap = await request.get('/sitemap.xml');
   expect.soft(sitemap.status(), 'sitemap status').toBe(200);
   const sitemapBody = await sitemap.text();
+  const robotsBody = await (await request.get('/robots.txt')).text();
+  const indexable = /^Allow:\s*\/$/im.test(robotsBody);
   for (const path of ['/about', '/contact', '/developers', '/privacy', '/terms']) {
-    expect.soft(sitemapBody, `sitemap entry ${path}`).toContain(path);
+    if (indexable) {
+      expect.soft(sitemapBody, `production sitemap entry ${path}`).toContain(path);
+    } else {
+      expect.soft(sitemapBody, `private sitemap excludes ${path}`).not.toContain(path);
+    }
   }
 
   const homeHtml = await htmlHome.text();

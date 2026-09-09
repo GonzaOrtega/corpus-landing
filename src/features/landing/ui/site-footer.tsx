@@ -9,10 +9,7 @@ export function SiteFooter() {
           <CorpusMark />
           <span>Corpus</span>
         </Link>
-        <nav aria-label="Site information" className="footer-links">
-          <Link href="/about">About</Link>
-          <Link href="/contact">Contact</Link>
-          <Link href="/developers">Developers</Link>
+        <nav aria-label="Legal" className="footer-links">
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
         </nav>
