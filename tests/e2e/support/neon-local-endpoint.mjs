@@ -34,38 +34,65 @@ if (endpoint) {
   const defaultFetchEndpoint = neonConfig.fetchEndpoint;
   neonConfig.fetchEndpoint = endpoint;
 
-  // Only patch `fetch` if there's a database URL to derive the expected
-  // default endpoint from — with nothing to compute an exact match against,
-  // there is nothing safe to redirect, so leave `fetch` untouched entirely.
+  // The fetch patch below needs a database host to derive the driver's
+  // default endpoint from, and needs that default to still be a function
+  // (its shape as of @neondatabase/serverless@1.1.0). package.json pins
+  // this dependency with a caret, so a routine bump could change either
+  // without anyone touching this file. Failing loudly here — instead of
+  // quietly skipping the patch — is the only way a shape change doesn't
+  // regress straight back to the bug this file exists to fix: the app
+  // server's queries silently reaching the real Neon API instead of the
+  // local proxy, surfacing as a generic "couldn't complete signup" error
+  // nowhere near here (see the Task 3 report for how long that took to
+  // trace the first time).
   const databaseUrl = process.env.DATABASE_URL ?? process.env.DATABASE_URL_UNPOOLED;
-  if (databaseUrl && typeof defaultFetchEndpoint === 'function') {
-    const { hostname, port } = new URL(databaseUrl);
-    // The driver itself calls `fetchEndpoint(host, port, { jwtAuth })` to
-    // build the URL it requests. Reuse its own (unmodified) default builder
-    // with our configured host, rather than reimplementing its hostname
-    // rewrite rules ourselves — this keeps matching whatever the installed
-    // package version actually does; only the host is ours.
-    const defaultUrl = defaultFetchEndpoint(hostname, port);
-
-    const realFetch = globalThis.fetch;
-    globalThis.fetch = (input, init) => {
-      // fetch() accepts a string, a URL, or a Request; the driver only ever
-      // calls it as fetch(urlString, init), but read the URL generically so
-      // this doesn't silently miss a Request-shaped call.
-      const url = input instanceof Request ? input.url : String(input);
-
-      // Exact match only: this process also makes other requests (health
-      // checks, Playwright's own traffic in-process, etc.) that must reach
-      // their real destinations untouched — a broad rewrite would mask a
-      // genuine networking failure instead of surfacing it.
-      if (url !== defaultUrl) return realFetch(input, init);
-
-      // Preserve the request faithfully: forward whichever form arrived,
-      // rewriting only the destination URL, so method/headers/body pass
-      // through exactly as the driver sent them.
-      return input instanceof Request
-        ? realFetch(new Request(endpoint, input), init)
-        : realFetch(endpoint, init);
-    };
+  if (!databaseUrl) {
+    throw new Error(
+      'E2E_NEON_HTTP_ENDPOINT is set but DATABASE_URL and DATABASE_URL_UNPOOLED are both ' +
+        'unset, so there is no host to derive the app server default Neon endpoint from. ' +
+        'Without that, the fetch patch cannot be installed and the app server would silently ' +
+        'query the real Neon API instead of the local proxy for the rest of this run.',
+    );
   }
+  if (typeof defaultFetchEndpoint !== 'function') {
+    throw new Error(
+      `E2E_NEON_HTTP_ENDPOINT is set but @neondatabase/serverless's default fetchEndpoint is ` +
+        `a ${typeof defaultFetchEndpoint}, not a function (package.json pins this dependency ` +
+        'with a caret, so a routine bump can change this). The fetch patch cannot compute the ' +
+        'URL to redirect, so the app server would silently query the real Neon API instead of ' +
+        'the local proxy — update this file to match the new shape before trusting an E2E run ' +
+        'again.',
+    );
+  }
+
+  const { hostname, port } = new URL(databaseUrl);
+  // The driver always calls `fetchEndpoint(host, port, { jwtAuth })` itself
+  // to build the URL it requests, with `jwtAuth` reflecting whether an auth
+  // token was supplied. Reuse its own (unmodified) default builder rather
+  // than reimplementing its hostname rewrite rules ourselves, and pass
+  // `jwtAuth: false` explicitly — nothing in this repo authenticates Neon
+  // HTTP queries with a JWT — so the call genuinely matches the driver's,
+  // not just in the cases that happen to produce the same URL either way.
+  const defaultUrl = defaultFetchEndpoint(hostname, port, { jwtAuth: false });
+
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (input, init) => {
+    // fetch() accepts a string, a URL, or a Request; the driver only ever
+    // calls it as fetch(urlString, init), but read the URL generically so
+    // this doesn't silently miss a Request-shaped call.
+    const url = input instanceof Request ? input.url : String(input);
+
+    // Exact match only: this process also makes other requests (health
+    // checks, Playwright's own traffic in-process, etc.) that must reach
+    // their real destinations untouched — a broad rewrite would mask a
+    // genuine networking failure instead of surfacing it.
+    if (url !== defaultUrl) return realFetch(input, init);
+
+    // Preserve the request faithfully: forward whichever form arrived,
+    // rewriting only the destination URL, so method/headers/body pass
+    // through exactly as the driver sent them.
+    return input instanceof Request
+      ? realFetch(new Request(endpoint, input), init)
+      : realFetch(endpoint, init);
+  };
 }
