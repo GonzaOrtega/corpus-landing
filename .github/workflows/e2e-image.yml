@@ -1,0 +1,51 @@
+name: E2E image
+
+on:
+  push:
+    # No `branches:` restriction here, deliberately. `workflow_dispatch` only
+    # becomes available once a workflow file exists on the default branch, but
+    # this workflow is introduced on a feature branch — restricting `push` to
+    # `main` would make the very first publish unreachable (can't dispatch
+    # before merge, can't merge Task 5's job before the image exists). Pushing
+    # this branch's own changes to this path performs that first publish. Do
+    # NOT "tighten" this to `branches: [main]` without re-solving that
+    # bootstrap problem.
+    paths:
+      - docker/e2e.Dockerfile
+      - .github/workflows/e2e-image.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: e2e-image
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: version
+        name: Derive the tag from the Playwright dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The tag tracks package.json so the image and the test runner can
+          # never drift apart silently.
+          v="$(node -p "require('./package.json').devDependencies['@playwright/test'].replace(/[^0-9.]/g,'')")"
+          printf 'tag=v%s-noble\n' "$v" >> "$GITHUB_OUTPUT"
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Build and push
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/corpus-landing-e2e:${TAG}"
+          docker build -f docker/e2e.Dockerfile -t "$image" .
+          docker push "$image"
+          printf 'Published `%s`\n' "$image" >> "$GITHUB_STEP_SUMMARY"
