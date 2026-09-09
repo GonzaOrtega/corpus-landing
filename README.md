@@ -97,8 +97,9 @@ connection strings, account identifiers, subscriber data, or raw tokens.
 | `DATABASE_URL` | Server | Pooled application database connection. |
 | `DATABASE_URL_UNPOOLED` | Server/automation | Direct database connection used by migrations. |
 | `DATABASE_URL_TEST` | Test tooling | Optional isolated integration-test connection. |
-| `RECAPTCHA_SITE_KEY` | Public configuration | The only CAPTCHA value allowed to reach the browser in Production. |
-| `RECAPTCHA_SECRET_KEY` | Secret | Server-side Production CAPTCHA verification credential. |
+| `RECAPTCHA_SITE_KEY` | Public configuration | Google Cloud Fraud Defense score-key ID; the only CAPTCHA value allowed to reach the browser in Production. |
+| `RECAPTCHA_API_KEY` | Secret | Server-only Google Cloud API key for `projects.assessments.create`; restrict it to the reCAPTCHA Enterprise API. |
+| `RECAPTCHA_PROJECT_ID` | Server | Google Cloud project ID that owns the reCAPTCHA key and API key. |
 | `RECAPTCHA_SCORE_THRESHOLD` | Server | Score threshold for Production CAPTCHA verification. |
 | `RESEND_API_KEY` | Secret | Production email-provider credential. |
 | `EMAIL_FROM` | Server | Verified sender identity. |
