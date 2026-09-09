@@ -58,10 +58,31 @@ describe('GoogleRecaptchaAdapter', () => {
   });
 
   it.each([
-    ['invalid token', { ...acceptedResponse, tokenProperties: { ...acceptedResponse.tokenProperties, valid: false } }],
-    ['wrong action', { ...acceptedResponse, tokenProperties: { ...acceptedResponse.tokenProperties, action: 'other_action' } }],
-    ['low score', { ...acceptedResponse, riskAnalysis: { ...acceptedResponse.riskAnalysis, score: 0.49 } }],
-    ['wrong hostname', { ...acceptedResponse, tokenProperties: { ...acceptedResponse.tokenProperties, hostname: 'attacker.example' } }],
+    [
+      'invalid token',
+      {
+        ...acceptedResponse,
+        tokenProperties: { ...acceptedResponse.tokenProperties, valid: false },
+      },
+    ],
+    [
+      'wrong action',
+      {
+        ...acceptedResponse,
+        tokenProperties: { ...acceptedResponse.tokenProperties, action: 'other_action' },
+      },
+    ],
+    [
+      'low score',
+      { ...acceptedResponse, riskAnalysis: { ...acceptedResponse.riskAnalysis, score: 0.49 } },
+    ],
+    [
+      'wrong hostname',
+      {
+        ...acceptedResponse,
+        tokenProperties: { ...acceptedResponse.tokenProperties, hostname: 'attacker.example' },
+      },
+    ],
     ['malformed response', { tokenProperties: { valid: true } }],
   ])('fails closed for %s', async (_name, response) => {
     const { adapter } = buildAdapter(response);
