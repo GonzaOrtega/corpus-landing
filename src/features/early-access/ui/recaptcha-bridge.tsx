@@ -5,19 +5,22 @@ import { useEffect } from 'react';
 declare global {
   interface Window {
     grecaptcha?: {
-      execute(siteKey: string, options: { action: string }): Promise<string>;
-      ready(callback: () => void): void;
+      enterprise?: {
+        execute(siteKey: string, options: { action: string }): Promise<string>;
+        ready(callback: () => void): void;
+      };
     };
   }
 }
 
-const scriptId = 'google-recaptcha-v3';
+const scriptId = 'google-recaptcha-enterprise';
 
 function loadRecaptchaScript(siteKey: string): Promise<void> {
   const existing = document.getElementById(scriptId);
   if (existing) {
     return new Promise((resolve, reject) => {
-      if (window.grecaptcha) resolve();
+      const recaptcha = window.grecaptcha;
+      if (recaptcha?.enterprise) resolve();
       existing.addEventListener('load', () => resolve(), { once: true });
       existing.addEventListener('error', () => reject(new Error('CAPTCHA failed to load')), {
         once: true,
@@ -29,7 +32,7 @@ function loadRecaptchaScript(siteKey: string): Promise<void> {
     const script = document.createElement('script');
     script.id = scriptId;
     script.async = true;
-    script.src = `https://www.google.com/recaptcha/api.js?render=${encodeURIComponent(siteKey)}`;
+    script.src = `https://www.google.com/recaptcha/enterprise.js?render=${encodeURIComponent(siteKey)}`;
     script.addEventListener('load', () => resolve(), { once: true });
     script.addEventListener('error', () => reject(new Error('CAPTCHA failed to load')), {
       once: true,
@@ -49,8 +52,9 @@ export function RecaptchaBridge({ siteKey }: { siteKey: string }) {
 
 export async function getRecaptchaToken(siteKey: string): Promise<string> {
   await loadRecaptchaScript(siteKey);
-  const captcha = window.grecaptcha;
-  if (!captcha) throw new Error('CAPTCHA is unavailable');
+  const recaptcha = window.grecaptcha;
+  if (!recaptcha?.enterprise) throw new Error('CAPTCHA is unavailable');
+  const captcha = recaptcha.enterprise;
 
   return new Promise((resolve) => {
     captcha.ready(() => {

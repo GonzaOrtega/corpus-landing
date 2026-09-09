@@ -22,7 +22,7 @@ The following are never committed, in any branch, at any point in history:
 
 - subscriber email addresses or any personal data
 - database connection strings (pooled or unpooled)
-- API credentials (`RESEND_API_KEY`, `RECAPTCHA_SECRET_KEY`, `CRON_SECRET`, …)
+- API credentials (`RESEND_API_KEY`, `RECAPTCHA_API_KEY`, `CRON_SECRET`, …)
 - raw management or unsubscribe tokens, or token-shaped test fixtures
 - Vercel or Neon project identifiers, tokens, or deploy hooks
 

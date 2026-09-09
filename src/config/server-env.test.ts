@@ -95,6 +95,19 @@ describe('loadServerConfig', () => {
     expect(config.databaseUrlUnpooled).toBe('postgres://user:pass@host/db');
   });
 
+  it('loads reCAPTCHA assessment configuration as server-only values', () => {
+    const config = loadServerConfig({
+      ...validEarlyAccessEnv(),
+      RECAPTCHA_SITE_KEY: 'site-key-value',
+      RECAPTCHA_API_KEY: 'api-key-value',
+      RECAPTCHA_PROJECT_ID: 'corpus-project',
+    });
+
+    expect(config.recaptchaSiteKey).toBe('site-key-value');
+    expect(config.recaptchaApiKey).toBe('api-key-value');
+    expect(config.recaptchaProjectId).toBe('corpus-project');
+  });
+
   it('defaults recaptchaScoreThreshold to 0.5 when unset', () => {
     const config = loadServerConfig(validEarlyAccessEnv());
     expect(config.recaptchaScoreThreshold).toBe(0.5);
@@ -115,7 +128,9 @@ describe('loadServerConfig', () => {
 
   it('resolves unset optional secrets to null, not undefined or empty string', () => {
     const config = loadServerConfig(validEarlyAccessEnv());
-    expect(config.recaptchaSecretKey).toBeNull();
+    expect(config.recaptchaSiteKey).toBeNull();
+    expect(config.recaptchaApiKey).toBeNull();
+    expect(config.recaptchaProjectId).toBeNull();
     expect(config.resendApiKey).toBeNull();
     expect(config.emailFrom).toBeNull();
     expect(config.replyTo).toBeNull();
@@ -188,13 +203,14 @@ describe('loadSiteConfig', () => {
 });
 
 describe('loadPublicConfig', () => {
-  it('exposes only the reCAPTCHA site key, never a secret-shaped value', () => {
+  it('exposes only the reCAPTCHA site key, never server credentials', () => {
     // A realistic full server env, not just the one field loadPublicConfig's
-    // narrowed parameter type declares — proving the extra secrets are
+    // narrowed parameter type declares — proving the extra credentials are
     // ignored even though they're present, not merely absent from the call.
     const fullEnv: Record<string, string | undefined> = {
       RECAPTCHA_SITE_KEY: 'site-key-value',
-      RECAPTCHA_SECRET_KEY: 'must-never-appear-here',
+      RECAPTCHA_API_KEY: 'must-never-appear-here',
+      RECAPTCHA_PROJECT_ID: 'must-never-appear-here',
       RESEND_API_KEY: 'must-never-appear-here',
     };
     const config = loadPublicConfig(fullEnv);

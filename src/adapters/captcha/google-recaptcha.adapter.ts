@@ -5,13 +5,15 @@ import type {
   CaptchaVerifier,
 } from '../../core/ports/captcha-verifier.port';
 
-const googleResponseSchema = z.object({
-  success: z.boolean(),
-  score: z.number(),
-  action: z.string(),
-  hostname: z.string(),
-  challenge_ts: z.string().optional(),
-  'error-codes': z.array(z.string()).optional(),
+const googleAssessmentSchema = z.object({
+  tokenProperties: z.object({
+    valid: z.boolean(),
+    hostname: z.string(),
+    action: z.string(),
+  }),
+  riskAnalysis: z.object({
+    score: z.number(),
+  }),
 });
 
 export type RecaptchaFetch = (
@@ -21,7 +23,9 @@ export type RecaptchaFetch = (
 
 export class GoogleRecaptchaAdapter implements CaptchaVerifier {
   constructor(
-    private readonly secretKey: string,
+    private readonly apiKey: string,
+    private readonly projectId: string,
+    private readonly siteKey: string,
     private readonly threshold: number,
     private readonly expectedHostname: string,
     private readonly fetcher: RecaptchaFetch = fetch,
@@ -29,24 +33,34 @@ export class GoogleRecaptchaAdapter implements CaptchaVerifier {
 
   async verify(request: CaptchaVerificationRequest): Promise<CaptchaVerificationResult> {
     try {
-      const body = new URLSearchParams({ secret: this.secretKey, response: request.token });
-      const response = await this.fetcher('https://www.google.com/recaptcha/api/siteverify', {
+      const endpoint = new URL(
+        `https://recaptchaenterprise.googleapis.com/v1/projects/${encodeURIComponent(this.projectId)}/assessments`,
+      );
+      endpoint.searchParams.set('key', this.apiKey);
+
+      const response = await this.fetcher(endpoint, {
         method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded' },
-        body,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          event: {
+            token: request.token,
+            siteKey: this.siteKey,
+            expectedAction: request.action,
+          },
+        }),
         cache: 'no-store',
       });
       if (!response.ok) return { accepted: false };
 
-      const parsed = googleResponseSchema.safeParse(await response.json());
+      const parsed = googleAssessmentSchema.safeParse(await response.json());
       if (!parsed.success) return { accepted: false };
       const value = parsed.data;
       return {
         accepted:
-          value.success &&
-          value.action === request.action &&
-          value.score >= this.threshold &&
-          value.hostname === this.expectedHostname,
+          value.tokenProperties.valid &&
+          value.tokenProperties.action === request.action &&
+          value.riskAnalysis.score >= this.threshold &&
+          value.tokenProperties.hostname === this.expectedHostname,
       };
     } catch {
       return { accepted: false };
