@@ -69,12 +69,6 @@ function notAcceptable(method: string, markdownPath: string): Response {
   });
 }
 
-function htmlResponse(markdownPath: string): NextResponse {
-  const response = NextResponse.next();
-  response.headers.set('Link', discoveryLink(markdownPath));
-  return response;
-}
-
 export function proxy(request: NextRequest): Response {
   if ((request.method !== 'GET' && request.method !== 'HEAD') || isNextInternalRequest(request)) {
     return NextResponse.next();
@@ -105,7 +99,7 @@ export function proxy(request: NextRequest): Response {
       );
     }
     if (representation === null) return notAcceptable(request.method, markdownPath);
-    return htmlResponse(markdownPath);
+    return NextResponse.next();
   }
 
   if (representation === 'markdown') {
@@ -116,10 +110,26 @@ export function proxy(request: NextRequest): Response {
 }
 
 export const config = {
-  // Keep static assets and Next/Vercel internals off the Proxy hot path. The
-  // remaining matcher still catches every document-like unknown route, which
-  // is required for agent-friendly negotiated 404 responses.
+  // Normal browser navigations get static discovery headers from next.config
+  // and must not pay the Proxy hop. Raw HTTP clients still enter Proxy so
+  // Accept negotiation, 406s and Markdown 404 recovery remain request-aware.
+  // Explicit Markdown aliases are always handled, including browser navigation.
   matcher: [
-    '/((?!api|_next|_vercel|brand|favicon.ico|robots.txt|sitemap.xml|llms.txt|opengraph-image|motion-preflight.js).*)',
+    '/index.md',
+    '/about.md',
+    '/contact.md',
+    '/developers.md',
+    '/privacy.md',
+    '/terms.md',
+    {
+      source:
+        '/((?!api|_next|_vercel|brand|favicon.ico|robots.txt|sitemap.xml|llms.txt|opengraph-image|motion-preflight.js).*)',
+      has: [{ type: 'header', key: 'accept', value: 'text/markdown' }],
+    },
+    {
+      source:
+        '/((?!api|_next|_vercel|brand|favicon.ico|robots.txt|sitemap.xml|llms.txt|opengraph-image|motion-preflight.js).*)',
+      missing: [{ type: 'header', key: 'sec-fetch-mode', value: 'navigate' }],
+    },
   ],
 };
