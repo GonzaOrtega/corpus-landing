@@ -31,11 +31,15 @@ The Vercel project's **Production** environment must contain the application's
 complete server configuration, including `CORPUS_RELEASE_STAGE` set to the
 selected `early-access` or `launched` stage, `SITE_URL`, and both database URLs.
 For launched, also configure `CORPUS_DOWNLOAD_URL`; early-access ignores it.
-The dispatch expectation does not override the Vercel build environment: a
-stage mismatch fails smoke before promotion. Its unpooled database
-must be the same production database as the GitHub migration secret. Set
-`CRON_SECRET` for actual scheduled maintenance; the smoke never uses it. Keep
-Vercel system environment variables enabled so Production metadata sees
+For Production CAPTCHA, configure `RECAPTCHA_SITE_KEY`, `RECAPTCHA_API_KEY`, and
+`RECAPTCHA_PROJECT_ID`. The API key stays server-only and should be restricted
+in Google Cloud to the reCAPTCHA Enterprise API. The legacy
+`RECAPTCHA_SECRET_KEY` is not used by the application after the assessment API
+migration. The dispatch expectation does not override the Vercel build
+environment: a stage mismatch fails smoke before promotion. Its unpooled
+database must be the same production database as the GitHub migration secret.
+Set `CRON_SECRET` for actual scheduled maintenance; the smoke never uses it.
+Keep Vercel system environment variables enabled so Production metadata sees
 `VERCEL_ENV=production`. No Edge runtime is introduced: use default Node.js /
 Fluid Compute. Follow [preview-ci.md](preview-ci.md) for preview isolation.
 
