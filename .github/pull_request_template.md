@@ -23,7 +23,7 @@ This repository is private today and public later. History is permanent.
 
 - [ ] `bun run check` (typecheck + lint + stack conformance)
 - [ ] `bun run test`
-- [ ] `bun run e2e` — or N/A, because:
+- [ ] `bun run test:e2e` — or N/A, because:
 - [ ] Manual visual QA — or N/A, because:
 
 ## Semantics guarded

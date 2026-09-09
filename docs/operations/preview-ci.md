@@ -6,21 +6,36 @@ only; no workflow uses `pull_request_target`.
 
 ## What runs where
 
-`e2e` runs the suite against a **local production build inside the runner**
-(`playwright.config.ts` builds and serves it when `PLAYWRIGHT_BASE_URL` is
-unset). It therefore does not depend on `preview` and starts immediately. This
-is deliberate: pointing 65 tests at a deployment made every action a network
-round-trip and, with Playwright's single CI worker and two retries, projected to
-roughly twenty minutes per PR.
+E2E runs in a container image this repo owns (`docker/e2e.Dockerfile`), built
+locally by `bun run test:e2e` and published to GHCR for the CI `e2e` job. The
+image supplies the same bun, Playwright, browser, and system-library versions in
+both environments. That is why WebKit works locally despite the host lacking
+its system libraries, and why screenshot baselines are comparable between a
+laptop and the runner.
+
+`playwright.config.ts` builds and serves a local production build inside that
+container when `PLAYWRIGHT_BASE_URL` is unset. E2E therefore does not depend on
+`preview` and starts immediately. This is deliberate: pointing 65 tests at a
+deployment made every action a network round-trip and, with Playwright's single
+CI worker and two retries, projected to roughly twenty minutes per PR.
+
+Regenerate visual baselines **inside the image**, never on the host:
+
+    docker compose run --rm e2e sh -c "bun install --frozen-lockfile && bun tests/e2e/support/migrate.mjs && bunx playwright test --update-snapshots --grep-invert @preview"
+
+E2E uses a local Postgres reached through a Neon HTTP proxy, so the production
+driver is unchanged and no Neon branch is consumed. `ci.yml`'s `test` job keeps
+using Neon, where pooled-versus-unpooled behaviour is the thing under test.
 
 `preview-smoke` is the only check that exercises the deployed artifact. It runs
 just the `@preview`-tagged tests — the ones whose assertions are meaningless
 anywhere else, such as the deployed robots policy. Keep that set small; add a
 test there only when a local build genuinely cannot answer the question.
 
-`e2e` migrates the shared `pr-<number>` Neon branch itself rather than relying
-on `preview` having done so, because the two jobs now run concurrently.
-`drizzle-kit` takes a session advisory lock, so the two migrations serialise.
+The `e2e` job waits for its local proxy and applies migrations through that
+proxy before Playwright starts. It runs the E2E migration support module, not
+`db:migrate`, so the migration follows the same Neon HTTP driver path as the
+application.
 
 ## Required GitHub configuration
 
@@ -29,6 +44,9 @@ Add the repository variable `NEON_PROJECT_ID` and these repository secrets:
 - `NEON_API_KEY` — limited to the dedicated Corpus Landing Neon project;
 - `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` — a least-privilege
   token and the linked Preview project identifiers.
+
+The GHCR package `corpus-landing-e2e` must grant this repository read access so
+the `e2e` job can authenticate its job-container pull with `GITHUB_TOKEN`.
 
 Never add a production connection URL, Resend credential, CAPTCHA credential,
 or production management secret to these workflows.
@@ -79,27 +97,22 @@ without checking out PR code.
 
 Generated database URLs are masked before use, remain in their originating
 job, and are never job outputs or artifacts. Only the non-secret Vercel Preview
-URL crosses jobs as the `preview` job output to the dependent E2E and Lighthouse
-jobs in the same `pull_request` workflow. Neither CI nor Preview connects to
-Neon `main` or production resources.
-
-The E2E job independently reuses the deterministic `pr-<number>` branch to
-obtain a masked pooled connection string for its management-flow fixture. This
-keeps dynamic database URLs inside the job that consumes them instead of passing
-them through the Preview job output.
+URL crosses jobs as the `preview` job output to the dependent `preview-smoke`
+and `lighthouse` jobs in the same `pull_request` workflow. Neither CI nor
+Preview connects to Neon `main` or production resources.
 
 ## Forks and browser gates
 
 For same-repository PRs, GitHub supplies the scoped Vercel and Neon secrets and
-the preview pipeline runs normally. Fork PRs retain all five check names, but
-database/deployment-dependent checks fail closed because their required
-credentials are unavailable. This preserves the security boundary without
-reporting successful validation that did not run.
+the preview pipeline runs normally. Fork PRs retain all six check names, but
+deployment-dependent checks and E2E fail closed. This preserves the security
+boundary without reporting successful validation that did not run.
 
-E2E and Lighthouse depend on the successful `preview` job, validate its HTTPS
-URL output, and point their runners at that Preview. Lighthouse uses its
-existing temporary-public-storage upload target; there is no self-hosted or
-paid LHCI service.
+`preview-smoke` and Lighthouse depend on the successful `preview` job, validate
+its HTTPS URL output, and point their runners at that Preview. E2E is independent
+and tests the local production build. Lighthouse uses its existing
+temporary-public-storage upload target; there is no self-hosted or paid LHCI
+service.
 
 The Lighthouse job sets `LHCI_DEPLOYMENT_ENV=preview` to exclude only
 `is-crawlable`, which would penalize Preview's required noindex policy. All

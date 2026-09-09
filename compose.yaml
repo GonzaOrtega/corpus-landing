@@ -1,0 +1,91 @@
+# E2E runtime only. `bun run dev` against Neon remains the everyday path — see
+# docs/superpowers/specs/2026-09-08-e2e-container-runtime-design.md.
+#
+# name: is pinned so volume names never depend on the directory name; renaming
+# the folder would otherwise orphan the data.
+name: corpus-landing
+
+services:
+  # Credentials are deliberately worthless: this database holds only synthetic
+  # e2e-<uuid>@example.com rows, and the repo becomes public.
+  db:
+    image: postgres:17
+    ports:
+      # Loopback only. Docker publishes ports by writing DNAT rules into
+      # iptables' nat table, traversed before the filter table where ufw's
+      # rules live — an unbound port answers the LAN whatever the host
+      # firewall says.
+      - '127.0.0.1:55432:5432'
+    environment:
+      POSTGRES_USER: corpus
+      POSTGRES_PASSWORD: corpus
+      POSTGRES_DB: corpus_landing
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U corpus -d corpus_landing']
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  # Translates Neon's SQL-over-HTTP to plain Postgres so the app keeps using
+  # drizzle-orm/neon-http exactly as production does. Digest-pinned: upstream
+  # publishes only a moving :main tag.
+  proxy:
+    image: ghcr.io/timowilhelm/local-neon-http-proxy@sha256:cd2ae14edf2feafbc3330492de5c80506f77274c3bd013154cdef697bdeb768a
+    environment:
+      PG_CONNECTION_STRING: postgres://corpus:corpus@db:5432/corpus_landing
+    ports:
+      - '127.0.0.1:4444:4444'
+    depends_on:
+      db:
+        condition: service_healthy
+    # No healthcheck: the image ships no probe-capable binary. compose-healthcheck
+    # is amber, not red, and `e2e` still gates on db being healthy.
+
+  # One-shot runner: no ports, exits when the suite finishes, so the standard's
+  # long-running-service definition exempts it from a healthcheck. Profiled so
+  # `docker compose up` never starts a test run.
+  e2e:
+    profiles: ['e2e']
+    build:
+      context: .
+      dockerfile: docker/e2e.Dockerfile
+      # Same expressions as `user:` below, so the image's baked-in
+      # node_modules ownership (see the Dockerfile) agrees with the uid the
+      # container runs as on a freshly created `e2emodules` volume. Docker
+      # only seeds a named volume's ownership when it creates it — an
+      # already-existing volume keeps whatever uid built it. See the note
+      # on `e2emodules:` below.
+      args:
+        E2E_UID: ${E2E_UID:-1000}
+        E2E_GID: ${E2E_GID:-1000}
+    # The bind mount below is the host repo tree, owned by uid:gid 1000:1000.
+    # A writer uid that doesn't match cannot create .next/, test-results/,
+    # playwright-report/, or updated snapshots in it — default to the host's
+    # uid/gid, overridable for hosts where that's wrong.
+    user: "${E2E_UID:-1000}:${E2E_GID:-1000}"
+    depends_on:
+      db:
+        condition: service_healthy
+      proxy:
+        # The proxy has no healthcheck (see above); only wait for it to start.
+        condition: service_started
+    environment:
+      DATABASE_URL: postgres://corpus:corpus@db:5432/corpus_landing
+      DATABASE_URL_UNPOOLED: postgres://corpus:corpus@db:5432/corpus_landing
+      E2E_NEON_HTTP_ENDPOINT: http://proxy:4444/sql
+      PORT: '3018'
+      CI: 'true'
+    volumes:
+      - .:/work
+      # Container-side node_modules: the host's may hold darwin or glibc-
+      # mismatched binaries, and Playwright's browsers are Linux-only.
+      - e2emodules:/work/node_modules
+    command: sh -c "bun install --frozen-lockfile && bun tests/e2e/support/migrate.mjs && bunx playwright test --grep-invert @preview"
+
+volumes:
+  # Ownership is set once, when this volume is first created, from the
+  # `e2e` service's build args (see compose.yaml above). If you change
+  # E2E_UID/E2E_GID after the stack has already run, this volume keeps its
+  # old owner and `bun install` fails on it — run `docker compose down -v`
+  # (or `docker volume rm corpus-landing_e2emodules`) before rebuilding.
+  e2emodules:

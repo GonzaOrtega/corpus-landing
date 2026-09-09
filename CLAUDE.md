@@ -31,14 +31,17 @@ authorized Vercel Cron maintenance entry point.
 - `bun run dev` — dev server (port pinned once registered; see
   `/home/gonza/github/.ports.json`)
 - `bun run check` — typecheck + lint + stack conformance (the birth-certificate gate)
-- `bun run test` / `bun run e2e`
+- `bun run test` — Vitest
+- `bun run test:e2e` — containerized Playwright
+- `bun run test:all` — check + Vitest + containerized Playwright
 - `bunx drizzle-kit generate` — migrations (never hand-edit the DB)
 
 ## What NOT to change without asking
 
-- `docs/superpowers/specs/` — the approved design spec is a contract, not a
-  draft. Implementation may choose mechanics; it may not reinterpret product
-  behavior, copy, or semantics (spec §1, §38).
+- `docs/superpowers/specs/2026-09-06-corpus-landing-design.md` — the approved
+  design spec is a contract, not a draft. Implementation may choose mechanics;
+  it may not reinterpret product behavior, copy, or semantics (spec §1, §38).
+  New specs may be *added* to that directory; this file is what is protected.
 - `.github/workflows/secret-scan.yml` and `docs/operations/branch-protection.md`
   — this repo is private now, public later; both encode why and how.
 - `LICENSE`, `SECURITY.md`, `docs/architecture.md`, and the launch/privacy

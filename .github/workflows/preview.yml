@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: preview-pr-${{ github.event.pull_request.number }}
@@ -153,13 +154,42 @@ jobs:
             --env DATABASE_URL="$DATABASE_URL" \
             --env DATABASE_URL_UNPOOLED="$DATABASE_URL_UNPOOLED")"
           printf 'url=%s\n' "$preview_url" >> "$GITHUB_OUTPUT"
-  # Stable required PR check — do not rename. Runs the suite against a local
-  # production build, so it needs no deployment: it starts immediately instead
-  # of waiting on `preview`, and pays no network round-trip per action.
+  # Stable required PR check — do not rename. Runs in the same image developers
+  # use locally, against the same Postgres and proxy, so a green run here means
+  # the same thing as a green run on a laptop.
   e2e:
     name: e2e
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    container:
+      image: ghcr.io/gonzaortega/corpus-landing-e2e:v1.63.0-noble
+      credentials:
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      # Match the GitHub-hosted runner's uid so Actions' bind-mounted workspace,
+      # HOME and file-command directories remain writable inside the container.
+      options: --user 1001
+    services:
+      db:
+        image: postgres:17
+        env:
+          POSTGRES_USER: corpus
+          POSTGRES_PASSWORD: corpus
+          POSTGRES_DB: corpus_landing
+        options: >-
+          --health-cmd "pg_isready -U corpus -d corpus_landing"
+          --health-interval 2s --health-timeout 3s --health-retries 15
+      proxy:
+        image: ghcr.io/timowilhelm/local-neon-http-proxy@sha256:cd2ae14edf2feafbc3330492de5c80506f77274c3bd013154cdef697bdeb768a
+        env:
+          PG_CONNECTION_STRING: postgres://corpus:corpus@db:5432/corpus_landing
+    env:
+      # Service containers are addressed by workflow label, not localhost, once
+      # the job itself runs in a container.
+      DATABASE_URL: postgres://corpus:corpus@db:5432/corpus_landing
+      DATABASE_URL_UNPOOLED: postgres://corpus:corpus@db:5432/corpus_landing
+      E2E_NEON_HTTP_ENDPOINT: http://proxy:4444/sql
+      PORT: '3018'
     steps:
       - name: Fail closed for fork PRs
         if: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
@@ -168,54 +198,30 @@ jobs:
           exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
-        with:
-          bun-version: 1.3.13
       - name: Install dependencies
         if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
         run: bun install --frozen-lockfile
-      - id: neon
-        name: Reuse preview Neon branch for database-backed E2E
+      - name: Wait for the proxy
+        # The proxy image has no HEALTHCHECK, so Actions starts the job without
+        # waiting for its HTTP listener. Poll it before the first database call.
         if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
-        uses: neondatabase/create-branch-action@72ed4f69a12b6be9c16aebfad893f6a21e9aba8b # v6.4.0
-        with:
-          project_id: ${{ vars.NEON_PROJECT_ID }}
-          api_key: ${{ secrets.NEON_API_KEY }}
-          parent_branch: development
-          # This Neon project's database is corpus_landing, not the action's neondb
-          # default. Without these the branch is created and connection lookup 404s.
-          database: corpus_landing
-          role: corpus_landing_owner
-          branch_name: pr-${{ github.event.pull_request.number }}
-      - name: Mask E2E Neon URLs
-        if: ${{ steps.neon.outputs.branch_id != '' }}
-        env:
-          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
-          DATABASE_URL_UNPOOLED: ${{ steps.neon.outputs.db_url }}
+        shell: bash
         run: |
-          echo "::add-mask::$DATABASE_URL"
-          echo "::add-mask::$DATABASE_URL_UNPOOLED"
-      - name: Apply migrations to the E2E Neon branch
-        # This job no longer runs after `preview`, so it migrates the shared PR
-        # branch itself. drizzle-kit takes a session advisory lock, so a
-        # concurrent `preview` migration serialises rather than conflicts.
-        if: ${{ steps.neon.outputs.branch_id != '' }}
-        env:
-          DATABASE_URL_UNPOOLED: ${{ steps.neon.outputs.db_url }}
-        run: bun run db:migrate
-      - name: Install Playwright browsers
-        if: ${{ steps.neon.outputs.branch_id != '' }}
-        run: bunx playwright install --with-deps
-      - name: Run Playwright against a local production build
-        # PLAYWRIGHT_BASE_URL is deliberately unset: playwright.config.ts then
-        # builds and serves the app in this runner. @preview covers what only a
-        # real deployment can answer and runs in preview-smoke instead.
-        if: ${{ steps.neon.outputs.branch_id != '' }}
-        env:
-          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
-          DATABASE_URL_UNPOOLED: ${{ steps.neon.outputs.db_url }}
-        run: bun run e2e -- --grep-invert @preview
+          set -euo pipefail
+          for _ in $(seq 1 30); do
+            if bun -e "await fetch('http://proxy:4444/sql',{method:'POST'}).catch(()=>{throw new Error()})" 2>/dev/null; then
+              echo 'proxy reachable'; exit 0
+            fi
+            sleep 1
+          done
+          echo 'proxy never became reachable' >&2; exit 1
+      - name: Apply migrations to the E2E database
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: bun tests/e2e/support/migrate.mjs
+      - name: Run Playwright
+        # No browser install step: the pinned browsers are already in the image.
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: bunx playwright test --grep-invert @preview
 
   # Deployment smoke. Small on purpose: only assertions that are meaningless
   # anywhere but the deployed artifact belong here.
@@ -254,7 +260,7 @@ jobs:
         env:
           PLAYWRIGHT_BASE_URL: ${{ needs.preview.outputs.url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-        run: bun run e2e -- --grep @preview --project=chromium
+        run: bunx playwright test --grep @preview --project=chromium
 
   # Stable required PR check — do not rename. The URL comes directly from the
   # Preview job; no artifact download or deployment credential is needed here.
