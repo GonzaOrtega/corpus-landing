@@ -15,12 +15,20 @@ export const provideExternalApi = (config: ServerConfig): ExternalApiDeps => {
   if (process.env.VERCEL_ENV !== 'production') {
     return { captchaVerifier: new FakeCaptchaAdapter() };
   }
-  if (!config.recaptchaSecretKey) {
-    throw new Error('RECAPTCHA_SECRET_KEY is required in production');
+  if (!config.recaptchaSiteKey) {
+    throw new Error('RECAPTCHA_SITE_KEY is required in production');
+  }
+  if (!config.recaptchaApiKey) {
+    throw new Error('RECAPTCHA_API_KEY is required in production');
+  }
+  if (!config.recaptchaProjectId) {
+    throw new Error('RECAPTCHA_PROJECT_ID is required in production');
   }
   return {
     captchaVerifier: new GoogleRecaptchaAdapter(
-      config.recaptchaSecretKey,
+      config.recaptchaApiKey,
+      config.recaptchaProjectId,
+      config.recaptchaSiteKey,
       config.recaptchaScoreThreshold,
       config.siteUrl.hostname,
     ),
