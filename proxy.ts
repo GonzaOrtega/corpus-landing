@@ -64,12 +64,7 @@ function discoveryLink(markdownPath: string): string {
   return `<${markdownPath}>; rel="alternate"; type="text/markdown", </llms.txt>; rel="describedby"`;
 }
 
-function markdownResponse(
-  body: string,
-  status: number,
-  method: string,
-  link?: string,
-): Response {
+function markdownResponse(body: string, status: number, method: string, link?: string): Response {
   const headers = new Headers({
     'Content-Type': 'text/markdown; charset=utf-8',
     Vary: 'Accept',

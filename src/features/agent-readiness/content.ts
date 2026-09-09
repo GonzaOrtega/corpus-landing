@@ -146,10 +146,7 @@ export function canonicalPathForMarkdown(pathname: string): AgentPagePath | null
 
 function renderSections(sections: readonly InformationSection[]): string {
   return sections
-    .map(
-      (section) =>
-        `## ${section.heading}\n\n${section.paragraphs.join('\n\n')}`,
-    )
+    .map((section) => `## ${section.heading}\n\n${section.paragraphs.join('\n\n')}`)
     .join('\n\n');
 }
 
@@ -158,15 +155,14 @@ function contactDetails(context: AgentContentContext): string {
     context.contactEmail ? `- Email: ${context.contactEmail}` : null,
     context.postalAddress ? `- Postal address: ${context.postalAddress}` : null,
   ].filter((detail): detail is string => detail !== null);
-  return details.length > 0
-    ? `\n\n## Published contact details\n\n${details.join('\n')}`
-    : '';
+  return details.length > 0 ? `\n\n## Published contact details\n\n${details.join('\n')}` : '';
 }
 
 function renderHome(context: AgentContentContext): string {
-  const stage = context.releaseStage === 'launched'
-    ? 'Corpus has launched. Use the canonical site for the current download destination.'
-    : landingContent.hero.note;
+  const stage =
+    context.releaseStage === 'launched'
+      ? 'Corpus has launched. Use the canonical site for the current download destination.'
+      : landingContent.hero.note;
   const stages = landingContent.stages
     .map(([name, summary, detail]) => `## ${name}\n\n**${summary}**\n\n${detail}`)
     .join('\n\n');
@@ -174,10 +170,7 @@ function renderHome(context: AgentContentContext): string {
   return `# Corpus\n\n> ${landingContent.hero.heading}\n\n${landingContent.hero.lede}\n\n${stage}\n\n${stages}\n\n## Public resources\n\n- [About Corpus](/about)\n- [Contact Corpus](/contact)\n- [Corpus Developer Resources](/developers)\n- [Privacy](/privacy)\n- [Terms](/terms)\n- [Agent instructions](/llms.txt)\n- [Sitemap](/sitemap.xml)`;
 }
 
-export function renderMarkdownPage(
-  path: AgentPagePath,
-  context: AgentContentContext,
-): string {
+export function renderMarkdownPage(path: AgentPagePath, context: AgentContentContext): string {
   if (path === '/') return renderHome(context);
   if (path === '/about') {
     return `# About Corpus\n\n> What Corpus is, why it exists, and its current product stage.\n\n${renderSections(aboutSections)}`;

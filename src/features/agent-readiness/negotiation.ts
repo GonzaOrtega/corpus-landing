@@ -69,8 +69,7 @@ function scoreCandidate(
     .map((range) => ({ range, specificity: specificity(range, mediaType) }))
     .filter((match) => match.specificity >= 0)
     .sort(
-      (left, right) =>
-        right.specificity - left.specificity || left.range.index - right.range.index,
+      (left, right) => right.specificity - left.specificity || left.range.index - right.range.index,
     );
   const selected = matches[0]?.range;
   if (!selected || selected.quality <= 0) return null;

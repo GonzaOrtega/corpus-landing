@@ -44,6 +44,7 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${corpusNewsreader.variable} ${sans.variable}`}>
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is JSON.stringify output with less-than characters escaped before insertion. */}
         <script dangerouslySetInnerHTML={{ __html: structuredData }} type="application/ld+json" />
         {children}
         <Script src="/motion-preflight.js" strategy="beforeInteractive" />

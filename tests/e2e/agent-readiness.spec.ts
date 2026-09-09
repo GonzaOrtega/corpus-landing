@@ -30,7 +30,9 @@ test('agent-readiness public contract', async ({ request }) => {
   expect.soft(headerTokens(markdownHome.headers().vary), 'Markdown home Vary').toContain('accept');
   const markdownHomeBody = await markdownHome.text();
   expect.soft(markdownHomeBody, 'Markdown home heading').toContain('# Corpus');
-  expect.soft(markdownHomeBody, 'Markdown home product copy').toContain('Learn words from real life');
+  expect
+    .soft(markdownHomeBody, 'Markdown home product copy')
+    .toContain('Learn words from real life');
 
   const htmlHome = await request.get('/', {
     headers: { accept: 'text/html, text/markdown;q=0.2' },
@@ -39,9 +41,9 @@ test('agent-readiness public contract', async ({ request }) => {
   expect.soft(htmlHome.headers()['content-type'], 'HTML home Content-Type').toContain('text/html');
   expect.soft(headerTokens(htmlHome.headers().vary), 'HTML home Vary').toContain('accept');
   const homeLink = htmlHome.headers().link ?? '';
-  expect.soft(homeLink, 'Markdown alternate discovery').toContain(
-    '</index.md>; rel="alternate"; type="text/markdown"',
-  );
+  expect
+    .soft(homeLink, 'Markdown alternate discovery')
+    .toContain('</index.md>; rel="alternate"; type="text/markdown"');
   expect.soft(homeLink, 'llms.txt discovery').toContain('</llms.txt>; rel="describedby"');
 
   const htmlWhenMarkdownRejected = await request.get('/', {
@@ -106,9 +108,9 @@ test('agent-readiness public contract', async ({ request }) => {
   const developers = await request.get('/developers', { headers: { accept: 'text/html' } });
   const developerText = visibleTextFromHtml(await developers.text()).toLowerCase();
   for (const currentLimitation of ['no public api', 'no public sdk', 'no public mcp server']) {
-    expect.soft(developerText, `Developer limitation: ${currentLimitation}`).toContain(
-      currentLimitation,
-    );
+    expect
+      .soft(developerText, `Developer limitation: ${currentLimitation}`)
+      .toContain(currentLimitation);
   }
 
   const sitemap = await request.get('/sitemap.xml');
@@ -120,7 +122,9 @@ test('agent-readiness public contract', async ({ request }) => {
 
   const homeHtml = await htmlHome.text();
   const jsonLdBodies = [
-    ...homeHtml.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi),
+    ...homeHtml.matchAll(
+      /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
+    ),
   ].map((match) => match[1]);
   expect.soft(jsonLdBodies.length, 'homepage JSON-LD script count').toBeGreaterThan(0);
   if (jsonLdBodies.length > 0) {
