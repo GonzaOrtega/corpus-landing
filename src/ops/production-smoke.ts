@@ -1,3 +1,5 @@
+import { runAgentReadinessSmoke } from './agent-readiness-smoke';
+
 export interface SmokeOptions {
   deploymentUrl: string;
   siteUrl: string;
@@ -86,7 +88,7 @@ function securityHeaders(headers: Headers): void {
   requireCheck(!csp.includes('unsafe-eval') && !csp.includes('*'), 'Unsafe production CSP');
 }
 
-/** Four GETs only. No cookies, Authorization, signup actions or subscriber tokens. */
+/** Safe GETs only. No cookies, Authorization, signup actions or subscriber tokens. */
 export async function runProductionSmoke(options: SmokeOptions, fetcher: Fetch = fetch) {
   validateSmokeOptions(options);
   const origin = new URL(options.deploymentUrl).origin;
@@ -179,10 +181,6 @@ export async function runProductionSmoke(options: SmokeOptions, fetcher: Fetch =
     'Production robots metadata must allow index and follow',
   );
   const links = html.match(/<link\b[^>]*>/gi) ?? [];
-  // Compare parsed origins, not raw strings: Next renders the site root as
-  // "https://host" while new URL().href yields "https://host/". Parsing both
-  // sides normalises that without loosening the check — a canonical pointing
-  // at any other origin or path still fails.
   const canonicalHref = links
     .filter((tag) => attribute(tag, 'rel') === 'canonical')
     .map((tag) => attribute(tag, 'href'))
@@ -202,7 +200,6 @@ export async function runProductionSmoke(options: SmokeOptions, fetcher: Fetch =
     asset && /^\/_next\/static\/[a-zA-Z0-9_./-]+\.css(?:\?[^#]*)?$/.test(asset),
     'Critical same-origin stylesheet missing',
   );
-  // Keep protection credentials on the captured deployment, even if markup is compromised.
   requireCheck(new URL(asset, origin).origin === origin, 'Static asset escaped deployment origin');
   const css = await get(asset, 200, 'text/css');
   requireCheck(
@@ -226,6 +223,12 @@ export async function runProductionSmoke(options: SmokeOptions, fetcher: Fetch =
   // Never add a cron bearer token: an authorized GET would mutate state/send mail.
   const boundary = await get('/api/cron/maintenance', 401);
   requireCheck(boundary.body === 'Unauthorized', 'Maintenance authorization boundary is unhealthy');
+
+  await runAgentReadinessSmoke(
+    { origin, siteUrl: options.siteUrl, headers, home },
+    fetcher,
+  );
+
   return {
     checks: [
       'homepage',
@@ -234,6 +237,7 @@ export async function runProductionSmoke(options: SmokeOptions, fetcher: Fetch =
       'static-css',
       'indexing',
       'server-boundary',
+      'agent-readiness',
     ],
   };
 }

@@ -7,10 +7,23 @@ const options: SmokeOptions = {
   releaseStage: 'launched',
   downloadUrl: 'https://downloads.corpus.example/android?a=1&b=2',
 };
+const jsonLd = JSON.stringify({
+  '@context': 'https://schema.org',
+  '@graph': [
+    { '@type': 'SoftwareApplication', name: 'Corpus' },
+    {
+      '@type': 'Organization',
+      name: 'Corpus',
+      contactPoint: { '@type': 'ContactPoint', contactType: 'customer support' },
+      address: { '@type': 'PostalAddress' },
+    },
+  ],
+});
 const html = `<!doctype html><html><head>
 <meta name="robots" content="index, follow"/>
 <link rel="canonical" href="https://corpus.example/"/>
 <link rel="stylesheet" href="/_next/static/chunks/site.css"/>
+<script type="application/ld+json">${jsonLd}</script>
 </head><body><h1>Learn words from real life.</h1>
 <a href="https://downloads.corpus.example/android?a=1&amp;b=2">Get Corpus</a>
 <section id="early-access"><h2>Get Corpus.</h2></section>
@@ -34,11 +47,22 @@ const security = {
   'content-security-policy':
     "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests",
 };
+const agentDiscoveryHeaders = {
+  vary: 'Accept, RSC, Next-Router-State-Tree, Next-Router-Prefetch, Next-Router-Segment-Prefetch',
+  link: '</index.md>; rel="alternate"; type="text/markdown", </llms.txt>; rel="describedby"',
+};
+const longText = 'Corpus public trust information. '.repeat(30);
 
 type Fixture = { body: string; status?: number; headers?: Record<string, string> };
 function fixture(overrides: Record<string, Fixture> = {}) {
+  const rootOverride = overrides['/'];
   const routes: Record<string, Fixture> = {
-    '/': { body: html, headers: security },
+    '/': rootOverride
+      ? {
+          ...rootOverride,
+          headers: { ...agentDiscoveryHeaders, ...rootOverride.headers },
+        }
+      : { body: html, headers: { ...security, ...agentDiscoveryHeaders } },
     '/_next/static/chunks/site.css': {
       body: 'body{color:black}',
       headers: { 'content-type': 'text/css' },
@@ -48,10 +72,51 @@ function fixture(overrides: Record<string, Fixture> = {}) {
       headers: { 'content-type': 'text/plain' },
     },
     '/api/cron/maintenance': { body: 'Unauthorized', status: 401 },
+    '/llms.txt': {
+      body: '# Corpus\n\n> Vocabulary from real life.\n\n## When to use Corpus\n',
+      headers: { 'content-type': 'text/markdown; charset=utf-8' },
+    },
+    '/sitemap.xml': {
+      body: '<urlset><loc>/about</loc><loc>/contact</loc><loc>/developers</loc><loc>/privacy</loc><loc>/terms</loc></urlset>',
+      headers: { 'content-type': 'application/xml' },
+    },
+    '/agent-route-that-does-not-exist': {
+      body: '# 404\n/\n/sitemap.xml\n/llms.txt\n/developers',
+      status: 404,
+      headers: { 'content-type': 'text/markdown; charset=utf-8' },
+    },
+    '/about': { body: `<h1>About Corpus</h1>${longText}`, headers: { 'content-type': 'text/html' } },
+    '/contact': { body: `<h1>Contact Corpus</h1>${longText}`, headers: { 'content-type': 'text/html' } },
+    '/developers': { body: '<h1>Corpus Developer Resources</h1>', headers: { 'content-type': 'text/html' } },
+    '/privacy': { body: `<h1>Privacy</h1>${longText}`, headers: { 'content-type': 'text/html' } },
+    '/terms': { body: '<h1>Terms</h1>', headers: { 'content-type': 'text/html' } },
+    '/index.md': { body: '# Corpus', headers: { 'content-type': 'text/markdown' } },
+    '/about.md': { body: '# About Corpus', headers: { 'content-type': 'text/markdown' } },
+    '/contact.md': { body: '# Contact Corpus', headers: { 'content-type': 'text/markdown' } },
+    '/developers.md': { body: '# Corpus Developer Resources', headers: { 'content-type': 'text/markdown' } },
+    '/privacy.md': { body: '# Privacy', headers: { 'content-type': 'text/markdown' } },
+    '/terms.md': { body: '# Terms', headers: { 'content-type': 'text/markdown' } },
     ...overrides,
   };
-  return vi.fn(async (input: string | URL, _init?: RequestInit) => {
-    const route = routes[new URL(input).pathname];
+  routes['/'] = rootOverride
+    ? { ...rootOverride, headers: { ...agentDiscoveryHeaders, ...rootOverride.headers } }
+    : routes['/'];
+
+  return vi.fn(async (input: string | URL, init?: RequestInit) => {
+    const url = new URL(input);
+    const accept = new Headers(init?.headers).get('accept');
+    if (url.pathname === '/' && accept === 'text/markdown') {
+      return new Response('# Corpus\n\nLearn words from real life.', {
+        headers: { 'content-type': 'text/markdown; charset=utf-8', vary: 'Accept' },
+      });
+    }
+    if (url.pathname === '/' && accept === 'application/pdf') {
+      return new Response('Not Acceptable', {
+        status: 406,
+        headers: { 'content-type': 'text/plain; charset=utf-8', vary: 'Accept' },
+      });
+    }
+    const route = routes[url.pathname];
     if (!route) throw new Error('Unexpected request');
     return new Response(route.body, { status: route.status ?? 200, headers: route.headers });
   });
@@ -67,7 +132,7 @@ describe('production smoke', () => {
     await expect(
       runProductionSmoke({ ...options, releaseStage: 'early-access', downloadUrl }, fetcher),
     ).resolves.toBeDefined();
-    expect(fetcher).toHaveBeenCalledTimes(4);
+    expect(fetcher).toHaveBeenCalledTimes(20);
     expect(
       fetcher.mock.calls.every(([, init]) => init?.method === 'GET' && init.body === undefined),
     ).toBe(true);
@@ -138,14 +203,14 @@ describe('production smoke', () => {
     ).rejects.toThrow('Launched release surface');
   });
 
-  it('checks the captured deployment with four GETs and never authenticates maintenance', async () => {
+  it('checks the captured deployment with safe GETs and never authenticates maintenance', async () => {
     const fetcher = fixture();
     const result = await runProductionSmoke(
       { ...options, bypassSecret: 'test-only-bypass' },
       fetcher,
     );
-    expect(result.checks).toHaveLength(6);
-    expect(fetcher).toHaveBeenCalledTimes(4);
+    expect(result.checks).toHaveLength(7);
+    expect(fetcher).toHaveBeenCalledTimes(20);
     for (const [url, init] of fetcher.mock.calls) {
       expect(new URL(url).origin).toBe(options.deploymentUrl);
       expect(init).toMatchObject({ method: 'GET', redirect: 'manual', credentials: 'omit' });
