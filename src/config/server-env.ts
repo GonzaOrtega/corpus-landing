@@ -13,7 +13,9 @@ export interface ServerConfig {
   downloadUrl: URL | null;
   databaseUrl: string;
   databaseUrlUnpooled: string;
-  recaptchaSecretKey: string | null;
+  recaptchaSiteKey: string | null;
+  recaptchaApiKey: string | null;
+  recaptchaProjectId: string | null;
   recaptchaScoreThreshold: number;
   resendApiKey: string | null;
   emailFrom: string | null;
@@ -51,7 +53,9 @@ const rawSiteEnvSchema = z.object({
 const rawServerEnvSchema = z.object({
   DATABASE_URL: z.string().min(1),
   DATABASE_URL_UNPOOLED: z.string().min(1),
-  RECAPTCHA_SECRET_KEY: optionalString(),
+  RECAPTCHA_SITE_KEY: optionalString(),
+  RECAPTCHA_API_KEY: optionalString(),
+  RECAPTCHA_PROJECT_ID: optionalString(),
   // Number('') is 0 — preprocessing blank-to-undefined keeps an unset or
   // blank threshold on the documented default instead of silently disabling
   // CAPTCHA scoring.
@@ -115,7 +119,9 @@ export function loadServerConfig(env: Record<string, string | undefined>): Serve
     ...siteConfig,
     databaseUrl: raw.DATABASE_URL,
     databaseUrlUnpooled: raw.DATABASE_URL_UNPOOLED,
-    recaptchaSecretKey: raw.RECAPTCHA_SECRET_KEY,
+    recaptchaSiteKey: raw.RECAPTCHA_SITE_KEY,
+    recaptchaApiKey: raw.RECAPTCHA_API_KEY,
+    recaptchaProjectId: raw.RECAPTCHA_PROJECT_ID,
     recaptchaScoreThreshold: raw.RECAPTCHA_SCORE_THRESHOLD,
     resendApiKey: raw.RESEND_API_KEY,
     emailFrom: raw.EMAIL_FROM,
