@@ -21,7 +21,14 @@ const RECAPTCHA_CONNECT_ORIGINS = ['https://www.google.com/recaptcha/'];
  * this is applied through Next's static response-header configuration. */
 const AGENT_CONTENT_VARY =
   'Accept, RSC, Next-Router-State-Tree, Next-Router-Prefetch, Next-Router-Segment-Prefetch';
-const AGENT_CONTENT_PATHS = ['/', '/about', '/contact', '/developers', '/privacy', '/terms'] as const;
+const AGENT_CONTENT_PATHS = [
+  '/',
+  '/about',
+  '/contact',
+  '/developers',
+  '/privacy',
+  '/terms',
+] as const;
 
 /**
  * Spec §22. No request nonces in v1 — that would force dynamic rendering of
