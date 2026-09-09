@@ -2,14 +2,24 @@ name: E2E image
 
 on:
   push:
-    # No `branches:` restriction here, deliberately. `workflow_dispatch` only
-    # becomes available once a workflow file exists on the default branch, but
-    # this workflow is introduced on a feature branch — restricting `push` to
-    # `main` would make the very first publish unreachable (can't dispatch
-    # before merge, can't merge Task 5's job before the image exists). Pushing
-    # this branch's own changes to this path performs that first publish. Do
-    # NOT "tighten" this to `branches: [main]` without re-solving that
-    # bootstrap problem.
+    # No `branches:` restriction here, deliberately, and only temporarily.
+    # `workflow_dispatch` only becomes available once a workflow file exists
+    # on the default branch, but this workflow is introduced on a feature
+    # branch — restricting `push` to `main` would make the very first publish
+    # unreachable (can't dispatch before merge, can't merge Task 5's job
+    # before the image exists). Pushing this branch's own changes to this
+    # path performs that first publish instead.
+    #
+    # Consequence while unrestricted: the tag below derives only from
+    # package.json (no branch/ref/sha component), so ANY branch that touches
+    # these paths republishes and overwrites the shared `v1.63.0-noble` tag
+    # that Task 5's CI job pulls on every branch, including main.
+    # `concurrency` below only serialises overlapping runs — it does not
+    # prevent a later push from clobbering an earlier image.
+    #
+    # This is the bootstrap's only job: once this branch merges,
+    # `workflow_dispatch` becomes usable from main, and this SHOULD be
+    # narrowed back to `branches: [main]` to close the overwrite window.
     paths:
       - docker/e2e.Dockerfile
       - .github/workflows/e2e-image.yml
@@ -39,8 +49,18 @@ jobs:
           v="$(node -p "require('./package.json').devDependencies['@playwright/test'].replace(/[^0-9.]/g,'')")"
           printf 'tag=v%s-noble\n' "$v" >> "$GITHUB_OUTPUT"
       - name: Log in to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        # Both expressions are routed through env: rather than interpolated
+        # directly into the run: script, per GitHub's Security hardening for
+        # GitHub Actions guidance — this keeps ${{ }} values out of the
+        # generated shell text even though neither is attacker-controlled
+        # today (GITHUB_TOKEN is GitHub-minted and opaque; github.actor is
+        # charset-constrained).
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_ACTOR: ${{ github.actor }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --password-stdin
       - name: Build and push
+        shell: bash
         env:
           TAG: ${{ steps.version.outputs.tag }}
         run: |
@@ -48,4 +68,9 @@ jobs:
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/corpus-landing-e2e:${TAG}"
           docker build -f docker/e2e.Dockerfile -t "$image" .
           docker push "$image"
+          # The backticks below are literal Markdown code-span delimiters for
+          # the step summary, not an attempted command substitution; $image
+          # is interpolated via the double-quoted printf argument, not inside
+          # the single-quoted format string.
+          # shellcheck disable=SC2016
           printf 'Published `%s`\n' "$image" >> "$GITHUB_STEP_SUMMARY"
