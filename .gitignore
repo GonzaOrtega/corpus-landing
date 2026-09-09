@@ -41,6 +41,8 @@ gitleaks-report.*
 .worktrees/
 *.tsbuildinfo
 .claude/scheduled_tasks.lock
+# Per-machine subagent memory: written by local agent runs, not shared state.
+.claude/agent-memory-local/
 
 # Editor / OS
 .DS_Store
