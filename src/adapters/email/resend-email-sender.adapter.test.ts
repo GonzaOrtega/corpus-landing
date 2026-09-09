@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { EmailMessage } from '../../core/ports/email-sender.port';
+import type { EarlyAccessLogFields, Logger } from '../../core/ports/logger.port';
 import { type ResendEmailClient, ResendEmailSenderAdapter } from './resend-email-sender.adapter';
 
 const message: EmailMessage = {
@@ -64,6 +65,65 @@ describe('ResendEmailSenderAdapter', () => {
 
     await expect(new ResendEmailSenderAdapter(client, config).send(message)).resolves.toBe(
       'ambiguous',
+    );
+  });
+});
+
+describe('ResendEmailSenderAdapter diagnostics', () => {
+  class RecordingLogger implements Logger {
+    readonly errors: EarlyAccessLogFields[] = [];
+    info(): void {}
+    warn(): void {}
+    error(_message: string, fields: EarlyAccessLogFields): void {
+      this.errors.push(fields);
+    }
+  }
+
+  it('records the provider status without the recipient or the response body', async () => {
+    const logger = new RecordingLogger();
+    const client: ResendEmailClient = {
+      send: async () => ({
+        data: null,
+        error: { name: 'validation_error', message: 'sensitive provider body', statusCode: 422 },
+      }),
+    };
+
+    await new ResendEmailSenderAdapter(client, config, logger).send(message);
+
+    expect(logger.errors).toEqual([
+      {
+        operation: 'resend_send',
+        status: 'known_terminal_failure',
+        errorCode: 'PROVIDER_STATUS_422',
+      },
+    ]);
+    const serialized = JSON.stringify(logger.errors);
+    expect(serialized).not.toContain(message.to);
+    expect(serialized).not.toContain('sensitive provider body');
+  });
+
+  it('records a thrown request', async () => {
+    const logger = new RecordingLogger();
+    const client: ResendEmailClient = {
+      send: async () => {
+        throw new Error('socket hang up');
+      },
+    };
+
+    await new ResendEmailSenderAdapter(client, config, logger).send(message);
+
+    expect(logger.errors).toEqual([
+      { operation: 'resend_send', status: 'ambiguous', errorCode: 'PROVIDER_EXCEPTION' },
+    ]);
+  });
+
+  it('stays optional so launch operations need no logger', async () => {
+    const client: ResendEmailClient = {
+      send: async () => ({ data: null, error: { name: 'x', message: 'y', statusCode: 500 } }),
+    };
+
+    await expect(new ResendEmailSenderAdapter(client, config).send(message)).resolves.toBe(
+      'known_retryable_failure',
     );
   });
 });

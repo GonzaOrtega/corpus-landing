@@ -69,7 +69,7 @@ describe('SendConfirmationEmailUseCase', () => {
   });
 
   it('schedules a known retryable failure for the next daily opportunity', async () => {
-    const { repository, signup, useCase } = await setup('known_retryable_failure');
+    const { repository, signup, logger, useCase } = await setup('known_retryable_failure');
 
     await useCase.execute({ signupId: signup.id, managementToken: 'raw-token' });
 
@@ -79,6 +79,15 @@ describe('SendConfirmationEmailUseCase', () => {
       confirmationNextAttemptAt: new Date('2026-09-08T12:00:00.000Z'),
       confirmationSentAt: null,
     });
+    expect(logger.errors).toEqual([
+      {
+        operation: 'send_confirmation',
+        signupId: signup.id,
+        status: 'failed',
+        errorCode: 'RETRYABLE_PROVIDER_FAILURE',
+        attemptCount: 1,
+      },
+    ]);
   });
 
   it.each([
@@ -96,16 +105,15 @@ describe('SendConfirmationEmailUseCase', () => {
       confirmationNextAttemptAt: null,
     });
     expect(saved?.isLaunchEligible()).toBe(true);
-    if (outcome === 'ambiguous') {
-      expect(logger.errors).toEqual([
-        {
-          operation: 'send_confirmation',
-          signupId: signup.id,
-          status: 'exhausted',
-          errorCode: 'AMBIGUOUS_PROVIDER_OUTCOME',
-          attemptCount: 1,
-        },
-      ]);
-    }
+    expect(logger.errors).toEqual([
+      {
+        operation: 'send_confirmation',
+        signupId: signup.id,
+        status: 'exhausted',
+        errorCode:
+          outcome === 'ambiguous' ? 'AMBIGUOUS_PROVIDER_OUTCOME' : 'TERMINAL_PROVIDER_FAILURE',
+        attemptCount: 1,
+      },
+    ]);
   });
 });

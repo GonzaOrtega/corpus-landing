@@ -74,9 +74,22 @@ secrets are read at runtime by the composition root, never through
 
 Enable Vercel's automatically exposed system environment variables. The
 deployed Preview receives `VERCEL_ENV=preview`; the application consequently
-uses its fake email and CAPTCHA adapters and serves noindex robots/sitemap
-metadata. Do not set `VERCEL_ENV` manually, and do not supply real Resend or
-reCAPTCHA credentials to Preview.
+uses its fake CAPTCHA adapter and serves noindex robots/sitemap metadata. Do
+not set `VERCEL_ENV` manually, and do not supply real reCAPTCHA credentials to
+Preview.
+
+Preview email is deliberately different. Supply Preview-scoped
+`RESEND_API_KEY`, `EMAIL_FROM`, `REPLY_TO`, and `EMAIL_POSTAL_ADDRESS` for a
+sender domain reserved for Preview, never the Production one, and Preview will
+send real confirmation mail from it. Omit them and Preview falls back to the
+non-network fake. Preview databases are disposable branches of `development`,
+so the recipients are that branch's rows.
+
+This does not extend to CI. The `test` and `e2e` jobs never send, whatever
+credentials the checkout carries: `src/composition/capabilities/notifications.ts`
+excludes them by explicit signal (`CI`, `NODE_ENV=test`, or
+`E2E_NEON_HTTP_ENDPOINT`) rather than by absent configuration, because
+`compose.yaml` bind-mounts the repository into the E2E container.
 
 ## Database lifecycle and isolation
 

@@ -75,12 +75,23 @@ bun run db:migrate
 bun run dev
 ```
 
-Local, test, and Preview web/maintenance flows select deterministic,
-non-network fake email and CAPTCHA adapters automatically. Those flows do not
-need Resend or Google credentials and cannot send email or call reCAPTCHA. The
-privileged launch operations are the intentional exception: their separate
-operations composition constructs the real email adapter, including when run
-locally, and a dry run sends only to `LAUNCH_DRY_RUN_RECIPIENT` as described in
+Email is real wherever it is configured. Local, Preview, and Production each
+send from their own Resend sender domain using their own environment's
+credentials, so supplying `RESEND_API_KEY`, `EMAIL_FROM`, `REPLY_TO`, and
+`EMAIL_POSTAL_ADDRESS` is what turns delivery on; an environment given none of
+them falls back to the non-network fake instead of failing. Production is the
+exception that fails closed rather than falling back.
+
+The pipeline never sends. Vitest, CI, and the containerized E2E runtime are
+excluded by explicit signal — `CI`, `NODE_ENV=test`, or
+`E2E_NEON_HTTP_ENDPOINT` — rather than by absent credentials, because
+`compose.yaml` bind-mounts the repository and `playwright.config.ts` loads
+`.env.local`, so a real key is readable inside the E2E container.
+
+CAPTCHA is unchanged: a deterministic, non-network verifier everywhere except
+Production. The privileged launch operations remain their own path — a separate
+operations composition that constructs the real email adapter even when run
+locally, whose dry run sends only to `LAUNCH_DRY_RUN_RECIPIENT`, as described in
 [the launch runbook](docs/operations/launch-email.md). Persistence is not faked:
 flows that touch signup data still require an isolated or development database.
 

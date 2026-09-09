@@ -1237,7 +1237,7 @@ lighthouse
 - `pr-<number>` branch from `development`
 - migrate
 - Vercel Preview
-- fake email
+- real email when Preview email configuration is present
 - fake CAPTCHA
 - noindex
 - output preview URL
@@ -1451,11 +1451,12 @@ Real:
 
 Real:
 
-- isolated Neon preview branch.
+- isolated Neon preview branch;
+- email, when Preview email configuration is present, sent from its own
+  sender domain.
 
 Fake/no-op:
 
-- email;
 - CAPTCHA.
 
 Noindex.
@@ -1471,11 +1472,18 @@ Fake/no-op:
 - email;
 - CAPTCHA.
 
+CI never sends, whatever credentials the checkout happens to carry. The E2E
+runtime bind-mounts the repository, so this is enforced by explicit pipeline
+signal rather than by absent configuration.
+
 ## Local
 
 Stable Neon `development` when DB integration needed.
 
-Fake/no-op email/CAPTCHA by default.
+Real email when local email configuration is present, sent from its own
+sender domain; fake/no-op otherwise.
+
+Fake/no-op CAPTCHA.
 
 ---
 
