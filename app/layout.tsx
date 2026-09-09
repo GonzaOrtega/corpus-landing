@@ -6,6 +6,10 @@ import localFont from 'next/font/local';
 import Script from 'next/script';
 import { loadSiteConfig } from '@/src/config/server-env';
 import {
+  buildCorpusStructuredData,
+  serializeStructuredData,
+} from '@/src/features/agent-readiness/structured-data';
+import {
   buildPageRobotsMetadata,
   buildSiteMetadata,
   isIndexableDeployment,
@@ -34,10 +38,13 @@ export function generateMetadata(): Metadata {
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   const observabilityEnabled = process.env.NODE_ENV === 'production';
+  const config = loadSiteConfig(process.env);
+  const structuredData = serializeStructuredData(buildCorpusStructuredData(config));
 
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${corpusNewsreader.variable} ${sans.variable}`}>
+        <script dangerouslySetInnerHTML={{ __html: structuredData }} type="application/ld+json" />
         {children}
         <Script src="/motion-preflight.js" strategy="beforeInteractive" />
         {observabilityEnabled && (

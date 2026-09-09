@@ -104,9 +104,9 @@ test('agent-readiness public contract', async ({ request }) => {
   }
 
   const developers = await request.get('/developers', { headers: { accept: 'text/html' } });
-  const developerText = visibleTextFromHtml(await developers.text());
-  for (const currentLimitation of ['no public API', 'no public SDK', 'no public MCP server']) {
-    expect.soft(developerText.toLowerCase(), `Developer limitation: ${currentLimitation}`).toContain(
+  const developerText = visibleTextFromHtml(await developers.text()).toLowerCase();
+  for (const currentLimitation of ['no public api', 'no public sdk', 'no public mcp server']) {
+    expect.soft(developerText, `Developer limitation: ${currentLimitation}`).toContain(
       currentLimitation,
     );
   }

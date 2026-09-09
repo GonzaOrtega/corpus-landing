@@ -16,6 +16,7 @@ export function buildSiteMetadata({ siteUrl, releaseStage }: DiscoveryOptions): 
 
   return {
     metadataBase: siteUrl,
+    applicationName: 'Corpus',
     title,
     description,
     alternates: { canonical: '/' },
@@ -67,5 +68,7 @@ export function buildRobotsMetadata(
 export function buildSitemapEntries(siteUrl: URL, indexable: boolean): MetadataRoute.Sitemap {
   if (!indexable) return [];
 
-  return ['/', '/privacy', '/terms'].map((path) => ({ url: new URL(path, siteUrl).toString() }));
+  return ['/', '/about', '/contact', '/developers', '/privacy', '/terms'].map((path) => ({
+    url: new URL(path, siteUrl).toString(),
+  }));
 }
