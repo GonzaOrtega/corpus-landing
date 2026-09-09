@@ -42,9 +42,12 @@ describe('discovery surfaces', () => {
     expect(buildPageRobotsMetadata(true)).toEqual({ index: true, follow: true });
   });
 
-  it('publishes only canonical public pages in the production sitemap', () => {
+  it('publishes the canonical public and trust pages in the production sitemap', () => {
     expect(buildSitemapEntries(siteUrl, true).map((entry) => entry.url)).toEqual([
       'https://corpus.example/',
+      'https://corpus.example/about',
+      'https://corpus.example/contact',
+      'https://corpus.example/developers',
       'https://corpus.example/privacy',
       'https://corpus.example/terms',
     ]);
