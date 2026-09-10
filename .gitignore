@@ -32,6 +32,10 @@ secrets.json
 .secrets/
 credentials*.json
 gitleaks-report.*
+# Registry and MCP configs routinely carry inline tokens.
+.npmrc
+.mcp.json
+.claude/settings.local.json
 /ops/launch-review/
 
 # Platform / tooling caches
@@ -43,6 +47,8 @@ gitleaks-report.*
 .claude/scheduled_tasks.lock
 # Per-machine subagent memory: written by local agent runs, not shared state.
 .claude/agent-memory-local/
+# Local SDD task briefs, reports and review diffs.
+.superpowers/
 
 # Editor / OS
 .DS_Store
