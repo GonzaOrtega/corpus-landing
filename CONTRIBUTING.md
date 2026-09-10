@@ -55,6 +55,34 @@ So:
   specification, and a PR that reinterprets them cannot be merged however good
   the code is.
 
+### Dependency updates
+
+Dependabot proposes updates here, but it **cannot open a pull request that
+merges unattended**. That is structural, not a misconfiguration:
+
+- It updates `package.json` and never `bun.lock`. Every install in this
+  repository is frozen, so all six checks die on `lockfile had changes, but
+  lockfile is frozen` before reaching a single gate.
+- A Dependabot-triggered run reads secrets from the *Dependabot* store rather
+  than the Actions store - the runner prints `Secret source: Dependabot`. So
+  `NEON_API_KEY` and `VERCEL_*` are empty and `test`, `preview` and
+  `lighthouse` fail. The fork guards above never trip, because the branch
+  genuinely is in this repository and nothing marks it untrusted.
+
+A maintainer adopts each branch instead:
+
+```bash
+bun run deps:adopt dependabot/npm_and_yarn/<branch-name>
+```
+
+That syncs `bun.lock`, proves a second frozen install is clean, runs `check` and
+`test`, and refuses any branch that moves `@playwright/test` - those need the
+shared runner image republished first. Pushing the result makes the maintainer
+the triggering actor, which is what restores the Actions secrets.
+
+Outside contributors need none of this. It is the same adoption step described
+above, automated for the bot's branches.
+
 ### Working locally
 
 Setup, prerequisites, and the environment-variable contract are in the

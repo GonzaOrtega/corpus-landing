@@ -117,7 +117,11 @@ Preview connects to Neon `main` or production resources.
 ## Forks and browser gates
 
 For same-repository PRs, GitHub supplies the scoped Vercel and Neon secrets and
-the preview pipeline runs normally. Fork PRs retain all six check names, but
+the preview pipeline runs normally - with one exception. A Dependabot-triggered
+run reads from the *Dependabot* secret store rather than the Actions store, so
+those secrets are empty even though the branch is in this repository and no fork
+guard trips; see [Dependency updates](#dependency-updates). Fork PRs retain all
+six check names, but
 deployment-dependent checks and E2E fail closed. This preserves the security
 boundary without reporting successful validation that did not run.
 
@@ -138,6 +142,61 @@ a local non-production build with the Preview policy, also set
 index/follow metadata and an allow-all robots policy with the production
 sitemap before promotion; verify indexing headers on the public domain after
 promotion as described in [production-deploy.md](production-deploy.md).
+
+## Dependency updates
+
+Dependabot proposes; a maintainer adopts. Neither half is optional, for two
+independent reasons:
+
+| Blocker | Cause | Fix |
+| --- | --- | --- |
+| Frozen install fails | Dependabot updates `package.json` and never `bun.lock`. Twelve install sites are frozen, including `vercel.json`'s `installCommand`, which `vercel build` runs twice per pipeline. | `bun install` on the branch, committed. |
+| Credentials are empty | A Dependabot-triggered run reads the *Dependabot* secret store, not the Actions store. The runner logs `Secret source: Dependabot`. | A maintainer pushes the branch and becomes the triggering actor. |
+
+Measured on the first Dependabot run in this repository: all six gated checks
+failed at `bun install --frozen-lockfile` before reaching a gate, and
+`gitleaks` - which needs no secrets - was the only green check. `preview` never
+even reached the step that reads `VERCEL_*`, so the frozen-install blocker fully
+masks the secret blocker. After adoption all seven checks passed.
+
+To adopt a branch:
+
+```bash
+bun run deps:adopt dependabot/npm_and_yarn/<branch-name>
+git push origin adopt/dependabot/npm_and_yarn/<branch-name>:dependabot/npm_and_yarn/<branch-name>
+```
+
+`deps:adopt` refuses a dirty tree, syncs the lockfile, re-runs a frozen install
+to prove it settled, then runs `check` and `test`. Pass `--push` to have it push
+for you. If a linter minor reformats files, run `bun run format` and include the
+result in the same commit so no intermediate commit leaves `check` red.
+
+Pushing to a Dependabot branch permanently stops Dependabot from managing that
+pull request. That is the intent, not a side effect.
+
+`.github/dependabot.yml` groups every npm update into a single weekly pull
+request for this reason: the cost is one adoption per PR, not per dependency.
+
+### Upgrading Playwright
+
+`@playwright/test` is on Dependabot's ignore list because its version is
+load-bearing in three places that must agree, and
+`tests/unit/e2e-runtime-config.test.ts` asserts they do. Because that test
+forces all three to move in one commit, the branch's `e2e` job will fail until
+the image exists - publish it before re-running the job:
+
+1. `bun add -d @playwright/test@<version>`, which also syncs `bun.lock`.
+2. In the same commit, move the tag in **both** `docker/e2e.Dockerfile` (the
+   upstream `mcr.microsoft.com/playwright` base) and `.github/workflows/preview.yml`
+   (the published `corpus-landing-e2e` image).
+3. Push the branch, then run the `E2E image` workflow via `workflow_dispatch`
+   **targeting that branch**. It derives the tag from the branch's
+   `package.json` and builds from the branch's Dockerfile. On `push` it is
+   restricted to `main`, because the tag is shared and mutable.
+4. Re-run the `e2e` job, which can now pull the image it references.
+
+Publishing from a side branch overwrites the tag every other branch pulls, so do
+it deliberately and land the change on `main` promptly.
 
 ## Operating notes
 
