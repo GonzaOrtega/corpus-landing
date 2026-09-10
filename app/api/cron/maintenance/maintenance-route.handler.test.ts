@@ -9,23 +9,21 @@ const aggregateResult = {
 };
 
 describe('maintenance cron authorization', () => {
-  it.each([
-    null,
-    '',
-    'Bearer wrong',
-    'Basic secret',
-  ])('rejects authorization %j', async (header) => {
-    const run = vi.fn(async () => aggregateResult);
-    const request = new Request('https://corpus.example/api/cron/maintenance', {
-      headers: header === null ? undefined : { authorization: header },
-    });
+  it.each([null, '', 'Bearer wrong', 'Basic secret'])(
+    'rejects authorization %j',
+    async (header) => {
+      const run = vi.fn(async () => aggregateResult);
+      const request = new Request('https://corpus.example/api/cron/maintenance', {
+        headers: header === null ? undefined : { authorization: header },
+      });
 
-    const response = await handleMaintenanceRequest(request, 'correct-secret', run);
+      const response = await handleMaintenanceRequest(request, 'correct-secret', run);
 
-    expect(response.status).toBe(401);
-    expect(await response.text()).toBe('Unauthorized');
-    expect(run).not.toHaveBeenCalled();
-  });
+      expect(response.status).toBe(401);
+      expect(await response.text()).toBe('Unauthorized');
+      expect(run).not.toHaveBeenCalled();
+    },
+  );
 
   it('returns aggregate counts only for the exact bearer secret', async () => {
     const run = vi.fn(async () => aggregateResult);

@@ -43,18 +43,21 @@ describe('ResendEmailSenderAdapter', () => {
     [429, 'known_retryable_failure'],
     [503, 'known_retryable_failure'],
     [400, 'known_terminal_failure'],
-  ] as const)('classifies HTTP %i without leaking the provider body', async (statusCode, expected) => {
-    const client: ResendEmailClient = {
-      send: async () => ({
-        data: null,
-        error: { name: 'provider_error', message: 'sensitive provider body', statusCode },
-      }),
-    };
+  ] as const)(
+    'classifies HTTP %i without leaking the provider body',
+    async (statusCode, expected) => {
+      const client: ResendEmailClient = {
+        send: async () => ({
+          data: null,
+          error: { name: 'provider_error', message: 'sensitive provider body', statusCode },
+        }),
+      };
 
-    await expect(new ResendEmailSenderAdapter(client, config).send(message)).resolves.toBe(
-      expected,
-    );
-  });
+      await expect(new ResendEmailSenderAdapter(client, config).send(message)).resolves.toBe(
+        expected,
+      );
+    },
+  );
 
   it('classifies a thrown request as ambiguous', async () => {
     const client: ResendEmailClient = {
