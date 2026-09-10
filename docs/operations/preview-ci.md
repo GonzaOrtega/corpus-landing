@@ -78,6 +78,13 @@ uses its fake CAPTCHA adapter and serves noindex robots/sitemap metadata. Do
 not set `VERCEL_ENV` manually, and do not supply real reCAPTCHA credentials to
 Preview.
 
+Do **not** set `CORPUS_FAKE_CAPTCHA` in Vercel. `VERCEL_ENV=preview` already
+selects the fake, and Production refuses to start when the flag is present. The
+flag exists only for hosts where `VERCEL_ENV` is absent — the E2E container and
+the local Playwright run set it explicitly — because selecting a CAPTCHA-free
+signup form from that absence alone would leave any non-Vercel deployment open,
+paired with the real Resend sender whenever those variables are configured.
+
 Preview email is deliberately different. Supply Preview-scoped
 `RESEND_API_KEY`, `EMAIL_FROM`, `REPLY_TO`, and `EMAIL_POSTAL_ADDRESS` for a
 sender domain reserved for Preview, never the Production one, and Preview will
@@ -121,9 +128,18 @@ the preview pipeline runs normally - with one exception. A Dependabot-triggered
 run reads from the *Dependabot* secret store rather than the Actions store, so
 those secrets are empty even though the branch is in this repository and no fork
 guard trips; see [Dependency updates](#dependency-updates). Fork PRs retain all
-six check names, but
-deployment-dependent checks and E2E fail closed. This preserves the security
-boundary without reporting successful validation that did not run.
+six check names, but deployment-dependent checks and E2E fail closed. This
+preserves the security boundary without reporting successful validation that did
+not run.
+
+`e2e` is the one gate that needs no deployment credential — its database is a
+throwaway Postgres container, not Neon — so it fails closed by an explicit fork
+guard rather than by absent secrets. It does need read access to the shared
+runner image, and the `corpus-landing-e2e` GHCR package is **deliberately
+private** even though the repository is public: `e2e` already refuses to run for
+fork PRs, so publishing the image would grant access without enabling anything.
+The image itself holds no secrets, so it can be published later if outside
+contributors ever need to pull the same runner locally.
 
 `preview-smoke` and Lighthouse depend on the successful `preview` job, validate
 its HTTPS URL output, and point their runners at that Preview. E2E is independent
@@ -158,6 +174,18 @@ failed at `bun install --frozen-lockfile` before reaching a gate, and
 `gitleaks` - which needs no secrets - was the only green check. `preview` never
 even reached the step that reads `VERCEL_*`, so the frozen-install blocker fully
 masks the secret blocker. After adoption all seven checks passed.
+
+The lockfile half is permanent, not a bug to wait out. The Dependabot update job
+log shows the `npm_and_yarn` ecosystem shelling out to npm:
+
+```text
+npm install <pkg>@<version> --package-lock-only --dry-run=true --ignore-scripts
+```
+
+`--package-lock-only` writes `package-lock.json`, and this repository has only
+`bun.lock`, so nothing is written. Regenerating or normalising `bun.lock` does
+not change this, and no Dependabot setting exists to make npm emit a bun
+lockfile.
 
 To adopt a branch:
 

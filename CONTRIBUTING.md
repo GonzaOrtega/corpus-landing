@@ -33,12 +33,15 @@ accepted colour-contrast exception from the approved design.
 understand before you spend time on a patch.
 
 `main` requires five checks: `check`, `test`, `preview`, `e2e`, and
-`lighthouse`. The last three need deployment credentials — a Vercel token and a
-Neon API key — and the workflows **deliberately refuse to run them for a fork**
-(see the fail-closed steps in `.github/workflows/preview.yml`). Withholding
-secrets from untrusted branches is the single most important control protecting
-this repository, and it is not going to be relaxed to make contribution
-smoother.
+`lighthouse`. `preview` and `lighthouse` need deployment credentials — a Vercel
+token and a Neon API key — and `test` needs the Neon API key. `e2e` needs
+neither: its database is a throwaway Postgres container, and what it does need
+is read access to the shared runner image on GHCR, which is private.
+
+All of them **deliberately refuse to run for a fork** (see the fail-closed steps
+in `.github/workflows/preview.yml`). Withholding secrets from untrusted branches
+is the single most important control protecting this repository, and it is not
+going to be relaxed to make contribution smoother.
 
 The consequence is honest: a fork PR will show failing required checks that
 **you cannot fix**, and it cannot merge on its own. A maintainer has to adopt
