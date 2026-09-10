@@ -65,6 +65,9 @@ export default defineConfig({
         // local .env hid that; CI has none.
         env: {
           PORT: '3018',
+          // Same reason as compose.yaml: no VERCEL_ENV here, and the fake CAPTCHA
+          // is opt-in rather than selected by that absence.
+          CORPUS_FAKE_CAPTCHA: '1',
           ...(process.env.E2E_NEON_HTTP_ENDPOINT
             ? {
                 E2E_NEON_HTTP_ENDPOINT: process.env.E2E_NEON_HTTP_ENDPOINT,
