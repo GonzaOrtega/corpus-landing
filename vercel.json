@@ -20,7 +20,7 @@
           "type": "response.headers",
           "op": "set",
           "target": { "key": "vary" },
-          "args": "Accept, RSC, Next-Router-State-Tree, Next-Router-Prefetch, Next-Router-Segment-Prefetch"
+          "args": "Accept, Accept-Encoding, RSC, Next-Router-State-Tree, Next-Router-Prefetch, Next-Router-Segment-Prefetch"
         }
       ],
       "continue": true
@@ -37,7 +37,7 @@
           "type": "response.headers",
           "op": "set",
           "target": { "key": "vary" },
-          "args": "Accept, RSC, Next-Router-State-Tree, Next-Router-Prefetch, Next-Router-Segment-Prefetch"
+          "args": "Accept, Accept-Encoding, RSC, Next-Router-State-Tree, Next-Router-Prefetch, Next-Router-Segment-Prefetch"
         }
       ],
       "continue": true

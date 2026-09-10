@@ -137,6 +137,51 @@ The sole application API route is `GET /api/cron/maintenance`. It verifies a
 bearer secret in constant time, calls the composed maintenance operation, and
 returns only aggregate counts. The route contains no business logic.
 
+### Representation boundary
+
+`proxy.ts` sits in front of the App Router and decides which *representation* of
+a public page a client receives. It reads no database and constructs no
+adapter: its only inputs are the request method, the path, and the `Accept`
+header, and it renders Markdown from `src/features/agent-readiness/content.ts`,
+which in turn reads the same published copy the HTML pages render.
+
+```mermaid
+flowchart TB
+  Request[Incoming GET or HEAD] --> Matcher{Proxy matcher}
+  Matcher -->|Browser navigation, /api, /_next, static assets| Next[App Router]
+  Matcher -->|Markdown alias, or a non-navigation request| Proxy[proxy.ts]
+  Proxy -->|"/about.md and siblings"| Markdown[Markdown representation]
+  Proxy -->|"Accept prefers text/markdown"| Markdown
+  Proxy -->|"Accept explicitly refuses HTML on a negotiated path"| NotAcceptable[406]
+  Proxy -->|"Unknown path, Accept prefers Markdown"| MarkdownNotFound[Markdown 404]
+  Proxy -->|Anything else| Next
+```
+
+Six paths are negotiated — `/`, `/about`, `/contact`, `/developers`,
+`/privacy`, `/terms` — each with a `.md` alias and a `Link: rel="alternate"`
+header. The rules that matter:
+
+- **Browser navigations bypass the Proxy.** The matcher excludes requests
+  carrying `sec-fetch-mode: navigate`, so the static-first landing page is
+  still served from the CDN without an edge hop. Static discovery headers come
+  from `next.config.ts` instead.
+- **HTML responses on negotiated paths carry `Vary: Accept, Accept-Encoding`,**
+  applied by the `routes` transforms in `vercel.json` so the value survives
+  Next's own `Vary`. Without it a shared cache could hand an agent the HTML
+  variant. The cost is a per-`Accept` CDN cache key on those six paths.
+- **406 is narrow.** It is returned only on a negotiated path, and only when
+  the client's `Accept` weights `text/html` at `q=0`. An `Accept` that merely
+  never mentions HTML gets the page: RFC 9110 §12.5.1 permits disregarding
+  `Accept`, and failing would break monitors and link checkers.
+- **404s are recoverable in both representations.** `app/not-found.tsx` and
+  `buildMarkdownNotFound()` render the same recovery targets from one list, so
+  an agent that lands on a dead path is pointed at the sitemap, `/llms.txt`,
+  and `/developers` whichever representation it asked for.
+
+`GET /llms.txt` is an ordinary route handler, not a Proxy response. The full
+behavioral contract is in
+[Agent readiness](superpowers/specs/2026-09-10-agent-readiness-design.md).
+
 ## Data and lifecycle
 
 The core models one `EarlyAccessSignup`. Drizzle maps it to the

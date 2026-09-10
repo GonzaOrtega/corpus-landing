@@ -49,7 +49,9 @@ function verifyJsonLd(html: string): void {
   requireCheck(application?.name === 'Corpus', 'SoftwareApplication JSON-LD missing');
   requireCheck(organization?.name === 'Corpus', 'Organization JSON-LD missing');
   requireCheck(organization.contactPoint, 'Organization contactPoint missing');
-  requireCheck(organization.address, 'Organization address missing');
+  requireCheck(organization.url, 'Organization url missing');
+  requireCheck(application.offers, 'SoftwareApplication offers missing');
+  requireCheck(application.applicationCategory, 'SoftwareApplication category missing');
 }
 
 export async function runAgentReadinessSmoke(
@@ -99,8 +101,13 @@ export async function runAgentReadinessSmoke(
   requireCheck(varyIncludesAccept(markdownHome.headers), 'Markdown response must Vary by Accept');
   requireCheck(markdownHome.body.includes('# Corpus'), 'Markdown homepage missing Corpus heading');
 
-  const unsupported = await get('/', 406, 'text/plain', { accept: 'application/pdf' });
+  const unsupported = await get('/', 406, 'text/plain', {
+    accept: 'text/html;q=0, application/pdf',
+  });
   requireCheck(varyIncludesAccept(unsupported.headers), '406 response must Vary by Accept');
+  // A narrow Accept that never mentions HTML is not a refusal: monitors, link
+  // checkers and agents asking for JSON must still get the page.
+  await get('/', 200, 'text/html', { accept: 'application/json' });
 
   const llms = await get('/llms.txt', 200, 'text/markdown');
   requireCheck(llms.body.startsWith('# Corpus\n\n> '), 'llms.txt opening is invalid');
@@ -119,6 +126,13 @@ export async function runAgentReadinessSmoke(
   });
   for (const recovery of ['/', '/sitemap.xml', '/llms.txt', '/developers']) {
     requireCheck(missing.body.includes(recovery), 'Markdown 404 recovery guidance missing');
+  }
+
+  const missingHtml = await get('/agent-route-that-does-not-exist', 404, 'text/html', {
+    accept: 'text/html',
+  });
+  for (const recovery of ['/sitemap.xml', '/llms.txt', '/developers']) {
+    requireCheck(missingHtml.body.includes(recovery), 'HTML 404 recovery guidance missing');
   }
 
   const htmlPages = [

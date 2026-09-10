@@ -5,7 +5,10 @@ import { developerSections } from '@/src/features/agent-readiness/content';
 export const metadata: Metadata = {
   title: 'Corpus Developer Resources',
   description: 'Current Corpus integration status and machine-readable developer resources.',
-  alternates: { canonical: '/developers' },
+  alternates: {
+    canonical: '/developers',
+    types: { 'text/markdown': '/developers.md' },
+  },
 };
 
 export default function DevelopersPage() {

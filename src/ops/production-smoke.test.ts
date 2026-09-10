@@ -10,12 +10,17 @@ const options: SmokeOptions = {
 const jsonLd = JSON.stringify({
   '@context': 'https://schema.org',
   '@graph': [
-    { '@type': 'SoftwareApplication', name: 'Corpus' },
+    {
+      '@type': 'SoftwareApplication',
+      name: 'Corpus',
+      applicationCategory: 'EducationalApplication',
+      offers: { '@type': 'Offer', price: '0' },
+    },
     {
       '@type': 'Organization',
       name: 'Corpus',
+      url: 'https://corpus.example/',
       contactPoint: { '@type': 'ContactPoint', contactType: 'customer support' },
-      address: { '@type': 'PostalAddress' },
     },
   ],
 });
@@ -122,11 +127,17 @@ function fixture(overrides: Record<string, Fixture> = {}) {
         headers: { 'content-type': 'text/markdown; charset=utf-8', vary: 'Accept' },
       });
     }
-    if (url.pathname === '/' && accept === 'application/pdf') {
+    if (url.pathname === '/' && accept === 'text/html;q=0, application/pdf') {
       return new Response('Not Acceptable', {
         status: 406,
         headers: { 'content-type': 'text/plain; charset=utf-8', vary: 'Accept' },
       });
+    }
+    if (url.pathname === '/agent-route-that-does-not-exist' && accept === 'text/html') {
+      return new Response(
+        '<h1>404</h1><a href="/sitemap.xml">Sitemap</a><a href="/llms.txt">Agent instructions</a><a href="/developers">Developers</a>',
+        { status: 404, headers: { 'content-type': 'text/html; charset=utf-8' } },
+      );
     }
     const route = routes[url.pathname];
     if (!route) throw new Error('Unexpected request');
@@ -144,7 +155,7 @@ describe('production smoke', () => {
     await expect(
       runProductionSmoke({ ...options, releaseStage: 'early-access', downloadUrl }, fetcher),
     ).resolves.toBeDefined();
-    expect(fetcher).toHaveBeenCalledTimes(20);
+    expect(fetcher).toHaveBeenCalledTimes(22);
     expect(
       fetcher.mock.calls.every(([, init]) => init?.method === 'GET' && init.body === undefined),
     ).toBe(true);
@@ -222,7 +233,7 @@ describe('production smoke', () => {
       fetcher,
     );
     expect(result.checks).toHaveLength(7);
-    expect(fetcher).toHaveBeenCalledTimes(20);
+    expect(fetcher).toHaveBeenCalledTimes(22);
     for (const [url, init] of fetcher.mock.calls) {
       expect(new URL(url).origin).toBe(options.deploymentUrl);
       expect(init).toMatchObject({ method: 'GET', redirect: 'manual', credentials: 'omit' });

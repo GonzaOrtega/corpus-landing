@@ -181,6 +181,10 @@ export async function runProductionSmoke(options: SmokeOptions, fetcher: Fetch =
     'Production robots metadata must allow index and follow',
   );
   const links = html.match(/<link\b[^>]*>/gi) ?? [];
+  // Compare parsed origins, not raw strings: Next renders the site root as
+  // "https://host" while new URL().href yields "https://host/". Parsing both
+  // sides normalises that without loosening the check — a canonical pointing
+  // at any other origin or path still fails.
   const canonicalHref = links
     .filter((tag) => attribute(tag, 'rel') === 'canonical')
     .map((tag) => attribute(tag, 'href'))
@@ -200,6 +204,7 @@ export async function runProductionSmoke(options: SmokeOptions, fetcher: Fetch =
     asset && /^\/_next\/static\/[a-zA-Z0-9_./-]+\.css(?:\?[^#]*)?$/.test(asset),
     'Critical same-origin stylesheet missing',
   );
+  // Keep protection credentials on the captured deployment, even if markup is compromised.
   requireCheck(new URL(asset, origin).origin === origin, 'Static asset escaped deployment origin');
   const css = await get(asset, 200, 'text/css');
   requireCheck(

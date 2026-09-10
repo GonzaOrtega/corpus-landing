@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import type { ReleaseStage } from '@/src/config/release-stage';
+import { parseReleaseStage, type ReleaseStage } from '@/src/config/release-stage';
 import {
   type AgentContentContext,
   type AgentPagePath,
@@ -14,7 +14,12 @@ import { negotiateRepresentation } from '@/src/features/agent-readiness/negotiat
 const agentPagePathSet = new Set<string>(agentPagePaths);
 
 function releaseStage(): ReleaseStage {
-  return process.env.CORPUS_RELEASE_STAGE === 'launched' ? 'launched' : 'early-access';
+  // Delegate to the shared parser rather than defaulting: a typo'd
+  // CORPUS_RELEASE_STAGE must fail loudly here too, otherwise the HTML site
+  // refuses to boot while the Markdown representation quietly serves
+  // early-access copy.
+  const raw = process.env.CORPUS_RELEASE_STAGE;
+  return raw === undefined || raw === '' ? 'early-access' : parseReleaseStage(raw);
 }
 
 function contentContext(): AgentContentContext {
@@ -49,11 +54,20 @@ function discoveryLink(markdownPath: string): string {
   return `<${markdownPath}>; rel="alternate"; type="text/markdown", </llms.txt>; rel="describedby"`;
 }
 
+// RFC 7764 names the flavour of Markdown being served; RFC 9110 requires Vary
+// to list every request header the selection depends on, and Accept-Encoding is
+// added because the response is also compressed per-client.
+const MARKDOWN_CONTENT_TYPE = 'text/markdown; charset=utf-8; variant=GFM';
+const NEGOTIATION_VARY = 'Accept, Accept-Encoding';
+
 function markdownResponse(body: string, status: number, method: string, link?: string): Response {
   const headers = new Headers({
-    'Content-Type': 'text/markdown; charset=utf-8',
-    Vary: 'Accept',
+    'Content-Type': MARKDOWN_CONTENT_TYPE,
+    Vary: NEGOTIATION_VARY,
   });
+  // A 404 body is per-request; the canonical pages are static content and can
+  // be held at the edge instead of re-rendering the Proxy on every agent hit.
+  if (status === 200) headers.set('Cache-Control', 'public, max-age=300, s-maxage=3600');
   if (link) headers.set('Link', link);
   return new Response(method === 'HEAD' ? null : body, { status, headers });
 }
@@ -63,7 +77,7 @@ function notAcceptable(method: string, markdownPath: string): Response {
     status: 406,
     headers: {
       'Content-Type': 'text/plain; charset=utf-8',
-      Vary: 'Accept',
+      Vary: NEGOTIATION_VARY,
       Link: discoveryLink(markdownPath),
     },
   });
@@ -87,10 +101,10 @@ export function proxy(request: NextRequest): Response {
     );
   }
 
-  const representation = negotiateRepresentation(request.headers.get('accept'));
+  const decision = negotiateRepresentation(request.headers.get('accept'));
   if (isAgentPagePath(pathname)) {
     const markdownPath = markdownPathFor(pathname);
-    if (representation === 'markdown') {
+    if (decision === 'markdown') {
       return markdownResponse(
         renderMarkdownPage(pathname, contentContext()),
         200,
@@ -98,14 +112,16 @@ export function proxy(request: NextRequest): Response {
         discoveryLink(markdownPath),
       );
     }
-    if (representation === null) return notAcceptable(request.method, markdownPath);
+    // 406 is scoped to the negotiated pages and to clients that explicitly
+    // refused HTML. Anything else — a narrow Accept from a monitor, a link
+    // checker, an agent asking for JSON — gets the page rather than an error.
+    if (decision === 'html-rejected') return notAcceptable(request.method, markdownPath);
     return NextResponse.next();
   }
 
-  if (representation === 'markdown') {
+  if (decision === 'markdown') {
     return markdownResponse(buildMarkdownNotFound(), 404, request.method);
   }
-  if (representation === null) return notAcceptable(request.method, '/index.md');
   return NextResponse.next();
 }
 

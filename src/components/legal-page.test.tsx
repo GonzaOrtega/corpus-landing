@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { LegalPage, privacySections, termsSections } from './legal-page';
+import { privacySections, termsSections } from '@/src/features/legal/content';
+import { LegalPage } from './legal-page';
 
 describe('LegalPage content', () => {
   it('describes only the implemented early-access collection and processors', () => {

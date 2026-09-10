@@ -1,5 +1,6 @@
 import type { ReleaseStage } from '@/src/config/release-stage';
 import { landingContent } from '@/src/features/landing/content/landing-content';
+import { privacySections, termsSections } from '@/src/features/legal/content';
 
 export type AgentPagePath = '/' | '/about' | '/contact' | '/developers' | '/privacy' | '/terms';
 
@@ -12,6 +13,11 @@ export interface AgentContentContext {
 export interface InformationSection {
   heading: string;
   paragraphs: readonly string[];
+}
+
+export interface RecoveryTarget {
+  path: string;
+  label: string;
 }
 
 export const aboutSections: readonly InformationSection[] = [
@@ -75,45 +81,6 @@ export const developerSections: readonly InformationSection[] = [
     heading: 'Future developer capabilities',
     paragraphs: [
       'If Corpus later publishes an API, SDK, authentication documentation, an OpenAPI document, or an MCP server, those resources will be listed here and in /llms.txt at predictable canonical URLs. Until then, this page is intentionally explicit about the absence of a public integration contract so automated systems do not invent one.',
-    ],
-  },
-];
-
-const privacyMarkdownSections: readonly InformationSection[] = [
-  {
-    heading: 'What we collect',
-    paragraphs: [
-      'When you join early access, we collect your email address, consent record, and early-access lifecycle and delivery status. We use this information only to operate the early-access list, confirm your address, send release information, and let you manage your subscription.',
-    ],
-  },
-  {
-    heading: 'Service providers',
-    paragraphs: [
-      'We use Neon to store the early-access record, Resend to deliver transactional email, Google reCAPTCHA to help protect the signup form, and Vercel to host Corpus, including Vercel Web Analytics and Speed Insights.',
-      'We do not sell your information or use it for unrelated marketing. We do not use email open or click tracking.',
-    ],
-  },
-  {
-    heading: 'Retention and control',
-    paragraphs: [
-      'You can unsubscribe using the management link in our email and later resubscribe with the same address. We remove identifying information 30 days after an unsubscribe that is not reversed, or 30 days after a successful launch email.',
-      'After anonymization, we may retain non-identifying delivery and lifecycle counters to operate the service safely.',
-    ],
-  },
-];
-
-const termsMarkdownSections: readonly InformationSection[] = [
-  {
-    heading: 'Early access',
-    paragraphs: [
-      'Corpus is a pre-release product. We do not guarantee a release date, and features and availability may change before or after release.',
-      'Early builds may contain defects and may be subject to platform and distribution requirements.',
-    ],
-  },
-  {
-    heading: 'Acceptable use',
-    paragraphs: [
-      'You must not abuse Corpus, interfere with its operation, or attempt to access it outside the distribution methods we make available.',
     ],
   },
 ];
@@ -182,13 +149,33 @@ export function renderMarkdownPage(path: AgentPagePath, context: AgentContentCon
     return `# Corpus Developer Resources\n\n> Current integration status and machine-readable resources for Corpus.\n\n${renderSections(developerSections)}`;
   }
   if (path === '/privacy') {
-    return `# Privacy\n\n> How Corpus handles early-access information.\n\n${renderSections(privacyMarkdownSections)}${contactDetails(context)}`;
+    return `# Privacy\n\n> How Corpus handles early-access information.\n\n${renderSections(privacySections)}${contactDetails(context)}`;
   }
-  return `# Terms\n\n> Terms for using Corpus during early access.\n\n${renderSections(termsMarkdownSections)}`;
+  return `# Terms\n\n> Terms for using Corpus during early access.\n\n${renderSections(termsSections)}`;
 }
 
+/**
+ * Recovery targets offered when a path does not exist. The HTML 404 page and
+ * the negotiated Markdown 404 body both render this list, so an agent gets the
+ * same route out regardless of which representation it asked for.
+ */
+export const notFoundRecoveryTargets: readonly RecoveryTarget[] = [
+  { path: '/', label: 'Corpus home' },
+  { path: '/about', label: 'About Corpus' },
+  { path: '/developers', label: 'Corpus Developer Resources' },
+  { path: '/sitemap.xml', label: 'Sitemap' },
+  { path: '/llms.txt', label: 'Agent instructions' },
+];
+
+export const notFoundTitle = '404 — Corpus page not found';
+export const notFoundDescription =
+  'This path does not exist. Use one of these canonical Corpus resources instead:';
+
 export function buildMarkdownNotFound(): string {
-  return '# 404 — Corpus page not found\n\nThe requested path does not exist. Agents can recover using these canonical resources:\n\n- [Corpus home](/)\n- [Sitemap](/sitemap.xml)\n- [Agent instructions](/llms.txt)\n- [Corpus Developer Resources](/developers)';
+  const links = notFoundRecoveryTargets
+    .map((target) => `- [${target.label}](${target.path})`)
+    .join('\n');
+  return `# ${notFoundTitle}\n\n${notFoundDescription}\n\n${links}`;
 }
 
 export function buildLlmsTxt(siteUrl: URL): string {

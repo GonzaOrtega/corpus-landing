@@ -4,12 +4,17 @@ import { runAgentReadinessSmoke } from './agent-readiness-smoke';
 const jsonLd = JSON.stringify({
   '@context': 'https://schema.org',
   '@graph': [
-    { '@type': 'SoftwareApplication', name: 'Corpus' },
+    {
+      '@type': 'SoftwareApplication',
+      name: 'Corpus',
+      applicationCategory: 'EducationalApplication',
+      offers: { '@type': 'Offer', price: '0' },
+    },
     {
       '@type': 'Organization',
       name: 'Corpus',
       contactPoint: { '@type': 'ContactPoint', contactType: 'customer support' },
-      address: { '@type': 'PostalAddress' },
+      url: 'https://corpus.example/',
     },
   ],
 });
@@ -34,10 +39,15 @@ function fetcher(overrides: Record<string, Response> = {}) {
         headers: { 'content-type': 'text/markdown; charset=utf-8', vary: 'Accept' },
       });
     }
-    if (url.pathname === '/' && accept === 'application/pdf') {
+    if (url.pathname === '/' && accept === 'text/html;q=0, application/pdf') {
       return new Response('Not Acceptable', {
         status: 406,
         headers: { 'content-type': 'text/plain; charset=utf-8', vary: 'Accept' },
+      });
+    }
+    if (url.pathname === '/' && accept === 'application/json') {
+      return new Response(homeBody, {
+        headers: { 'content-type': 'text/html; charset=utf-8', vary: 'Accept' },
       });
     }
     if (url.pathname === '/llms.txt') {
@@ -52,6 +62,12 @@ function fetcher(overrides: Record<string, Response> = {}) {
       );
     }
     if (url.pathname === '/agent-route-that-does-not-exist') {
+      if (accept === 'text/html') {
+        return new Response(
+          '<html><body><h1>404</h1><a href="/sitemap.xml">Sitemap</a><a href="/llms.txt">Agent instructions</a><a href="/developers">Developers</a></body></html>',
+          { status: 404, headers: { 'content-type': 'text/html; charset=utf-8' } },
+        );
+      }
       return new Response('# 404\n/\n/sitemap.xml\n/llms.txt\n/developers', {
         status: 404,
         headers: { 'content-type': 'text/markdown; charset=utf-8' },
@@ -100,7 +116,7 @@ describe('agent-readiness production smoke', () => {
   it('verifies every public agent surface with safe GET requests', async () => {
     const mock = fetcher();
     await expect(runAgentReadinessSmoke(options, mock)).resolves.toBeUndefined();
-    expect(mock).toHaveBeenCalledTimes(16);
+    expect(mock).toHaveBeenCalledTimes(18);
     expect(
       mock.mock.calls.every(([, init]) =>
         Boolean(init?.method === 'GET' && init.body === undefined && init.credentials === 'omit'),

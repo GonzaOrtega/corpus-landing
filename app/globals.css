@@ -116,6 +116,19 @@ p {
 .legal-page section p + p {
   margin-top: 1rem;
 }
+.recovery-links {
+  margin-top: 3.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--rule);
+}
+.recovery-links ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.recovery-links li + li {
+  margin-top: 0.75rem;
+}
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

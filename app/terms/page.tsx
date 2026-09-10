@@ -1,11 +1,15 @@
 import type { Metadata } from 'next';
-import { LegalPage, termsSections } from '@/src/components/legal-page';
+import { LegalPage } from '@/src/components/legal-page';
 import { loadSiteConfig } from '@/src/config/server-env';
+import { termsSections } from '@/src/features/legal/content';
 
 export const metadata: Metadata = {
   title: 'Terms',
   description: 'Terms for using Corpus.',
-  alternates: { canonical: '/terms' },
+  alternates: {
+    canonical: '/terms',
+    types: { 'text/markdown': '/terms.md' },
+  },
 };
 
 export default function TermsPage() {

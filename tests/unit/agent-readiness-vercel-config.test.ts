@@ -19,7 +19,7 @@ interface VercelConfig {
 }
 
 const EXPECTED_VARY =
-  'Accept, RSC, Next-Router-State-Tree, Next-Router-Prefetch, Next-Router-Segment-Prefetch';
+  'Accept, Accept-Encoding, RSC, Next-Router-State-Tree, Next-Router-Prefetch, Next-Router-Segment-Prefetch';
 
 describe('agent-readiness Vercel response transforms', () => {
   it('sets a cache-safe Vary header after Next renders each negotiated HTML page', () => {

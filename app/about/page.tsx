@@ -5,7 +5,10 @@ import { aboutSections } from '@/src/features/agent-readiness/content';
 export const metadata: Metadata = {
   title: 'About Corpus',
   description: 'What Corpus is, why it exists, and its current product stage.',
-  alternates: { canonical: '/about' },
+  alternates: {
+    canonical: '/about',
+    types: { 'text/markdown': '/about.md' },
+  },
 };
 
 export default function AboutPage() {

@@ -19,7 +19,10 @@ export function buildSiteMetadata({ siteUrl, releaseStage }: DiscoveryOptions): 
     applicationName: 'Corpus',
     title,
     description,
-    alternates: { canonical: '/' },
+    alternates: {
+      canonical: '/',
+      types: { 'text/markdown': '/index.md' },
+    },
     openGraph: {
       type: 'website',
       url: '/',

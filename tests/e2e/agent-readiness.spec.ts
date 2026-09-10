@@ -53,11 +53,28 @@ test('agent-readiness public contract', async ({ request }) => {
     .soft(htmlWhenMarkdownRejected.headers()['content-type'], 'q=0 Markdown rejection type')
     .toContain('text/html');
 
-  const unsupported = await request.get('/', {
-    headers: { accept: 'application/pdf' },
+  const explicitlyRefusesHtml = await request.get('/', {
+    headers: { accept: 'text/html;q=0, application/pdf' },
   });
-  expect.soft(unsupported.status(), 'unsatisfiable Accept status').toBe(406);
-  expect.soft(headerTokens(unsupported.headers().vary), '406 Vary').toContain('accept');
+  expect.soft(explicitlyRefusesHtml.status(), 'explicit HTML refusal status').toBe(406);
+  expect.soft(headerTokens(explicitlyRefusesHtml.headers().vary), '406 Vary').toContain('accept');
+  expect
+    .soft(headerTokens(explicitlyRefusesHtml.headers().vary), '406 Vary encoding')
+    .toContain('accept-encoding');
+
+  // A narrow Accept that simply never mentions HTML is not a refusal: the page
+  // is served rather than an error, on negotiated and non-negotiated paths alike.
+  for (const path of ['/', '/about']) {
+    const narrowAccept = await request.get(path, { headers: { accept: 'application/json' } });
+    expect.soft(narrowAccept.status(), `narrow Accept status ${path}`).toBe(200);
+    expect
+      .soft(narrowAccept.headers()['content-type'], `narrow Accept type ${path}`)
+      .toContain('text/html');
+  }
+  const nonNegotiated = await request.get('/early-access/manage', {
+    headers: { accept: 'application/json' },
+  });
+  expect.soft(nonNegotiated.status(), 'narrow Accept on a non-negotiated path').not.toBe(406);
 
   const markdownSibling = await request.get('/index.md');
   expect.soft(markdownSibling.status(), 'Markdown sibling status').toBe(200);
@@ -76,6 +93,22 @@ test('agent-readiness public contract', async ({ request }) => {
   const missingBody = await missing.text();
   for (const recoveryTarget of ['/', '/sitemap.xml', '/llms.txt', '/developers']) {
     expect.soft(missingBody, `404 recovery link ${recoveryTarget}`).toContain(recoveryTarget);
+  }
+
+  // The HTML 404 must offer the same way out: most agents probing a dead path
+  // never send Accept: text/markdown.
+  const missingHtml = await request.get('/agent-route-that-does-not-exist', {
+    headers: { accept: 'text/html' },
+  });
+  expect.soft(missingHtml.status(), 'HTML missing-route status').toBe(404);
+  expect
+    .soft(missingHtml.headers()['content-type'], 'HTML missing-route Content-Type')
+    .toContain('text/html');
+  const missingHtmlBody = await missingHtml.text();
+  for (const recoveryTarget of ['/sitemap.xml', '/llms.txt', '/developers']) {
+    expect
+      .soft(missingHtmlBody, `HTML 404 recovery link ${recoveryTarget}`)
+      .toContain(`href="${recoveryTarget}"`);
   }
 
   const llms = await request.get('/llms.txt');
@@ -142,6 +175,46 @@ test('agent-readiness public contract', async ({ request }) => {
     expect.soft(application, 'SoftwareApplication JSON-LD').toMatchObject({ name: 'Corpus' });
     expect.soft(organization, 'Organization JSON-LD').toMatchObject({ name: 'Corpus' });
     expect.soft(organization?.contactPoint, 'Organization contactPoint').toBeTruthy();
-    expect.soft(organization?.address, 'Organization address').toBeTruthy();
+    expect.soft(organization?.url, 'Organization url').toBeTruthy();
+    expect.soft(application?.offers, 'SoftwareApplication offers').toBeTruthy();
+    expect
+      .soft(
+        graph.find((entry) => entry['@type'] === 'WebSite'),
+        'WebSite JSON-LD',
+      )
+      .toBeTruthy();
   }
+});
+
+test('the public pages are reachable by following links from the homepage', async ({ page }) => {
+  await page.goto('/');
+  const footer = page.locator('.site-footer');
+  for (const [label, href] of [
+    ['About', '/about'],
+    ['Contact', '/contact'],
+    ['Developers', '/developers'],
+    ['Privacy', '/privacy'],
+    ['Terms', '/terms'],
+  ] as const) {
+    await expect(footer.getByRole('link', { name: label, exact: true })).toHaveAttribute(
+      'href',
+      href,
+    );
+  }
+});
+
+test('a dead path renders a navigable HTML 404', async ({ page }) => {
+  const response = await page.goto('/agent-route-that-does-not-exist');
+  expect(response?.status()).toBe(404);
+  const recovery = page.getByRole('navigation', { name: 'Recovery links' });
+  await expect(recovery.getByRole('link', { name: 'Sitemap' })).toHaveAttribute(
+    'href',
+    '/sitemap.xml',
+  );
+  await expect(recovery.getByRole('link', { name: 'Agent instructions' })).toHaveAttribute(
+    'href',
+    '/llms.txt',
+  );
+  await recovery.getByRole('link', { name: 'Corpus home' }).click();
+  await expect(page).toHaveURL(/\/$/);
 });
