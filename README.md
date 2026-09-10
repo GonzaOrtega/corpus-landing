@@ -133,10 +133,13 @@ bun run test:e2e   # Containerized Playwright browser flows
 bun run test:all   # Static checks, Vitest, then containerized Playwright
 ```
 
-Pull requests expose six stable required checks: `check`, `test`, `preview`,
-`e2e`, `preview-smoke`, and `lighthouse`. CI and Preview use disposable Neon
-branches; E2E uses ephemeral local Postgres through a Neon HTTP proxy. Email and
-CAPTCHA remain fake. See [Preview CI operations](docs/operations/preview-ci.md).
+Pull requests expose six stable checks: `check`, `test`, `preview`, `e2e`,
+`preview-smoke`, and `lighthouse`. The five merge-required contexts defined by
+the Git model are `check`, `test`, `preview`, `e2e`, and `lighthouse`;
+`preview-smoke` is an additional deployed-Preview validation. CI and Preview
+use disposable Neon branches; E2E uses ephemeral local Postgres through a Neon
+HTTP proxy. Email and CAPTCHA remain fake. See
+[Preview CI operations](docs/operations/preview-ci.md).
 
 ## Database schema and migrations
 
@@ -180,9 +183,10 @@ artifact.
 
 `main` is the only long-lived Git branch. Before public release, repository
 settings must require pull requests, a current branch, resolved conversations,
-the five checks above, squash-only merges, and disabled force-push, deletion,
-and bypass where supported. The checked-in policy is documentation; applying
-or verifying those GitHub settings is a separate privileged operation.
+the five merge-required contexts above, squash-only merges, and disabled
+force-push, deletion, and bypass where supported. The checked-in policy is
+documentation; applying or verifying those GitHub settings is a separate
+privileged operation.
 
 ## Architecture decision records
 
