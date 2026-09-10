@@ -28,8 +28,8 @@ authorized Vercel Cron maintenance entry point.
 
 ## Commands
 
-- `bun run dev` — dev server (port pinned once registered; see
-  `/home/gonza/github/.ports.json`)
+- `bun run dev` — start the local development server; use your local port
+  registry or assignment if one is configured for your environment.
 - `bun run check` — typecheck + lint + stack conformance (the birth-certificate gate)
 - `bun run test` — Vitest
 - `bun run test:e2e` — containerized Playwright
