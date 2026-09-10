@@ -66,14 +66,14 @@ describe('SendLaunchEmailUseCase', () => {
     });
   });
 
-  it.each([
-    'known_retryable_failure',
-    'known_terminal_failure',
-  ] as const)('marks a %s as failed', async (outcome) => {
-    const { repository, signup, useCase } = await setup(outcome);
-    await useCase.execute({ signupId: signup.id, managementUrl: 'https://x.example/#t', input });
-    expect((await repository.findById(signup.id))?.toProps().launchStatus).toBe('failed');
-  });
+  it.each(['known_retryable_failure', 'known_terminal_failure'] as const)(
+    'marks a %s as failed',
+    async (outcome) => {
+      const { repository, signup, useCase } = await setup(outcome);
+      await useCase.execute({ signupId: signup.id, managementUrl: 'https://x.example/#t', input });
+      expect((await repository.findById(signup.id))?.toProps().launchStatus).toBe('failed');
+    },
+  );
 
   it('keeps an ambiguous outcome sending for a same-key retry within 24 hours', async () => {
     const { repository, signup, messages, useCase } = await setup('ambiguous');

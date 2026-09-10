@@ -58,33 +58,30 @@ function fixture(overrides: Record<string, Fixture> = {}) {
 }
 
 describe('production smoke', () => {
-  it.each([
-    undefined,
-    '',
-    'unused-invalid-download',
-  ])('supports early-access without a validated download URL (%s)', async (downloadUrl) => {
-    const fetcher = fixture({ '/': { body: earlyAccessHtml, headers: security } });
-    await expect(
-      runProductionSmoke({ ...options, releaseStage: 'early-access', downloadUrl }, fetcher),
-    ).resolves.toBeDefined();
-    expect(fetcher).toHaveBeenCalledTimes(4);
-    expect(
-      fetcher.mock.calls.every(([, init]) => init?.method === 'GET' && init.body === undefined),
-    ).toBe(true);
-  });
+  it.each([undefined, '', 'unused-invalid-download'])(
+    'supports early-access without a validated download URL (%s)',
+    async (downloadUrl) => {
+      const fetcher = fixture({ '/': { body: earlyAccessHtml, headers: security } });
+      await expect(
+        runProductionSmoke({ ...options, releaseStage: 'early-access', downloadUrl }, fetcher),
+      ).resolves.toBeDefined();
+      expect(fetcher).toHaveBeenCalledTimes(4);
+      expect(
+        fetcher.mock.calls.every(([, init]) => init?.method === 'GET' && init.body === undefined),
+      ).toBe(true);
+    },
+  );
 
-  it.each([
-    '',
-    'preview',
-    'Early-access',
-    'launched ',
-  ])('rejects unknown or missing release stage %s', async (releaseStage) => {
-    const fetcher = fixture();
-    await expect(runProductionSmoke({ ...options, releaseStage }, fetcher)).rejects.toThrow(
-      'release stage',
-    );
-    expect(fetcher).not.toHaveBeenCalled();
-  });
+  it.each(['', 'preview', 'Early-access', 'launched '])(
+    'rejects unknown or missing release stage %s',
+    async (releaseStage) => {
+      const fetcher = fixture();
+      await expect(runProductionSmoke({ ...options, releaseStage }, fetcher)).rejects.toThrow(
+        'release stage',
+      );
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([undefined, ''])('requires download URL for launched (%s)', async (downloadUrl) => {
     const fetcher = fixture();

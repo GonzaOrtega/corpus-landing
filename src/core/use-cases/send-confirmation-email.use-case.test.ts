@@ -90,30 +90,30 @@ describe('SendConfirmationEmailUseCase', () => {
     ]);
   });
 
-  it.each([
-    'known_terminal_failure',
-    'ambiguous',
-  ] as const)('exhausts a %s outcome immediately without affecting launch eligibility', async (outcome) => {
-    const { repository, signup, logger, useCase } = await setup(outcome);
+  it.each(['known_terminal_failure', 'ambiguous'] as const)(
+    'exhausts a %s outcome immediately without affecting launch eligibility',
+    async (outcome) => {
+      const { repository, signup, logger, useCase } = await setup(outcome);
 
-    await useCase.execute({ signupId: signup.id, managementToken: 'raw-token' });
-    const saved = await repository.findById(signup.id);
+      await useCase.execute({ signupId: signup.id, managementToken: 'raw-token' });
+      const saved = await repository.findById(signup.id);
 
-    expect(saved?.toProps()).toMatchObject({
-      confirmationStatus: 'exhausted',
-      confirmationAttemptCount: 1,
-      confirmationNextAttemptAt: null,
-    });
-    expect(saved?.isLaunchEligible()).toBe(true);
-    expect(logger.errors).toEqual([
-      {
-        operation: 'send_confirmation',
-        signupId: signup.id,
-        status: 'exhausted',
-        errorCode:
-          outcome === 'ambiguous' ? 'AMBIGUOUS_PROVIDER_OUTCOME' : 'TERMINAL_PROVIDER_FAILURE',
-        attemptCount: 1,
-      },
-    ]);
-  });
+      expect(saved?.toProps()).toMatchObject({
+        confirmationStatus: 'exhausted',
+        confirmationAttemptCount: 1,
+        confirmationNextAttemptAt: null,
+      });
+      expect(saved?.isLaunchEligible()).toBe(true);
+      expect(logger.errors).toEqual([
+        {
+          operation: 'send_confirmation',
+          signupId: signup.id,
+          status: 'exhausted',
+          errorCode:
+            outcome === 'ambiguous' ? 'AMBIGUOUS_PROVIDER_OUTCOME' : 'TERMINAL_PROVIDER_FAILURE',
+          attemptCount: 1,
+        },
+      ]);
+    },
+  );
 });

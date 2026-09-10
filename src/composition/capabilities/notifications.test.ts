@@ -77,18 +77,16 @@ describe('provideNotifications', () => {
     expect(emailSender).toBeInstanceOf(ResendEmailSenderAdapter);
   });
 
-  it.each([
-    'resendApiKey',
-    'emailFrom',
-    'replyTo',
-    'emailPostalAddress',
-  ] as const)('falls back to the fake when %s is absent', (field) => {
-    process.env = { ...developerMachine };
+  it.each(['resendApiKey', 'emailFrom', 'replyTo', 'emailPostalAddress'] as const)(
+    'falls back to the fake when %s is absent',
+    (field) => {
+      process.env = { ...developerMachine };
 
-    const { emailSender } = provideNotifications({ ...configured, [field]: null });
+      const { emailSender } = provideNotifications({ ...configured, [field]: null });
 
-    expect(emailSender).toBeInstanceOf(FakeEmailSenderAdapter);
-  });
+      expect(emailSender).toBeInstanceOf(FakeEmailSenderAdapter);
+    },
+  );
 
   describe('Production', () => {
     it('fails closed rather than degrading to a fake', () => {
