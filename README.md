@@ -112,6 +112,7 @@ connection strings, account identifiers, subscriber data, or raw tokens.
 | `RECAPTCHA_API_KEY` | Secret | Server-only Google Cloud API key for `projects.assessments.create`; restrict it to the reCAPTCHA Enterprise API. |
 | `RECAPTCHA_PROJECT_ID` | Server | Google Cloud project ID that owns the reCAPTCHA key and API key. |
 | `RECAPTCHA_SCORE_THRESHOLD` | Server | Score threshold for Production CAPTCHA verification. |
+| `CORPUS_FAKE_CAPTCHA` | Server | Set to `1` to select the deterministic non-network verifier. Required only where `VERCEL_ENV` is absent (local, container, CI); Vercel Preview and Development do not need it, and Production refuses to start if it is set. |
 | `RESEND_API_KEY` | Secret | Production email-provider credential. |
 | `EMAIL_FROM` | Server | Verified sender identity. |
 | `REPLY_TO` | Server | Reply address for transactional mail. |
@@ -215,8 +216,15 @@ credential boundaries remain visible.
   relies on score-based reCAPTCHA and generic failure responses.
 - Local signup and integration flows require access to the stable Neon
   `development` branch; only email and CAPTCHA have local fake adapters.
-- Fork pull requests cannot receive deployment credentials, so Preview, E2E,
-  and Lighthouse gates fail closed until run from a trusted branch.
+- Fork pull requests cannot receive deployment credentials, so the Preview,
+  E2E, and Lighthouse gates fail closed until run from a trusted branch. E2E
+  needs no deployment credential of its own — it runs against a throwaway
+  Postgres container — but it pulls a private GHCR runner image and is fork-
+  guarded for the same reason.
+- Dependabot pull requests cannot go green unattended either: its `npm_and_yarn`
+  updater shells out to `npm install --package-lock-only`, which never writes
+  `bun.lock`, and a bot-triggered run reads the separate Dependabot secret store.
+  A maintainer adopts each branch with `bun run deps:adopt`.
 - An ambiguous launch delivery older than the provider idempotency window is
   intentionally moved to `manual_review`; the system will not risk an
   automatic resend.
@@ -241,11 +249,26 @@ All notable changes are recorded here in a Keep a Changelog-compatible format.
 
 - Complete public landing, signup, management, email, maintenance, Preview CI,
   production deployment, rollback, architecture, and operator documentation.
+- `bun run deps:adopt`, which syncs `bun.lock` and verifies a proposed
+  dependency branch, since Dependabot cannot produce a mergeable one here.
+- `engines.node` declaring the deployed Node major, with `@types/node` aligned
+  to it so the compiler cannot accept APIs the runtime lacks.
+
+#### Fixed
+
+- The landing shell mounted its motion root twice, duplicating the GSAP load,
+  the scroll and resize listeners, the ScrollTrigger, and the word split.
+- The Preview E2E CAPTCHA assertion referenced an element id the application
+  never used, so it could not fail.
 
 #### Security
 
 - Full-history secret scanning, disposable non-production databases,
   fake non-production email/CAPTCHA adapters, and public-release hardening.
+- The deterministic CAPTCHA verifier is now an explicit opt-in wherever
+  `VERCEL_ENV` is absent, instead of being selected by that absence. An
+  unconfigured non-Vercel host previously served a CAPTCHA-free signup form,
+  which pairs with the real email sender when those variables are present.
 
 ## License
 

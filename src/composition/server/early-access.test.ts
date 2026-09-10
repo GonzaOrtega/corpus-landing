@@ -10,6 +10,10 @@ const baseEnv = {
   CORPUS_RELEASE_STAGE: 'early-access',
   DATABASE_URL: 'postgres://user:pass@host/db',
   DATABASE_URL_UNPOOLED: 'postgres://user:pass@host/db',
+  // No VERCEL_ENV here, which is what a test host looks like. provideExternalApi
+  // refuses to pick the CAPTCHA-free verifier by absence alone, so the opt-in is
+  // explicit — the same signal compose.yaml and playwright.config.ts pass.
+  CORPUS_FAKE_CAPTCHA: '1',
 };
 
 describe('wireEarlyAccess', () => {

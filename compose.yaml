@@ -81,6 +81,11 @@ services:
       # local value silently made the canonical-URL assertions fail here while
       # CI — which has no local env file — passed.
       SITE_URL: http://localhost:3018
+      # There is no VERCEL_ENV in the container, and provideExternalApi refuses to
+      # select the CAPTCHA-free verifier from that absence alone. Spec §34 requires
+      # CI to be fake "by explicit pipeline signal rather than by absent
+      # configuration" — this is that signal.
+      CORPUS_FAKE_CAPTCHA: '1'
       CI: 'true'
     volumes:
       - .:/work
