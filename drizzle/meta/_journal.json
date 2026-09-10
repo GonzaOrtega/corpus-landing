@@ -8,6 +8,13 @@
       "when": 1788744967722,
       "tag": "0000_curly_ares",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789006023968,
+      "tag": "0001_blushing_wasp",
+      "breakpoints": true
     }
   ]
 }

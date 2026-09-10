@@ -1,0 +1,1 @@
+CREATE INDEX "early_access_signups_manage_token_hash_idx" ON "early_access_signups" USING btree ("manage_token_hash") WHERE "early_access_signups"."manage_token_hash" is not null;

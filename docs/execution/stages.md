@@ -235,8 +235,7 @@ the generated one).
 
 ## Local URL
 
-Once P0 makes this a Next.js project, `/home/gonza/github/CLAUDE.md` requires a
-`.ports.json` entry. Next free port at the time of writing: **3018**
-(`https://corpus-landing.lvh.me`). Registering it touches the shared Caddyfile,
-so per that convention it must be confirmed before being applied — it is not
-done yet.
+Once P0 makes this a Next.js project, the local port registry needs an entry
+for it. Assigning a port and wiring the local reverse proxy is a
+per-environment convention, so it must be confirmed before being applied — it
+is not done yet.

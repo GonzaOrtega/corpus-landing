@@ -1,0 +1,24 @@
+# Dependency updates. `github-actions` matters as much as `npm` here: every
+# third-party action in .github/workflows/ is SHA-pinned, so without this
+# nothing would ever move them off a stale commit.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # One PR per ecosystem keeps the required-check budget predictable: every
+      # PR runs preview + e2e + lighthouse against a real Neon branch.
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ['*']
