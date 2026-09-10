@@ -74,6 +74,13 @@ services:
       DATABASE_URL_UNPOOLED: postgres://corpus:corpus@db:5432/corpus_landing
       E2E_NEON_HTTP_ENDPOINT: http://proxy:4444/sql
       PORT: '3018'
+      # Pinned for the same reason as PORT, and it has to be explicit: the
+      # bind mount below carries the whole repo into the container, so Next.js
+      # also loads the developer's local env files here. SITE_URL takes
+      # precedence over the localhost:${PORT} fallback (server-env.ts), so a
+      # local value silently made the canonical-URL assertions fail here while
+      # CI — which has no local env file — passed.
+      SITE_URL: http://localhost:3018
       CI: 'true'
     volumes:
       - .:/work
