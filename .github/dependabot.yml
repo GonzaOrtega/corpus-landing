@@ -1,24 +1,62 @@
 # Dependency updates. `github-actions` matters as much as `npm` here: every
 # third-party action in .github/workflows/ is SHA-pinned, so without this
 # nothing would ever move them off a stale commit.
+#
+# Nothing Dependabot opens here can merge unattended, and that is structural
+# rather than a misconfiguration:
+#
+#   * Dependabot updates package.json but never bun.lock, and all twelve install
+#     sites in this repository are frozen. Every job dies on "lockfile had
+#     changes, but lockfile is frozen" before reaching a gate.
+#   * A Dependabot-triggered run reads secrets from the *Dependabot* store, not
+#     the Actions store (the runner logs "Secret source: Dependabot"), so
+#     NEON_API_KEY and VERCEL_* are empty and `test`, `preview` and
+#     `lighthouse` fail. The fork guards never trip, because the branch does
+#     live in this repository.
+#
+# A maintainer therefore adopts every branch: `bun run deps:adopt <branch>`
+# syncs the lockfile and verifies it, and pushing makes the maintainer the
+# triggering actor so the Actions secrets apply. See CONTRIBUTING.md and
+# docs/operations/preview-ci.md.
+#
+# Because the cost is one adoption per pull request, the configuration below
+# optimises for few PRs rather than granular ones.
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    # One grouped PR is one adoption per week. The previous config grouped only
+    # [minor, patch], so every major arrived as its own PR and multiplied the
+    # manual work.
+    open-pull-requests-limit: 1
     groups:
-      # One PR per ecosystem keeps the required-check budget predictable: every
-      # PR runs preview + e2e + lighthouse against a real Neon branch.
-      npm-minor-and-patch:
-        update-types: [minor, patch]
+      npm:
+        patterns: ['*']
+        update-types: [major, minor, patch]
+    ignore:
+      # A Playwright bump is a coordinated three-step change, not a version
+      # bump: the GHCR runner image has to be republished before the tag can
+      # move, and tests/unit/e2e-runtime-config.test.ts asserts the pin agrees
+      # in docker/e2e.Dockerfile and .github/workflows/preview.yml. Dependabot
+      # cannot republish an image, so proposing this only creates a PR that
+      # cannot go green. See "Upgrading Playwright" in
+      # docs/operations/preview-ci.md.
+      - dependency-name: '@playwright/test'
+      # @types/node majors track Node majors, and this deploys on Vercel's Node
+      # 24.x (declared as engines.node). Typing against a newer major is how a
+      # passing tsc hides a runtime TypeError: the compiler would accept APIs
+      # the runtime does not have. Minors and patches within 24 are wanted.
+      - dependency-name: '@types/node'
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    # No lockfile is involved, so these need only the push-to-adopt half.
+    open-pull-requests-limit: 1
     groups:
       actions:
         patterns: ['*']
