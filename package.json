@@ -2,6 +2,15 @@
   "name": "corpus-landing",
   "version": "0.1.0",
   "private": true,
+  "description": "Public early-access landing page for Corpus, an Android-first language-learning product.",
+  "license": "MIT",
+  "author": "Gonzalo Ortega",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GonzaOrtega/corpus-landing.git"
+  },
+  "homepage": "https://github.com/GonzaOrtega/corpus-landing#readme",
+  "bugs": "https://github.com/GonzaOrtega/corpus-landing/issues",
   "type": "module",
   "scripts": {
     "dev": "next dev",
