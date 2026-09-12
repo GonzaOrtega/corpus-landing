@@ -2,24 +2,13 @@ name: E2E image
 
 on:
   push:
-    # No `branches:` restriction here, deliberately, and only temporarily.
-    # `workflow_dispatch` only becomes available once a workflow file exists
-    # on the default branch, but this workflow is introduced on a feature
-    # branch — restricting `push` to `main` would make the very first publish
-    # unreachable (can't dispatch before merge, can't merge Task 5's job
-    # before the image exists). Pushing this branch's own changes to this
-    # path performs that first publish instead.
-    #
-    # Consequence while unrestricted: the tag below derives only from
-    # package.json (no branch/ref/sha component), so ANY branch that touches
-    # these paths republishes and overwrites the shared `v1.63.0-noble` tag
-    # that Task 5's CI job pulls on every branch, including main.
-    # `concurrency` below only serialises overlapping runs — it does not
-    # prevent a later push from clobbering an earlier image.
-    #
-    # This is the bootstrap's only job: once this branch merges,
-    # `workflow_dispatch` becomes usable from main, and this SHOULD be
-    # narrowed back to `branches: [main]` to close the overwrite window.
+    # `main` only. The tag derives from package.json alone (see the version
+    # step), so it is shared and mutable: letting any branch publish would let
+    # a side branch overwrite the image every other branch's `e2e` job pulls.
+    # `concurrency` only serialises overlapping runs, it does not stop a later
+    # push clobbering an earlier image. Use `workflow_dispatch` to republish
+    # from a branch on purpose.
+    branches: [main]
     paths:
       - docker/e2e.Dockerfile
       - .github/workflows/e2e-image.yml

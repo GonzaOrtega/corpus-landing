@@ -20,13 +20,30 @@ So the gap is real and deliberate, not an oversight:
 
 Two other consequences of being private on GitHub Free:
 
-- **Actions minutes are metered** (2,000/month) instead of unlimited. The five
-  CI workflows — notably `e2e` (Playwright) and `lighthouse` — are the
-  expensive ones. Consider gating them to `pull_request` only, never `push`,
-  and skipping them on draft PRs until the repository is public.
+- **Actions minutes are metered** (2,000/month) instead of unlimited. The
+  required CI/Preview gates — notably `e2e` (Playwright) and `lighthouse` — are
+  the expensive ones. Consider gating them to `pull_request` only, never
+  `push`, and skipping them on draft PRs until the repository is public.
 - **GitHub secret scanning is not available** on private Free repositories.
   This is why `secret-scan.yml` runs gitleaks ourselves rather than relying on
   the platform.
+
+## Required-check contract
+
+Design spec §31 intentionally names these five branch-protection contexts:
+
+```text
+check
+test
+preview
+e2e
+lighthouse
+```
+
+The Preview workflow also exposes `preview-smoke`. It validates assertions that
+only make sense against the deployed Preview artifact, but it is not one of the
+five merge-required contexts in §31. Keep that distinction explicit when
+configuring or auditing branch protection.
 
 ## Working agreement while unprotected
 

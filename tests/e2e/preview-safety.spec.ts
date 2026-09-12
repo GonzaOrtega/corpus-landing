@@ -23,7 +23,12 @@ test('@preview non-production deployments disallow indexing and do not load real
 
   await page.goto('/');
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex, nofollow');
-  await expect(page.locator('#google-recaptcha-v3')).toHaveCount(0);
+  // The id must match recaptcha-bridge.tsx's `scriptId`. It previously read
+  // `#google-recaptcha-v3`, a name the bridge has never used, so the assertion
+  // could not fail and spec §28's "no real CAPTCHA in preview" went unproven.
+  await expect(page.locator('#google-recaptcha-enterprise')).toHaveCount(0);
+  // Independent of the element id: no request may reach Google's script host.
+  await expect(page.locator('script[src*="recaptcha"]')).toHaveCount(0);
 });
 
 test('@preview deployed HTML varies cache entries by Accept', async ({ request }) => {

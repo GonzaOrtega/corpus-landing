@@ -84,11 +84,21 @@ persistence, notification, CAPTCHA, logging, and token capabilities.
 confirmation, and management. `src/composition/server/maintenance.wiring.ts` builds
 the daily retry and anonymization operation from those same core use cases.
 
-In non-production environments, capability providers select deterministic,
-non-network fake email and CAPTCHA adapters. In Production they fail closed
-unless the real provider configuration is present. Database persistence is
-real in every deployed environment; CI and Preview isolate it with disposable
-Neon branches.
+Capability providers select the CAPTCHA adapter by environment: a
+deterministic, non-network verifier outside Production. Email is selected by
+configuration instead — Local, Preview, and Production each send from their own
+sender domain when that environment supplies email settings, and an environment
+supplying none falls back to the non-network fake. Production is resolved first
+and fails closed rather than falling back, so no environment signal can
+silently downgrade a live deployment.
+
+The pipeline is excluded from sending by explicit signal — `CI`,
+`NODE_ENV=test`, or `E2E_NEON_HTTP_ENDPOINT` — rather than by absent
+credentials, because the E2E runtime bind-mounts the repository and loads
+`.env.local`, making a real key readable inside the container.
+
+Database persistence is real in every deployed environment; CI and Preview
+isolate it with disposable Neon branches.
 
 ### Launch operations
 

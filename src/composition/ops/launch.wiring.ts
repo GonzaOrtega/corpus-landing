@@ -19,7 +19,7 @@ export function getLaunchOperations() {
     throw new Error('MANAGEMENT_TOKEN_SECRET is required for a production launch send');
   }
   const { earlyAccessSignupRepository: repository } = providePersistence(serverConfig);
-  const { emailSender: sender } = provideProductionNotifications(serverConfig);
+  const { emailSender: sender } = provideProductionNotifications(serverConfig, logger);
   const tokenDeriver = new HmacManagementTokenDeriver(serverConfig.managementTokenSecret);
 
   return {

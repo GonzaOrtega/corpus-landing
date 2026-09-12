@@ -75,12 +75,23 @@ bun run db:migrate
 bun run dev
 ```
 
-Local, test, and Preview web/maintenance flows select deterministic,
-non-network fake email and CAPTCHA adapters automatically. Those flows do not
-need Resend or Google credentials and cannot send email or call reCAPTCHA. The
-privileged launch operations are the intentional exception: their separate
-operations composition constructs the real email adapter, including when run
-locally, and a dry run sends only to `LAUNCH_DRY_RUN_RECIPIENT` as described in
+Email is real wherever it is configured. Local, Preview, and Production each
+send from their own Resend sender domain using their own environment's
+credentials, so supplying `RESEND_API_KEY`, `EMAIL_FROM`, `REPLY_TO`, and
+`EMAIL_POSTAL_ADDRESS` is what turns delivery on; an environment given none of
+them falls back to the non-network fake instead of failing. Production is the
+exception that fails closed rather than falling back.
+
+The pipeline never sends. Vitest, CI, and the containerized E2E runtime are
+excluded by explicit signal — `CI`, `NODE_ENV=test`, or
+`E2E_NEON_HTTP_ENDPOINT` — rather than by absent credentials, because
+`compose.yaml` bind-mounts the repository and `playwright.config.ts` loads
+`.env.local`, so a real key is readable inside the E2E container.
+
+CAPTCHA is unchanged: a deterministic, non-network verifier everywhere except
+Production. The privileged launch operations remain their own path — a separate
+operations composition that constructs the real email adapter even when run
+locally, whose dry run sends only to `LAUNCH_DRY_RUN_RECIPIENT`, as described in
 [the launch runbook](docs/operations/launch-email.md). Persistence is not faked:
 flows that touch signup data still require an isolated or development database.
 
@@ -101,6 +112,7 @@ connection strings, account identifiers, subscriber data, or raw tokens.
 | `RECAPTCHA_API_KEY` | Secret | Server-only Google Cloud API key for `projects.assessments.create`; restrict it to the reCAPTCHA Enterprise API. |
 | `RECAPTCHA_PROJECT_ID` | Server | Google Cloud project ID that owns the reCAPTCHA key and API key. |
 | `RECAPTCHA_SCORE_THRESHOLD` | Server | Score threshold for Production CAPTCHA verification. |
+| `CORPUS_FAKE_CAPTCHA` | Server | Set to `1` to select the deterministic non-network verifier. Required only where `VERCEL_ENV` is absent (local, container, CI); Vercel Preview and Development do not need it, and Production refuses to start if it is set. |
 | `RESEND_API_KEY` | Secret | Production email-provider credential. |
 | `EMAIL_FROM` | Server | Verified sender identity. |
 | `REPLY_TO` | Server | Reply address for transactional mail. |
@@ -122,10 +134,13 @@ bun run test:e2e   # Containerized Playwright browser flows
 bun run test:all   # Static checks, Vitest, then containerized Playwright
 ```
 
-Pull requests expose six stable required checks: `check`, `test`, `preview`,
-`e2e`, `preview-smoke`, and `lighthouse`. CI and Preview use disposable Neon
-branches; E2E uses ephemeral local Postgres through a Neon HTTP proxy. Email and
-CAPTCHA remain fake. See [Preview CI operations](docs/operations/preview-ci.md).
+Pull requests expose six stable checks: `check`, `test`, `preview`, `e2e`,
+`preview-smoke`, and `lighthouse`. The five merge-required contexts defined by
+the Git model are `check`, `test`, `preview`, `e2e`, and `lighthouse`;
+`preview-smoke` is an additional deployed-Preview validation. CI and Preview
+use disposable Neon branches; E2E uses ephemeral local Postgres through a Neon
+HTTP proxy. Email and CAPTCHA remain fake. See
+[Preview CI operations](docs/operations/preview-ci.md).
 
 ## Database schema and migrations
 
@@ -169,9 +184,10 @@ artifact.
 
 `main` is the only long-lived Git branch. Before public release, repository
 settings must require pull requests, a current branch, resolved conversations,
-the five checks above, squash-only merges, and disabled force-push, deletion,
-and bypass where supported. The checked-in policy is documentation; applying
-or verifying those GitHub settings is a separate privileged operation.
+the five merge-required contexts above, squash-only merges, and disabled
+force-push, deletion, and bypass where supported. The checked-in policy is
+documentation; applying or verifying those GitHub settings is a separate
+privileged operation.
 
 ## Architecture decision records
 
@@ -200,8 +216,15 @@ credential boundaries remain visible.
   relies on score-based reCAPTCHA and generic failure responses.
 - Local signup and integration flows require access to the stable Neon
   `development` branch; only email and CAPTCHA have local fake adapters.
-- Fork pull requests cannot receive deployment credentials, so Preview, E2E,
-  and Lighthouse gates fail closed until run from a trusted branch.
+- Fork pull requests cannot receive deployment credentials, so the Preview,
+  E2E, and Lighthouse gates fail closed until run from a trusted branch. E2E
+  needs no deployment credential of its own — it runs against a throwaway
+  Postgres container — but it pulls a private GHCR runner image and is fork-
+  guarded for the same reason.
+- Dependabot pull requests cannot go green unattended either: its `npm_and_yarn`
+  updater shells out to `npm install --package-lock-only`, which never writes
+  `bun.lock`, and a bot-triggered run reads the separate Dependabot secret store.
+  A maintainer adopts each branch with `bun run deps:adopt`.
 - An ambiguous launch delivery older than the provider idempotency window is
   intentionally moved to `manual_review`; the system will not risk an
   automatic resend.
@@ -226,11 +249,26 @@ All notable changes are recorded here in a Keep a Changelog-compatible format.
 
 - Complete public landing, signup, management, email, maintenance, Preview CI,
   production deployment, rollback, architecture, and operator documentation.
+- `bun run deps:adopt`, which syncs `bun.lock` and verifies a proposed
+  dependency branch, since Dependabot cannot produce a mergeable one here.
+- `engines.node` declaring the deployed Node major, with `@types/node` aligned
+  to it so the compiler cannot accept APIs the runtime lacks.
+
+#### Fixed
+
+- The landing shell mounted its motion root twice, duplicating the GSAP load,
+  the scroll and resize listeners, the ScrollTrigger, and the word split.
+- The Preview E2E CAPTCHA assertion referenced an element id the application
+  never used, so it could not fail.
 
 #### Security
 
 - Full-history secret scanning, disposable non-production databases,
   fake non-production email/CAPTCHA adapters, and public-release hardening.
+- The deterministic CAPTCHA verifier is now an explicit opt-in wherever
+  `VERCEL_ENV` is absent, instead of being selected by that absence. An
+  unconfigured non-Vercel host previously served a CAPTCHA-free signup form,
+  which pairs with the real email sender when those variables are present.
 
 ## License
 

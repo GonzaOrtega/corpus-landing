@@ -7,6 +7,17 @@ import type { EarlyAccessSignupRepository } from '../repositories/early-access-s
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_CONFIRMATION_ATTEMPTS = 3;
 
+/**
+ * Every non-delivery is logged, each with its own code. Only `ambiguous` used
+ * to be, which let a terminal provider rejection — a refused sender identity,
+ * say — mark the row `exhausted` in complete silence.
+ */
+const OUTCOME_ERROR_CODES: Record<Exclude<EmailDeliveryOutcome, 'accepted'>, string> = {
+  ambiguous: 'AMBIGUOUS_PROVIDER_OUTCOME',
+  known_retryable_failure: 'RETRYABLE_PROVIDER_FAILURE',
+  known_terminal_failure: 'TERMINAL_PROVIDER_FAILURE',
+};
+
 export interface ConfirmationEmailConfig {
   siteUrl: URL;
 }
@@ -44,12 +55,12 @@ export class SendConfirmationEmailUseCase {
 
     const updated = this.applyOutcome(signup, outcome, now, attemptCount);
     await this.repository.save(updated);
-    if (outcome === 'ambiguous') {
-      this.logger.error('Confirmation provider outcome was ambiguous', {
+    if (outcome !== 'accepted') {
+      this.logger.error('Confirmation email was not delivered', {
         operation: 'send_confirmation',
         signupId: signup.id,
-        status: 'exhausted',
-        errorCode: 'AMBIGUOUS_PROVIDER_OUTCOME',
+        status: updated.toProps().confirmationStatus,
+        errorCode: OUTCOME_ERROR_CODES[outcome],
         attemptCount,
       });
     }

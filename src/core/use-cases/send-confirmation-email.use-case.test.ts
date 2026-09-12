@@ -69,7 +69,7 @@ describe('SendConfirmationEmailUseCase', () => {
   });
 
   it('schedules a known retryable failure for the next daily opportunity', async () => {
-    const { repository, signup, useCase } = await setup('known_retryable_failure');
+    const { repository, signup, logger, useCase } = await setup('known_retryable_failure');
 
     await useCase.execute({ signupId: signup.id, managementToken: 'raw-token' });
 
@@ -79,33 +79,41 @@ describe('SendConfirmationEmailUseCase', () => {
       confirmationNextAttemptAt: new Date('2026-09-08T12:00:00.000Z'),
       confirmationSentAt: null,
     });
+    expect(logger.errors).toEqual([
+      {
+        operation: 'send_confirmation',
+        signupId: signup.id,
+        status: 'failed',
+        errorCode: 'RETRYABLE_PROVIDER_FAILURE',
+        attemptCount: 1,
+      },
+    ]);
   });
 
-  it.each([
-    'known_terminal_failure',
-    'ambiguous',
-  ] as const)('exhausts a %s outcome immediately without affecting launch eligibility', async (outcome) => {
-    const { repository, signup, logger, useCase } = await setup(outcome);
+  it.each(['known_terminal_failure', 'ambiguous'] as const)(
+    'exhausts a %s outcome immediately without affecting launch eligibility',
+    async (outcome) => {
+      const { repository, signup, logger, useCase } = await setup(outcome);
 
-    await useCase.execute({ signupId: signup.id, managementToken: 'raw-token' });
-    const saved = await repository.findById(signup.id);
+      await useCase.execute({ signupId: signup.id, managementToken: 'raw-token' });
+      const saved = await repository.findById(signup.id);
 
-    expect(saved?.toProps()).toMatchObject({
-      confirmationStatus: 'exhausted',
-      confirmationAttemptCount: 1,
-      confirmationNextAttemptAt: null,
-    });
-    expect(saved?.isLaunchEligible()).toBe(true);
-    if (outcome === 'ambiguous') {
+      expect(saved?.toProps()).toMatchObject({
+        confirmationStatus: 'exhausted',
+        confirmationAttemptCount: 1,
+        confirmationNextAttemptAt: null,
+      });
+      expect(saved?.isLaunchEligible()).toBe(true);
       expect(logger.errors).toEqual([
         {
           operation: 'send_confirmation',
           signupId: signup.id,
           status: 'exhausted',
-          errorCode: 'AMBIGUOUS_PROVIDER_OUTCOME',
+          errorCode:
+            outcome === 'ambiguous' ? 'AMBIGUOUS_PROVIDER_OUTCOME' : 'TERMINAL_PROVIDER_FAILURE',
           attemptCount: 1,
         },
       ]);
-    }
-  });
+    },
+  );
 });

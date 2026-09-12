@@ -24,24 +24,27 @@ describe('authoritative email presentation', () => {
           downloadUrl: new URL('https://downloads.corpus.example/v1'),
         }),
     ],
-  ] as const)('%s preserves the masthead, spine, palette, and dark-mode hooks', async (_, email) => {
-    const html = await render(email());
+  ] as const)(
+    '%s preserves the masthead, spine, palette, and dark-mode hooks',
+    async (_, email) => {
+      const html = await render(email());
 
-    expect(html).toMatch(/class="[^"]*masthead[^"]*"/);
-    expect(html).toMatch(/<table[^>]*class="bg"[^>]*background-color:#F1EFE9/);
-    expect(html).toMatch(/<td[^>]*class="spine"[^>]*border-left:1px solid #D1CFC9/);
-    expect(html).toMatch(/<h1[^>]*class="[^"]*ink[^"]*"/);
-    expect(html).toMatch(/<table[^>]*class="panel"[^>]*background-color:#FBFAF6/);
-    expect(html).toContain('Newsreader');
-    expect(html).toContain('Karla');
-    expect(html).toContain('name="color-scheme" content="light dark"');
-    expect(html).toContain('@media (prefers-color-scheme: dark)');
-    expect(html).toMatch(/\.ink\s*\{\s*color:\s*#E7E4DD\s*!important/);
-    expect(html).toMatch(/\.panel\s*\{\s*background-color:\s*#141419\s*!important/);
-    expect(html).toMatch(/\.muted\s*\{\s*color:\s*#9A968D\s*!important/);
-    expect(html).toContain(common.managementUrl);
-    expect(html).toContain(common.postalAddress);
-  });
+      expect(html).toMatch(/class="[^"]*masthead[^"]*"/);
+      expect(html).toMatch(/<table[^>]*class="bg"[^>]*background-color:#F1EFE9/);
+      expect(html).toMatch(/<td[^>]*class="spine"[^>]*border-left:1px solid #D1CFC9/);
+      expect(html).toMatch(/<h1[^>]*class="[^"]*ink[^"]*"/);
+      expect(html).toMatch(/<table[^>]*class="panel"[^>]*background-color:#FBFAF6/);
+      expect(html).toContain('Newsreader');
+      expect(html).toContain('Karla');
+      expect(html).toContain('name="color-scheme" content="light dark"');
+      expect(html).toContain('@media (prefers-color-scheme: dark)');
+      expect(html).toMatch(/\.ink\s*\{\s*color:\s*#E7E4DD\s*!important/);
+      expect(html).toMatch(/\.panel\s*\{\s*background-color:\s*#141419\s*!important/);
+      expect(html).toMatch(/\.muted\s*\{\s*color:\s*#9A968D\s*!important/);
+      expect(html).toContain(common.managementUrl);
+      expect(html).toContain(common.postalAddress);
+    },
+  );
 
   it('keeps the word, encounter history, and three learning steps in HTML and text', async () => {
     const html = (await render(ConfirmationEmail(common))).replaceAll('&#x27;', "'");

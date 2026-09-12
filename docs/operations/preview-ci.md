@@ -74,9 +74,29 @@ secrets are read at runtime by the composition root, never through
 
 Enable Vercel's automatically exposed system environment variables. The
 deployed Preview receives `VERCEL_ENV=preview`; the application consequently
-uses its fake email and CAPTCHA adapters and serves noindex robots/sitemap
-metadata. Do not set `VERCEL_ENV` manually, and do not supply real Resend or
-reCAPTCHA credentials to Preview.
+uses its fake CAPTCHA adapter and serves noindex robots/sitemap metadata. Do
+not set `VERCEL_ENV` manually, and do not supply real reCAPTCHA credentials to
+Preview.
+
+Do **not** set `CORPUS_FAKE_CAPTCHA` in Vercel. `VERCEL_ENV=preview` already
+selects the fake, and Production refuses to start when the flag is present. The
+flag exists only for hosts where `VERCEL_ENV` is absent — the E2E container and
+the local Playwright run set it explicitly — because selecting a CAPTCHA-free
+signup form from that absence alone would leave any non-Vercel deployment open,
+paired with the real Resend sender whenever those variables are configured.
+
+Preview email is deliberately different. Supply Preview-scoped
+`RESEND_API_KEY`, `EMAIL_FROM`, `REPLY_TO`, and `EMAIL_POSTAL_ADDRESS` for a
+sender domain reserved for Preview, never the Production one, and Preview will
+send real confirmation mail from it. Omit them and Preview falls back to the
+non-network fake. Preview databases are disposable branches of `development`,
+so the recipients are that branch's rows.
+
+This does not extend to CI. The `test` and `e2e` jobs never send, whatever
+credentials the checkout carries: `src/composition/capabilities/notifications.ts`
+excludes them by explicit signal (`CI`, `NODE_ENV=test`, or
+`E2E_NEON_HTTP_ENDPOINT`) rather than by absent configuration, because
+`compose.yaml` bind-mounts the repository into the E2E container.
 
 ## Database lifecycle and isolation
 
@@ -104,9 +124,22 @@ Preview connects to Neon `main` or production resources.
 ## Forks and browser gates
 
 For same-repository PRs, GitHub supplies the scoped Vercel and Neon secrets and
-the preview pipeline runs normally. Fork PRs retain all six check names, but
-deployment-dependent checks and E2E fail closed. This preserves the security
-boundary without reporting successful validation that did not run.
+the preview pipeline runs normally - with one exception. A Dependabot-triggered
+run reads from the *Dependabot* secret store rather than the Actions store, so
+those secrets are empty even though the branch is in this repository and no fork
+guard trips; see [Dependency updates](#dependency-updates). Fork PRs retain all
+six check names, but deployment-dependent checks and E2E fail closed. This
+preserves the security boundary without reporting successful validation that did
+not run.
+
+`e2e` is the one gate that needs no deployment credential — its database is a
+throwaway Postgres container, not Neon — so it fails closed by an explicit fork
+guard rather than by absent secrets. It does need read access to the shared
+runner image, and the `corpus-landing-e2e` GHCR package is **deliberately
+private** even though the repository is public: `e2e` already refuses to run for
+fork PRs, so publishing the image would grant access without enabling anything.
+The image itself holds no secrets, so it can be published later if outside
+contributors ever need to pull the same runner locally.
 
 `preview-smoke` and Lighthouse depend on the successful `preview` job, validate
 its HTTPS URL output, and point their runners at that Preview. E2E is independent
@@ -125,6 +158,73 @@ a local non-production build with the Preview policy, also set
 index/follow metadata and an allow-all robots policy with the production
 sitemap before promotion; verify indexing headers on the public domain after
 promotion as described in [production-deploy.md](production-deploy.md).
+
+## Dependency updates
+
+Dependabot proposes; a maintainer adopts. Neither half is optional, for two
+independent reasons:
+
+| Blocker | Cause | Fix |
+| --- | --- | --- |
+| Frozen install fails | Dependabot updates `package.json` and never `bun.lock`. Twelve install sites are frozen, including `vercel.json`'s `installCommand`, which `vercel build` runs twice per pipeline. | `bun install` on the branch, committed. |
+| Credentials are empty | A Dependabot-triggered run reads the *Dependabot* secret store, not the Actions store. The runner logs `Secret source: Dependabot`. | A maintainer pushes the branch and becomes the triggering actor. |
+
+Measured on the first Dependabot run in this repository: all six gated checks
+failed at `bun install --frozen-lockfile` before reaching a gate, and
+`gitleaks` - which needs no secrets - was the only green check. `preview` never
+even reached the step that reads `VERCEL_*`, so the frozen-install blocker fully
+masks the secret blocker. After adoption all seven checks passed.
+
+The lockfile half is permanent, not a bug to wait out. The Dependabot update job
+log shows the `npm_and_yarn` ecosystem shelling out to npm:
+
+```text
+npm install <pkg>@<version> --package-lock-only --dry-run=true --ignore-scripts
+```
+
+`--package-lock-only` writes `package-lock.json`, and this repository has only
+`bun.lock`, so nothing is written. Regenerating or normalising `bun.lock` does
+not change this, and no Dependabot setting exists to make npm emit a bun
+lockfile.
+
+To adopt a branch:
+
+```bash
+bun run deps:adopt dependabot/npm_and_yarn/<branch-name>
+git push origin adopt/dependabot/npm_and_yarn/<branch-name>:dependabot/npm_and_yarn/<branch-name>
+```
+
+`deps:adopt` refuses a dirty tree, syncs the lockfile, re-runs a frozen install
+to prove it settled, then runs `check` and `test`. Pass `--push` to have it push
+for you. If a linter minor reformats files, run `bun run format` and include the
+result in the same commit so no intermediate commit leaves `check` red.
+
+Pushing to a Dependabot branch permanently stops Dependabot from managing that
+pull request. That is the intent, not a side effect.
+
+`.github/dependabot.yml` groups every npm update into a single weekly pull
+request for this reason: the cost is one adoption per PR, not per dependency.
+
+### Upgrading Playwright
+
+`@playwright/test` is on Dependabot's ignore list because its version is
+load-bearing in three places that must agree, and
+`tests/unit/e2e-runtime-config.test.ts` asserts they do. Because that test
+forces all three to move in one commit, the branch's `e2e` job will fail until
+the image exists - publish it before re-running the job:
+
+1. `bun add -d @playwright/test@<version>`, which also syncs `bun.lock`.
+2. In the same commit, move the tag in **both** `docker/e2e.Dockerfile` (the
+   upstream `mcr.microsoft.com/playwright` base) and `.github/workflows/preview.yml`
+   (the published `corpus-landing-e2e` image).
+3. Push the branch, then run the `E2E image` workflow via `workflow_dispatch`
+   **targeting that branch**. It derives the tag from the branch's
+   `package.json` and builds from the branch's Dockerfile. On `push` it is
+   restricted to `main`, because the tag is shared and mutable.
+4. Re-run the `e2e` job, which can now pull the image it references.
+
+Publishing from a side branch overwrites the tag every other branch pulls, so do
+it deliberately and land the change on `main` promptly.
 
 ## Operating notes
 

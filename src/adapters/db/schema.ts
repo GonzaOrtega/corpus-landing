@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  index,
+  integer,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 /**
  * One table, per spec §9.1. No generic overall `status` column — current
@@ -62,5 +71,13 @@ export const earlyAccessSignups = pgTable(
     uniqueIndex('early_access_signups_email_normalized_active_idx')
       .on(table.emailNormalized)
       .where(sql`${table.anonymizedAt} is null and ${table.emailNormalized} is not null`),
+    // Management lookup by token hash is reachable unauthenticated, so without
+    // this it is a sequential scan per call. Partial because `eq` never matches
+    // NULL: the excluded rows are exactly the rows the query cannot return.
+    // Not unique — 256-bit token randomness already guarantees distinctness,
+    // and a unique index would only add an insert failure mode.
+    index('early_access_signups_manage_token_hash_idx')
+      .on(table.manageTokenHash)
+      .where(sql`${table.manageTokenHash} is not null`),
   ],
 );
