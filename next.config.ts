@@ -15,6 +15,15 @@ const RECAPTCHA_FRAME_ORIGINS = [
 ];
 const RECAPTCHA_CONNECT_ORIGINS = ['https://www.google.com/recaptcha/'];
 
+const AGENT_DISCOVERY_ROUTES = [
+  ['/', '/index.md'],
+  ['/about', '/about.md'],
+  ['/contact', '/contact.md'],
+  ['/developers', '/developers.md'],
+  ['/privacy', '/privacy.md'],
+  ['/terms', '/terms.md'],
+] as const;
+
 /**
  * Spec §22. No request nonces in v1 — that would force dynamic rendering of
  * the static-first landing. Dev only relaxes what Next.js tooling actually
@@ -80,6 +89,15 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      ...AGENT_DISCOVERY_ROUTES.map(([source, markdownPath]) => ({
+        source,
+        headers: [
+          {
+            key: 'Link',
+            value: `<${markdownPath}>; rel="alternate"; type="text/markdown", </llms.txt>; rel="describedby"`,
+          },
+        ],
+      })),
     ];
   },
 };

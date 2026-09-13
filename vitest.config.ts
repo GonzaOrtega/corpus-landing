@@ -1,8 +1,15 @@
+import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   plugins: [react()],
+  // Vitest does not read tsconfig `paths`, so any module reached through the
+  // `@/` alias was unresolvable under test. Mirroring the alias here keeps unit
+  // tests importable regardless of which import style a module uses.
+  resolve: {
+    alias: { '@': fileURLToPath(new URL('.', import.meta.url)).replace(/\/$/, '') },
+  },
   test: {
     environment: 'node',
     include: [

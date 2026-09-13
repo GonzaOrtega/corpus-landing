@@ -1,11 +1,15 @@
 import type { Metadata } from 'next';
-import { LegalPage, privacySections } from '@/src/components/legal-page';
+import { LegalPage } from '@/src/components/legal-page';
 import { loadSiteConfig } from '@/src/config/server-env';
+import { privacySections } from '@/src/features/legal/content';
 
 export const metadata: Metadata = {
   title: 'Privacy',
   description: 'How Corpus handles early-access information.',
-  alternates: { canonical: '/privacy' },
+  alternates: {
+    canonical: '/privacy',
+    types: { 'text/markdown': '/privacy.md' },
+  },
 };
 
 export default function PrivacyPage() {

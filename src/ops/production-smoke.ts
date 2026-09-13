@@ -1,3 +1,5 @@
+import { runAgentReadinessSmoke } from './agent-readiness-smoke';
+
 export interface SmokeOptions {
   deploymentUrl: string;
   siteUrl: string;
@@ -86,7 +88,7 @@ function securityHeaders(headers: Headers): void {
   requireCheck(!csp.includes('unsafe-eval') && !csp.includes('*'), 'Unsafe production CSP');
 }
 
-/** Four GETs only. No cookies, Authorization, signup actions or subscriber tokens. */
+/** Safe GETs only. No cookies, Authorization, signup actions or subscriber tokens. */
 export async function runProductionSmoke(options: SmokeOptions, fetcher: Fetch = fetch) {
   validateSmokeOptions(options);
   const origin = new URL(options.deploymentUrl).origin;
@@ -226,6 +228,9 @@ export async function runProductionSmoke(options: SmokeOptions, fetcher: Fetch =
   // Never add a cron bearer token: an authorized GET would mutate state/send mail.
   const boundary = await get('/api/cron/maintenance', 401);
   requireCheck(boundary.body === 'Unauthorized', 'Maintenance authorization boundary is unhealthy');
+
+  await runAgentReadinessSmoke({ origin, siteUrl: options.siteUrl, headers, home }, fetcher);
+
   return {
     checks: [
       'homepage',
@@ -234,6 +239,7 @@ export async function runProductionSmoke(options: SmokeOptions, fetcher: Fetch =
       'static-css',
       'indexing',
       'server-boundary',
+      'agent-readiness',
     ],
   };
 }
