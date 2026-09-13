@@ -1,6 +1,6 @@
 version: 1
 pr: 17
-status: awaiting-triage
+status: fixing
 rounds:
   - "n": 1
     head: 1e6706793be9e08463de94c2cd114e5354628c45
@@ -34,7 +34,7 @@ findings:
         association: null
         url: null
     verdict: fix
-    verdict_by: auto
+    verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
       []
@@ -59,7 +59,7 @@ findings:
         association: null
         url: null
     verdict: later
-    verdict_by: auto
+    verdict_by: human
     reason: Below the severity floor (important)
     fix_commits:
       []
