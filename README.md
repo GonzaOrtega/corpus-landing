@@ -212,8 +212,9 @@ credential boundaries remain visible.
 
 ## Known limitations
 
-- There is no dedicated rate-limit service in v1; Production abuse protection
-  relies on score-based reCAPTCHA and generic failure responses.
+- Production early-access Server Actions are rate-limited at Vercel's Firewall;
+  see [abuse-protection.md](docs/operations/abuse-protection.md) for the
+  scoped rule, rollout state, and verification procedure.
 - Local signup and integration flows require access to the stable Neon
   `development` branch; only email and CAPTCHA have local fake adapters.
 - Fork pull requests cannot receive deployment credentials, so the Preview,

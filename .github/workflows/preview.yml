@@ -291,6 +291,15 @@ jobs:
           LHCI_URL: ${{ needs.preview.outputs.url }}
         run: |
           case "$LHCI_URL" in https://*) ;; *) exit 1 ;; esac
+      - name: Warm Preview deployment
+        if: ${{ needs.preview.result == 'success' }}
+        env:
+          LHCI_URL: ${{ needs.preview.outputs.url }}
+        run: |
+          for request in 1 2; do
+            curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+              --connect-timeout 10 --max-time 30 --output /dev/null "$LHCI_URL"
+          done
       - name: Run Lighthouse CI against Preview
         if: ${{ needs.preview.result == 'success' }}
         env:

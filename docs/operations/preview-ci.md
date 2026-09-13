@@ -159,6 +159,12 @@ index/follow metadata and an allow-all robots policy with the production
 sitemap before promotion; verify indexing headers on the public domain after
 promotion as described in [production-deploy.md](production-deploy.md).
 
+Before collecting Lighthouse samples, the job makes two successful, retrying
+GET requests to the same verified Preview URL. This warms the fresh deployment
+without changing the three-run collection, optimistic aggregation, or category
+thresholds. A warm-up failure fails the required `lighthouse` job rather than
+allowing Lighthouse to report a score for an unavailable deployment.
+
 ## Dependency updates
 
 Dependabot proposes; a maintainer adopts. Neither half is optional, for two
