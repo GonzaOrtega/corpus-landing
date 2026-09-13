@@ -32,6 +32,11 @@ just the `@preview`-tagged tests — the ones whose assertions are meaningless
 anywhere else, such as the deployed robots policy. Keep that set small; add a
 test there only when a local build genuinely cannot answer the question.
 
+Before Lighthouse measures a Preview, its job makes two authenticated warm-up
+requests. They use the same Vercel Automation Bypass secret and bypass-cookie
+header as Lighthouse so Vercel Authentication cannot turn either request into a
+login page.
+
 The `e2e` job waits for its local proxy and applies migrations through that
 proxy before Playwright starts. It runs the E2E migration support module, not
 `db:migrate`, so the migration follows the same Neon HTTP driver path as the

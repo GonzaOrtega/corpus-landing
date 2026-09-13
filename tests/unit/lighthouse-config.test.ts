@@ -50,9 +50,14 @@ describe('Lighthouse deployment policy', () => {
 
     expect(warmIndex).toBe(urlCheckIndex + 1);
     expect(lighthouseIndex).toBe(warmIndex + 1);
-    expect(steps[warmIndex].env).toEqual({ LHCI_URL: `\${{ needs.preview.outputs.url }}` });
+    expect(steps[warmIndex].env).toEqual({
+      LHCI_URL: `\${{ needs.preview.outputs.url }}`,
+      VERCEL_AUTOMATION_BYPASS_SECRET: `\${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}`,
+    });
     expect(steps[warmIndex].run).toContain('for request in 1 2');
     expect(steps[warmIndex].run).toContain('curl --fail');
+    expect(steps[warmIndex].run).toContain('x-vercel-protection-bypass');
+    expect(steps[warmIndex].run).toContain('x-vercel-set-bypass-cookie');
     expect(steps[warmIndex].run).toContain('"$LHCI_URL"');
   });
 
