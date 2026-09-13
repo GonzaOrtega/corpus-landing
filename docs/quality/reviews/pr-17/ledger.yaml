@@ -1,6 +1,6 @@
 version: 1
 pr: 17
-status: fixing
+status: awaiting-triage
 rounds:
   - "n": 1
     head: 1e6706793be9e08463de94c2cd114e5354628c45
@@ -12,6 +12,13 @@ rounds:
     findings:
       - R-01
       - R-02
+  - "n": 2
+    head: d9b249e6b90d7fc612880d2808c3d0e24a0025db
+    scope: fix-diff
+    reviewers:
+      []
+    findings:
+      []
 findings:
   - id: R-01
     round: 1
@@ -71,4 +78,6 @@ waivers:
 eli5:
   - round: 1
     text: "We added a little warm-up knock before Lighthouse visits the new Preview, but that knock does not have the key needed to enter a protected Preview. The real Lighthouse visitor has that key, so the fix is to give the warm-up visitor the same key. One smaller note says our test should also check the retry settings. Please decide whether to fix the blocked warm-up now; the retry-test improvement can stay for later.\n"
+  - round: 2
+    text: "The warm-up visitor now carries the same key as the Lighthouse visitor, so both can enter a protected Preview. Three reviewers checked that small change and did not find a new important problem.\n"
 comment_id: 5649881459
