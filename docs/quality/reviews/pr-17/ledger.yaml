@@ -105,7 +105,22 @@ findings:
       - c97e5a9e09f9df95907a8758f2d030cc899f99e0
     issue: null
 evidence:
-  []
+  - done: static-check
+    sha: 93106c1a79f983bc17918401657e95d2711d3a88
+    result: pass
+    note: bun run check passed from /tmp/pr17-check.2JMqSG
+  - done: unit-tests
+    sha: 93106c1a79f983bc17918401657e95d2711d3a88
+    result: pass
+    note: "bun run test: 296 passed"
+  - done: ui-e2e
+    sha: 93106c1a79f983bc17918401657e95d2711d3a88
+    result: pass
+    note: "bun run test:e2e: 66 passed; 1 Chromium test passed on configured retry"
+  - done: waf-observation-rule
+    sha: 93106c1a79f983bc17918401657e95d2711d3a88
+    result: pass
+    note: Enabled production POST IP fixed-window 10/60s rule remains log-only
 waivers:
   - at: 2026-09-13T03:05:09.724Z
     what: round-cap
