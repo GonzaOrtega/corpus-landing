@@ -1,6 +1,6 @@
 version: 1
 pr: 17
-status: frozen
+status: fixing
 rounds:
   - "n": 1
     head: 1e6706793be9e08463de94c2cd114e5354628c45
@@ -74,7 +74,9 @@ findings:
 evidence:
   []
 waivers:
-  []
+  - at: 2026-09-13T03:05:09.724Z
+    what: round-cap
+    reason: fix Vercel bypass-cookie redirect loop
 eli5:
   - round: 1
     text: "We added a little warm-up knock before Lighthouse visits the new Preview, but that knock does not have the key needed to enter a protected Preview. The real Lighthouse visitor has that key, so the fix is to give the warm-up visitor the same key. One smaller note says our test should also check the retry settings. Please decide whether to fix the blocked warm-up now; the retry-test improvement can stay for later.\n"
