@@ -1,6 +1,6 @@
 version: 1
 pr: 17
-status: fixing
+status: frozen
 rounds:
   - "n": 1
     head: 1e6706793be9e08463de94c2cd114e5354628c45
@@ -102,7 +102,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
-      []
+      - c97e5a9e09f9df95907a8758f2d030cc899f99e0
     issue: null
 evidence:
   []
