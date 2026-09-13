@@ -1,0 +1,12 @@
+[
+  {
+    "file": "tests/unit/lighthouse-config.test.ts",
+    "line": 41,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The workflow contract test does not verify the retry settings that make Preview warm-up resilient to a briefly unavailable deployment.",
+    "requires": [],
+    "repro": "test",
+    "evidence": "The test checks the loop, failure flag, and URL, but not the added retry flags, so removing those flags would still pass while changing the documented warm-up behavior."
+  }
+]

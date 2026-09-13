@@ -1,0 +1,12 @@
+[
+  {
+    "file": ".github/workflows/preview.yml",
+    "line": 301,
+    "category": "correctness",
+    "severity": "important",
+    "summary": "The new Preview warm-up request cannot access protected Preview deployments, so it can fail the required Lighthouse job before Lighthouse runs.",
+    "requires": ["The Vercel Preview deployment is protected by Vercel Authentication, as the Lighthouse configuration supports."],
+    "repro": "test",
+    "evidence": "The Lighthouse step receives VERCEL_AUTOMATION_BYPASS_SECRET and configures the x-vercel-protection-bypass header, but the new curl step receives neither the secret nor that header; curl --fail then treats the protection response as a failed warm-up."
+  }
+]

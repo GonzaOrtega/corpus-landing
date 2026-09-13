@@ -1,14 +1,74 @@
 version: 1
 pr: 17
-status: intake
+status: awaiting-triage
 rounds:
-  []
+  - "n": 1
+    head: 1e6706793be9e08463de94c2cd114e5354628c45
+    scope: full
+    reviewers:
+      - pr-review-toolkit:code-reviewer
+      - pr-review-toolkit:silent-failure-hunter
+      - pr-review-toolkit:pr-test-analyzer
+    findings:
+      - R-01
+      - R-02
 findings:
-  []
+  - id: R-01
+    round: 1
+    fingerprint: 52b3a297bb8b1205
+    file: .github/workflows/preview.yml
+    line: 301
+    category: correctness
+    severity: important
+    summary: "The new Preview warm-up request cannot access protected Preview deployments, so it can fail the required Lighthouse job before Lighthouse runs."
+    requires:
+      - "The Vercel Preview deployment is protected by Vercel Authentication, as the Lighthouse configuration supports."
+      - The Vercel Preview deployment is protected by Vercel Authentication.
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-02
+    round: 1
+    fingerprint: ef56941c95d2702c
+    file: tests/unit/lighthouse-config.test.ts
+    line: 41
+    category: test-gap
+    severity: minor
+    summary: The workflow contract test does not verify the retry settings that make Preview warm-up resilient to a briefly unavailable deployment.
+    requires:
+      []
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
 evidence:
   []
 waivers:
   []
 eli5:
-  []
-comment_id: null
+  - round: 1
+    text: "We added a little warm-up knock before Lighthouse visits the new Preview, but that knock does not have the key needed to enter a protected Preview. The real Lighthouse visitor has that key, so the fix is to give the warm-up visitor the same key. One smaller note says our test should also check the retry settings. Please decide whether to fix the blocked warm-up now; the retry-test improvement can stay for later.\n"
+comment_id: 5649881459
