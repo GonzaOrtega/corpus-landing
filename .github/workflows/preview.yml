@@ -298,7 +298,7 @@ jobs:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           for request in 1 2; do
-            curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+            curl --fail --silent --show-error --retry 3 --retry-all-errors \
               --connect-timeout 10 --max-time 30 --output /dev/null \
               --header "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" "$LHCI_URL"
           done

@@ -58,6 +58,7 @@ describe('Lighthouse deployment policy', () => {
     expect(steps[warmIndex].run).toContain('curl --fail');
     expect(steps[warmIndex].run).toContain('x-vercel-protection-bypass');
     expect(steps[warmIndex].run).not.toContain('x-vercel-set-bypass-cookie');
+    expect(steps[warmIndex].run).not.toContain('--location');
     expect(steps[warmIndex].run).toContain('"$LHCI_URL"');
   });
 

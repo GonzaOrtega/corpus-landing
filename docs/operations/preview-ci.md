@@ -37,7 +37,8 @@ requests. They use Vercel Automation Bypass so Vercel Authentication cannot
 turn either request into a login page. The direct probes do not request a bypass
 cookie: Vercel creates that cookie through a redirect, which would loop when
 `curl` follows redirects. Lighthouse retains its cookie header for its separate
-follow-up resource requests.
+follow-up resource requests. The warm-up request also does not follow redirects,
+so a Preview response cannot forward the bypass secret to another host.
 
 The `e2e` job waits for its local proxy and applies migrations through that
 proxy before Playwright starts. It runs the E2E migration support module, not
