@@ -1,0 +1,296 @@
+diff --git a/.github/workflows/preview.yml b/.github/workflows/preview.yml
+index d8fa4a8..3283920 100644
+--- a/.github/workflows/preview.yml
++++ b/.github/workflows/preview.yml
+@@ -291,6 +291,15 @@ jobs:
+           LHCI_URL: ${{ needs.preview.outputs.url }}
+         run: |
+           case "$LHCI_URL" in https://*) ;; *) exit 1 ;; esac
++      - name: Warm Preview deployment
++        if: ${{ needs.preview.result == 'success' }}
++        env:
++          LHCI_URL: ${{ needs.preview.outputs.url }}
++        run: |
++          for request in 1 2; do
++            curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
++              --connect-timeout 10 --max-time 30 --output /dev/null "$LHCI_URL"
++          done
+       - name: Run Lighthouse CI against Preview
+         if: ${{ needs.preview.result == 'success' }}
+         env:
+diff --git a/.gitignore b/.gitignore
+index 8b34484..4a1a21c 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -63,3 +63,4 @@ Thumbs.db
+ npm-debug.log*
+ yarn-debug.log*
+ yarn-error.log*
++.env*
+diff --git a/README.md b/README.md
+index 125d48e..b5c728f 100644
+--- a/README.md
++++ b/README.md
+@@ -212,8 +212,9 @@ credential boundaries remain visible.
+ 
+ ## Known limitations
+ 
+-- There is no dedicated rate-limit service in v1; Production abuse protection
+-  relies on score-based reCAPTCHA and generic failure responses.
++- Production early-access Server Actions are rate-limited at Vercel's Firewall;
++  see [abuse-protection.md](docs/operations/abuse-protection.md) for the
++  scoped rule, rollout state, and verification procedure.
+ - Local signup and integration flows require access to the stable Neon
+   `development` branch; only email and CAPTCHA have local fake adapters.
+ - Fork pull requests cannot receive deployment credentials, so the Preview,
+diff --git a/docs/operations/abuse-protection.md b/docs/operations/abuse-protection.md
+new file mode 100644
+index 0000000..298ce79
+--- /dev/null
++++ b/docs/operations/abuse-protection.md
+@@ -0,0 +1,47 @@
++# Production abuse protection
++
++## Early-access Server Action rate limit
++
++Production uses the Vercel Firewall rule `early-access-server-actions` to stop
++excess traffic before it can invoke reCAPTCHA, the database, or a Server Action.
++It is configured in the Vercel project dashboard because repository
++configuration supports deny/challenge rules but not rate-limit actions.
++
++| Setting | Value |
++| --- | --- |
++| Production host | `trycorpus.app` |
++| Methods | `POST` |
++| Paths | `/`, `/early-access/manage` |
++| Counter key | IP |
++| Algorithm | Fixed window |
++| Limit | 10 requests per 60 seconds per region |
++| Initial follow-up | Log for seven days |
++| Enforcement follow-up | Default `429` response after the observation period |
++
++The two paths cover signup, management-token resolution, and unsubscribe. They
++do not cover the GET-only maintenance route or Preview deployments. The limit is
++per region, so it constrains ordinary abuse and cost rather than acting as a
++globally absolute cap.
++
++## Current observation
++
++The log-only rule was published on 2026-09-13 UTC. Eleven empty POST requests
++to `/early-access/manage` each returned `405 Method Not Allowed`, proving that
++they did not invoke a Server Action. Firewall overview recorded the resulting
++threshold crossing as one log event for `early-access-server-actions`.
++
++## Rollout and verification
++
++1. Publish the rule with the `Log` follow-up action.
++2. Send eleven harmless POST requests to `/early-access/manage`; confirm the
++   Firewall records the matched requests and that no signup or management data
++   changes.
++3. Observe production traffic for seven days. Investigate any legitimate
++   shared-IP traffic that reaches the threshold.
++4. Change the follow-up action to the default `429` response and repeat the
++   harmless request check. Record the result in GitHub issue #10 before closing
++   it.
++
++On Vercel Hobby, rate limiting allows one rule per project and includes one
++million allowed requests. Additional allowed requests are billed at Vercel's
++published rate; blocked requests do not reach the application.
+diff --git a/docs/operations/preview-ci.md b/docs/operations/preview-ci.md
+index b3579a9..0554905 100644
+--- a/docs/operations/preview-ci.md
++++ b/docs/operations/preview-ci.md
+@@ -159,6 +159,12 @@ index/follow metadata and an allow-all robots policy with the production
+ sitemap before promotion; verify indexing headers on the public domain after
+ promotion as described in [production-deploy.md](production-deploy.md).
+ 
++Before collecting Lighthouse samples, the job makes two successful, retrying
++GET requests to the same verified Preview URL. This warms the fresh deployment
++without changing the three-run collection, optimistic aggregation, or category
++thresholds. A warm-up failure fails the required `lighthouse` job rather than
++allowing Lighthouse to report a score for an unavailable deployment.
++
+ ## Dependency updates
+ 
+ Dependabot proposes; a maintainer adopts. Neither half is optional, for two
+diff --git a/docs/quality/reviews/README.md b/docs/quality/reviews/README.md
+new file mode 100644
+index 0000000..39e240a
+--- /dev/null
++++ b/docs/quality/reviews/README.md
+@@ -0,0 +1,22 @@
++# Review ledgers
++
++This folder is written by **review-gate**, a review protocol whose machinery lives in the
++gonza-stack plugin (`claude-stack/stack/scripts/review-gate/cli.ts`). Each `pr-<n>/` folder holds:
++
++- `gate.yaml`: what "done" means for that PR, its scope globs, the round cap. Human-owned.
++- `ledger.yaml`: every reviewer finding with its verdict. Machine-owned; change it only through the CLI.
++- `digest.md`: the human summary. Read this one.
++- `findings/`: raw reviewer output per round, kept for audit.
++
++Rules any agent must follow on a branch that has a ledger:
++
++1. Do not edit code while `ledger.yaml` says `status: reviewing`, `awaiting-triage` or `frozen`.
++2. Every code commit after intake carries one `Review-Gate: R-nn` trailer per finding it fixes, in
++   the same trailer block as `Co-Authored-By`. Only findings whose verdict is `fix` may be cited.
++3. Commits that touch only this folder carry `Review-Gate: ledger` (or `intake`). Never mix ledger
++   and code changes in one commit.
++4. Verdicts come from the human, in chat: `ok`, or `R-03 fix, R-07 no <reason>`. The only waiver is a
++   message that starts with `skip review-gate <reason>`.
++5. New findings after the ledger is frozen become issues, never commits.
++
++CI runs `check` on every PR event and fails on any violation. Locally: `/review-gate <pr>`.
+diff --git a/docs/quality/reviews/pr-17/gate.yaml b/docs/quality/reviews/pr-17/gate.yaml
+new file mode 100644
+index 0000000..ca39013
+--- /dev/null
++++ b/docs/quality/reviews/pr-17/gate.yaml
+@@ -0,0 +1,38 @@
++# review-gate gate. Human-owned: the CLI reads this and never writes it back.
++version: 1
++pr: 17
++branch: "fix/issues-10-12"
++base: "main"
++intake_sha: 06385905d3d86d67fef4b55baa5c947264c1e54f   # commits at or before this SHA are exempt from trailer rules
++spec: null
++about:
++  project: |
++    Corpus Landing is the public early-access website for Corpus. It collects signups, lets people manage their subscriptions, and uses required preview checks to keep production changes safe.
++  feature: |
++    This change warms each deployed Preview before Lighthouse measures it and records the production Firewall limit that observes early-access Server Action traffic before enforcement.
++scope:                       # globs; findings outside them are deferred to issues
++  - ".github/workflows/preview.yml"
++  - "tests/unit/lighthouse-config.test.ts"
++  - ".gitignore"
++  - "README.md"
++  - "docs/operations/preview-ci.md"
++  - "docs/operations/abuse-protection.md"
++round_cap: 2
++severity_floor: important    # findings below this become "later"
++reviewers:
++  - "pr-review-toolkit:code-reviewer"
++  - "pr-review-toolkit:silent-failure-hunter"
++  - "pr-review-toolkit:pr-test-analyzer"
++done:                        # evidence the ledger must carry on a fresh SHA before merge
++  - id: "static-check"
++    how: "bun run check from a normal checkout of PR #17's head, not a path beneath .worktrees"
++  - id: "unit-tests"
++    how: "bun run test"
++  - id: "ui-e2e"
++    how: "bun run test:e2e; this is the repository's UI gate because no ui:p0 or ui:affected script exists"
++  - id: "github-required-checks"
++    how: "Confirm check, test, preview, e2e, and lighthouse are successful on GitHub PR #17"
++  - id: "waf-observation-rule"
++    how: "npx --yes vercel@latest firewall rules inspect early-access-server-actions; confirm production host, POST paths, IP fixed-window 10 per 60 seconds, and log-only follow-up"
++mirror: pr-comment           # pr-comment | none
++threat_model: docs/quality/reviews/threat-model.md
+diff --git a/docs/quality/reviews/pr-17/ledger.yaml b/docs/quality/reviews/pr-17/ledger.yaml
+new file mode 100644
+index 0000000..7ecf58a
+--- /dev/null
++++ b/docs/quality/reviews/pr-17/ledger.yaml
+@@ -0,0 +1,14 @@
++version: 1
++pr: 17
++status: intake
++rounds:
++  []
++findings:
++  []
++evidence:
++  []
++waivers:
++  []
++eli5:
++  []
++comment_id: null
+\ No newline at end of file
+diff --git a/docs/quality/reviews/threat-model.md b/docs/quality/reviews/threat-model.md
+new file mode 100644
+index 0000000..cd51182
+--- /dev/null
++++ b/docs/quality/reviews/threat-model.md
+@@ -0,0 +1,19 @@
++# Threat model
++
++Written once per repo at review-gate intake, from the product brief. Edit freely; the classifying
++agent reads the two lists below when it decides whether a finding applies to this product.
++
++## In model
++
++- Public, unauthenticated visitors can submit early-access signups and use opaque management links.
++- Automated or abusive public traffic can consume reCAPTCHA assessments, Vercel invocations, and database capacity.
++- Production Server Actions handle personal data and management tokens, so their request paths and response behavior are security-sensitive.
++- Pull requests deploy Vercel Previews and required GitHub checks gate merges to the public production site.
++- The repository must not expose credentials, database URLs, raw management tokens, subscriber data, or provider response bodies.
++
++## Out of model
++
++- User accounts, passwords, and session-based authorization do not exist; management links are the product's deliberate access mechanism.
++- Fork pull requests do not receive Vercel or Neon deployment credentials; deployment-dependent checks fail closed.
++- Preview and local environments do not use production reCAPTCHA credentials or production email configuration.
++- The maintenance endpoint is not public: it requires its configured bearer credential.
+diff --git a/tests/unit/lighthouse-config.test.ts b/tests/unit/lighthouse-config.test.ts
+index 1ed3cd5..e8a03d1 100644
+--- a/tests/unit/lighthouse-config.test.ts
++++ b/tests/unit/lighthouse-config.test.ts
+@@ -1,10 +1,15 @@
+ import { readFileSync } from 'node:fs';
++import { createRequire } from 'node:module';
+ import { runInNewContext } from 'node:vm';
+ import type { Config, Flags } from 'lighthouse';
+ import { initializeConfig } from 'lighthouse/core/config/config.js';
+ import { ReportScoring } from 'lighthouse/core/scoring.js';
+ import { describe, expect, it } from 'vitest';
+ 
++const { safeLoad } = createRequire(import.meta.url)('js-yaml') as {
++  safeLoad: (source: string) => unknown;
++};
++
+ interface LighthouseCIConfig {
+   ci: {
+     collect: { settings: Flags; url: string[]; startServerCommand?: string };
+@@ -12,6 +17,16 @@ interface LighthouseCIConfig {
+   };
+ }
+ 
++interface WorkflowStep {
++  name?: string;
++  run?: string;
++  env?: Record<string, string>;
++}
++
++interface PreviewWorkflow {
++  jobs: Record<string, { steps: WorkflowStep[] }>;
++}
++
+ function loadConfig(env: Record<string, string | undefined> = {}): LighthouseCIConfig {
+   const module = { exports: {} };
+   runInNewContext(readFileSync(new URL('../../lighthouserc.cjs', import.meta.url), 'utf8'), {
+@@ -22,6 +37,25 @@ function loadConfig(env: Record<string, string | undefined> = {}): LighthouseCIC
+ }
+ 
+ describe('Lighthouse deployment policy', () => {
++  it('warms the verified Preview twice before measuring it', () => {
++    const workflow = safeLoad(
++      readFileSync(new URL('../../.github/workflows/preview.yml', import.meta.url), 'utf8'),
++    ) as PreviewWorkflow;
++    const steps = workflow.jobs.lighthouse.steps;
++    const urlCheckIndex = steps.findIndex((step) => step.name === 'Verify Preview URL');
++    const warmIndex = steps.findIndex((step) => step.name === 'Warm Preview deployment');
++    const lighthouseIndex = steps.findIndex(
++      (step) => step.name === 'Run Lighthouse CI against Preview',
++    );
++
++    expect(warmIndex).toBe(urlCheckIndex + 1);
++    expect(lighthouseIndex).toBe(warmIndex + 1);
++    expect(steps[warmIndex].env).toEqual({ LHCI_URL: `\${{ needs.preview.outputs.url }}` });
++    expect(steps[warmIndex].run).toContain('for request in 1 2');
++    expect(steps[warmIndex].run).toContain('curl --fail');
++    expect(steps[warmIndex].run).toContain('"$LHCI_URL"');
++  });
++
+   it.each([
+     {},
+     { LHCI_URL: 'https://corpus.example' },

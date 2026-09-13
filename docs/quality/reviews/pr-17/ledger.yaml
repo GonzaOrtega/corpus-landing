@@ -1,0 +1,139 @@
+version: 1
+pr: 17
+status: frozen
+rounds:
+  - "n": 1
+    head: 1e6706793be9e08463de94c2cd114e5354628c45
+    scope: full
+    reviewers:
+      - pr-review-toolkit:code-reviewer
+      - pr-review-toolkit:silent-failure-hunter
+      - pr-review-toolkit:pr-test-analyzer
+    findings:
+      - R-01
+      - R-02
+  - "n": 2
+    head: d9b249e6b90d7fc612880d2808c3d0e24a0025db
+    scope: fix-diff
+    reviewers:
+      []
+    findings:
+      []
+  - "n": 3
+    head: 80815d79bd8d1338f6b9514733c233784fe8960b
+    scope: fix-diff
+    reviewers:
+      - code
+    findings:
+      - R-03
+findings:
+  - id: R-01
+    round: 1
+    fingerprint: 52b3a297bb8b1205
+    file: .github/workflows/preview.yml
+    line: 301
+    category: correctness
+    severity: important
+    summary: "The new Preview warm-up request cannot access protected Preview deployments, so it can fail the required Lighthouse job before Lighthouse runs."
+    requires:
+      - "The Vercel Preview deployment is protected by Vercel Authentication, as the Lighthouse configuration supports."
+      - The Vercel Preview deployment is protected by Vercel Authentication.
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: human
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      - e45fbb3cd05c10d0b58de4b1005b6b2e21e67975
+      - 7ac0b1993817bbf8ec45fa48a64d0c4e1beac9e0
+    issue: null
+  - id: R-02
+    round: 1
+    fingerprint: ef56941c95d2702c
+    file: tests/unit/lighthouse-config.test.ts
+    line: 41
+    category: test-gap
+    severity: minor
+    summary: The workflow contract test does not verify the retry settings that make Preview warm-up resilient to a briefly unavailable deployment.
+    requires:
+      []
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-03
+    round: 3
+    fingerprint: 5b5d36c45079dc0b
+    file: .github/workflows/preview.yml
+    line: 301
+    category: security
+    severity: important
+    summary: The warm-up curl forwards the Vercel Automation Bypass secret to any redirect target.
+    requires:
+      - Same-repository PR code can redirect the Preview root to an attacker-controlled HTTPS origin.
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: code
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: human
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      - c97e5a9e09f9df95907a8758f2d030cc899f99e0
+    issue: null
+evidence:
+  - done: static-check
+    sha: 93106c1a79f983bc17918401657e95d2711d3a88
+    result: pass
+    note: bun run check passed from /tmp/pr17-check.2JMqSG
+  - done: unit-tests
+    sha: 93106c1a79f983bc17918401657e95d2711d3a88
+    result: pass
+    note: "bun run test: 296 passed"
+  - done: ui-e2e
+    sha: 93106c1a79f983bc17918401657e95d2711d3a88
+    result: pass
+    note: "bun run test:e2e: 66 passed; 1 Chromium test passed on configured retry"
+  - done: waf-observation-rule
+    sha: 93106c1a79f983bc17918401657e95d2711d3a88
+    result: pass
+    note: Enabled production POST IP fixed-window 10/60s rule remains log-only
+  - done: github-required-checks
+    sha: 84ec46e45fe686dbb39e116cdcb701c5c79a2868
+    result: pass
+    note: "GitHub: check, test, preview, e2e, preview-smoke, lighthouse, and gitleaks succeeded"
+waivers:
+  - at: 2026-09-13T03:05:09.724Z
+    what: round-cap
+    reason: fix Vercel bypass-cookie redirect loop
+eli5:
+  - round: 1
+    text: "We added a little warm-up knock before Lighthouse visits the new Preview, but that knock does not have the key needed to enter a protected Preview. The real Lighthouse visitor has that key, so the fix is to give the warm-up visitor the same key. One smaller note says our test should also check the retry settings. Please decide whether to fix the blocked warm-up now; the retry-test improvement can stay for later.\n"
+  - round: 2
+    text: "The warm-up visitor now carries the same key as the Lighthouse visitor, so both can enter a protected Preview. Three reviewers checked that small change and did not find a new important problem.\n"
+  - round: 3
+    text: "The warm-up visitor has a secret key. If it follows a sign pointing to someone else's house, it could carry that key there. We should stop it from following redirects, since the Preview address is already the exact page we need to warm.\n"
+comment_id: 5649881459

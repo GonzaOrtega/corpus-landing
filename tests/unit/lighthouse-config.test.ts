@@ -1,15 +1,30 @@
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import type { Config, Flags } from 'lighthouse';
 import { initializeConfig } from 'lighthouse/core/config/config.js';
 import { ReportScoring } from 'lighthouse/core/scoring.js';
 import { describe, expect, it } from 'vitest';
 
+const { safeLoad } = createRequire(import.meta.url)('js-yaml') as {
+  safeLoad: (source: string) => unknown;
+};
+
 interface LighthouseCIConfig {
   ci: {
     collect: { settings: Flags; url: string[]; startServerCommand?: string };
     assert: { assertions: Record<string, [string, { minScore: number }]> };
   };
+}
+
+interface WorkflowStep {
+  name?: string;
+  run?: string;
+  env?: Record<string, string>;
+}
+
+interface PreviewWorkflow {
+  jobs: Record<string, { steps: WorkflowStep[] }>;
 }
 
 function loadConfig(env: Record<string, string | undefined> = {}): LighthouseCIConfig {
@@ -22,6 +37,31 @@ function loadConfig(env: Record<string, string | undefined> = {}): LighthouseCIC
 }
 
 describe('Lighthouse deployment policy', () => {
+  it('warms the verified Preview twice before measuring it', () => {
+    const workflow = safeLoad(
+      readFileSync(new URL('../../.github/workflows/preview.yml', import.meta.url), 'utf8'),
+    ) as PreviewWorkflow;
+    const steps = workflow.jobs.lighthouse.steps;
+    const urlCheckIndex = steps.findIndex((step) => step.name === 'Verify Preview URL');
+    const warmIndex = steps.findIndex((step) => step.name === 'Warm Preview deployment');
+    const lighthouseIndex = steps.findIndex(
+      (step) => step.name === 'Run Lighthouse CI against Preview',
+    );
+
+    expect(warmIndex).toBe(urlCheckIndex + 1);
+    expect(lighthouseIndex).toBe(warmIndex + 1);
+    expect(steps[warmIndex].env).toEqual({
+      LHCI_URL: `\${{ needs.preview.outputs.url }}`,
+      VERCEL_AUTOMATION_BYPASS_SECRET: `\${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}`,
+    });
+    expect(steps[warmIndex].run).toContain('for request in 1 2');
+    expect(steps[warmIndex].run).toContain('curl --fail');
+    expect(steps[warmIndex].run).toContain('x-vercel-protection-bypass');
+    expect(steps[warmIndex].run).not.toContain('x-vercel-set-bypass-cookie');
+    expect(steps[warmIndex].run).not.toContain('--location');
+    expect(steps[warmIndex].run).toContain('"$LHCI_URL"');
+  });
+
   it.each([
     {},
     { LHCI_URL: 'https://corpus.example' },

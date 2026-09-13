@@ -1,0 +1,14 @@
+[
+  {
+    "file": ".github/workflows/preview.yml",
+    "line": 301,
+    "category": "security",
+    "severity": "important",
+    "summary": "The warm-up curl forwards the Vercel Automation Bypass secret to any redirect target.",
+    "requires": [
+      "Same-repository PR code can redirect the Preview root to an attacker-controlled HTTPS origin."
+    ],
+    "repro": "test",
+    "evidence": "curl --location follows a PR-controlled redirect and forwards the explicitly supplied x-vercel-protection-bypass header. The workflow validates only that the initial LHCI_URL uses HTTPS."
+  }
+]

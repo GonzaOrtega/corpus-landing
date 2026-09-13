@@ -1,0 +1,38 @@
+# review-gate gate. Human-owned: the CLI reads this and never writes it back.
+version: 1
+pr: 17
+branch: "fix/issues-10-12"
+base: "main"
+intake_sha: 06385905d3d86d67fef4b55baa5c947264c1e54f   # commits at or before this SHA are exempt from trailer rules
+spec: null
+about:
+  project: |
+    Corpus Landing is the public early-access website for Corpus. It collects signups, lets people manage their subscriptions, and uses required preview checks to keep production changes safe.
+  feature: |
+    This change warms each deployed Preview before Lighthouse measures it and records the production Firewall limit that observes early-access Server Action traffic before enforcement.
+scope:                       # globs; findings outside them are deferred to issues
+  - ".github/workflows/preview.yml"
+  - "tests/unit/lighthouse-config.test.ts"
+  - ".gitignore"
+  - "README.md"
+  - "docs/operations/preview-ci.md"
+  - "docs/operations/abuse-protection.md"
+round_cap: 2
+severity_floor: important    # findings below this become "later"
+reviewers:
+  - "pr-review-toolkit:code-reviewer"
+  - "pr-review-toolkit:silent-failure-hunter"
+  - "pr-review-toolkit:pr-test-analyzer"
+done:                        # evidence the ledger must carry on a fresh SHA before merge
+  - id: "static-check"
+    how: "bun run check from a normal checkout of PR #17's head, not a path beneath .worktrees"
+  - id: "unit-tests"
+    how: "bun run test"
+  - id: "ui-e2e"
+    how: "bun run test:e2e; this is the repository's UI gate because no ui:p0 or ui:affected script exists"
+  - id: "github-required-checks"
+    how: "Confirm check, test, preview, e2e, and lighthouse are successful on GitHub PR #17"
+  - id: "waf-observation-rule"
+    how: "npx --yes vercel@latest firewall rules inspect early-access-server-actions; confirm production host, POST paths, IP fixed-window 10 per 60 seconds, and log-only follow-up"
+mirror: pr-comment           # pr-comment | none
+threat_model: docs/quality/reviews/threat-model.md

@@ -32,6 +32,14 @@ just the `@preview`-tagged tests — the ones whose assertions are meaningless
 anywhere else, such as the deployed robots policy. Keep that set small; add a
 test there only when a local build genuinely cannot answer the question.
 
+Before Lighthouse measures a Preview, its job makes two authenticated warm-up
+requests. They use Vercel Automation Bypass so Vercel Authentication cannot
+turn either request into a login page. The direct probes do not request a bypass
+cookie: Vercel creates that cookie through a redirect, which would loop when
+`curl` follows redirects. Lighthouse retains its cookie header for its separate
+follow-up resource requests. The warm-up request also does not follow redirects,
+so a Preview response cannot forward the bypass secret to another host.
+
 The `e2e` job waits for its local proxy and applies migrations through that
 proxy before Playwright starts. It runs the E2E migration support module, not
 `db:migrate`, so the migration follows the same Neon HTTP driver path as the
@@ -158,6 +166,12 @@ a local non-production build with the Preview policy, also set
 index/follow metadata and an allow-all robots policy with the production
 sitemap before promotion; verify indexing headers on the public domain after
 promotion as described in [production-deploy.md](production-deploy.md).
+
+Before collecting Lighthouse samples, the job makes two successful, retrying
+GET requests to the same verified Preview URL. This warms the fresh deployment
+without changing the three-run collection, optimistic aggregation, or category
+thresholds. A warm-up failure fails the required `lighthouse` job rather than
+allowing Lighthouse to report a score for an unavailable deployment.
 
 ## Dependency updates
 
