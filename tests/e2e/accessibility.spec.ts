@@ -11,16 +11,23 @@ async function expectNoSeriousAxeViolations(page: Page) {
   expect(blocking, JSON.stringify(blocking, null, 2)).toEqual([]);
 }
 
-for (const [path, name] of [
-  ['/', 'homepage'],
-  ['/privacy', 'Privacy'],
-  ['/terms', 'Terms'],
-] as const) {
-  test(`has no serious or critical axe violations on ${name}`, async ({ page }) => {
-    await page.goto(path);
-    await expectNoSeriousAxeViolations(page);
-  });
-}
+test.describe('static accessibility', () => {
+  // Scan the complete static representation. Normal-motion content intentionally
+  // fades in, so scanning it mid-animation produces a timing-dependent contrast
+  // result rather than an accessibility finding in the rendered destination.
+  test.use({ reducedMotion: 'reduce' });
+
+  for (const [path, name] of [
+    ['/', 'homepage'],
+    ['/privacy', 'Privacy'],
+    ['/terms', 'Terms'],
+  ] as const) {
+    test(`has no serious or critical axe violations on ${name}`, async ({ page }) => {
+      await page.goto(path);
+      await expectNoSeriousAxeViolations(page);
+    });
+  }
+});
 
 test('moving Lexicon content exposes an accurate keyboard pause control', async ({ page }) => {
   await page.goto('/#lexicon');
