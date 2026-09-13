@@ -300,8 +300,7 @@ jobs:
           for request in 1 2; do
             curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
               --connect-timeout 10 --max-time 30 --output /dev/null \
-              --header "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" \
-              --header 'x-vercel-set-bypass-cookie: true' "$LHCI_URL"
+              --header "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" "$LHCI_URL"
           done
       - name: Run Lighthouse CI against Preview
         if: ${{ needs.preview.result == 'success' }}
