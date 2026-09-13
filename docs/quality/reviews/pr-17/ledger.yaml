@@ -121,6 +121,10 @@ evidence:
     sha: 93106c1a79f983bc17918401657e95d2711d3a88
     result: pass
     note: Enabled production POST IP fixed-window 10/60s rule remains log-only
+  - done: github-required-checks
+    sha: 84ec46e45fe686dbb39e116cdcb701c5c79a2868
+    result: pass
+    note: "GitHub: check, test, preview, e2e, preview-smoke, lighthouse, and gitleaks succeeded"
 waivers:
   - at: 2026-09-13T03:05:09.724Z
     what: round-cap
