@@ -1,6 +1,6 @@
 version: 1
 pr: 17
-status: awaiting-triage
+status: frozen
 rounds:
   - "n": 1
     head: 1e6706793be9e08463de94c2cd114e5354628c45
