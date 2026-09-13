@@ -44,6 +44,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
+      - e45fbb3cd05c10d0b58de4b1005b6b2e21e67975
       - 7ac0b1993817bbf8ec45fa48a64d0c4e1beac9e0
     issue: null
   - id: R-02
