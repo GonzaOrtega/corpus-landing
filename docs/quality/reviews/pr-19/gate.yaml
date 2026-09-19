@@ -1,0 +1,56 @@
+# review-gate gate. Human-owned: the CLI reads this and never writes it back.
+version: 1
+pr: 19
+branch: "claude/eager-brahmagupta-1r8cat"
+base: "main"
+intake_sha: a158f85bb5b007cf690d637a9d681d47afd3dc20   # commits at or before this SHA are exempt from trailer rules
+spec: "docs/superpowers/specs/2026-09-19-sentry-observability-design.md"
+about:
+  project: |
+    corpus-landing is the public early-access page for Corpus. Anyone can visit it, read what the product is, and hand over an email address to be told when it launches. They confirm that address by clicking a link in a mail, and they can later use a second opaque link to change their mind and leave. There are no accounts and no passwords: the links themselves are the only key. One day the site will send a single launch mail to everyone who stayed, and then it turns into a plain 'Get Corpus' page. It is built with Next.js on Vercel, keeps its list in a Postgres database at Neon, and sends its mail through Resend. The code is arranged so the rules of the product sit in the middle and never reach out to any outside service directly; the parts that talk to the database, the mail provider and now the error tracker are plugged in around the edge.
+  feature: |
+    This change gives the running site a way to tell its operators when something breaks. Until now, when a signup failed, the page deliberately showed the visitor the same polite 'please retry' message no matter the cause, and the real reason was thrown away, so nobody could tell a database outage from a rejected spam check. The nightly cleanup job failed silently too. This adds Sentry: errors from the server, the browser and the cleanup job are now reported, slow operations are traced, and the log lines the site already writes are collected somewhere a human can read them. The hard part, and the part worth reviewing, is what must NOT be sent: email addresses, the secret links, the spam-check score, the mail provider's replies, the database address and every secret are stripped before anything leaves the machine, and the code tries to do that three separate times over in case one layer misses. It also has to stay quiet during tests and building, and it must not slow the page down enough to fail the site's speed budget.
+scope:                       # globs; findings outside them are deferred to issues
+  - "src/config/**"
+  - "src/adapters/observability/**"
+  - "src/adapters/logging/**"
+  - "src/core/ports/**"
+  - "src/core/testing/**"
+  - "src/composition/**"
+  - "src/features/early-access/actions/**"
+  - "src/features/early-access/early-access.wiring.ts"
+  - "src/features/legal/content.ts"
+  - "app/**"
+  - "instrumentation.ts"
+  - "instrumentation-client.ts"
+  - "sentry.server.config.ts"
+  - "sentry.edge.config.ts"
+  - "next.config.ts"
+  - "proxy.ts"
+  - "playwright.config.ts"
+  - "compose.yaml"
+  - "package.json"
+  - "bun.lock"
+  - ".env.example"
+  - "README.md"
+  - "tests/unit/**"
+  - "docs/operations/sentry.md"
+  - "docs/superpowers/specs/2026-09-19-sentry-observability-design.md"
+round_cap: 2
+severity_floor: important    # findings below this become "later"
+reviewers:
+  - "pr-review-toolkit:code-reviewer"
+  - "pr-review-toolkit:silent-failure-hunter"
+  - "pr-review-toolkit:pr-test-analyzer"
+  - "security"
+done:                        # evidence the ledger must carry on a fresh SHA before merge
+  - id: "check"
+    how: "bun run check  (typecheck + biome lint + stack conformance audit)"
+  - id: "unit"
+    how: "bun run test  (Vitest; includes sentry-options.test.ts scrubber assertions against the never-log values)"
+  - id: "e2e"
+    how: "bun run test:e2e  (containerized Playwright via docker compose; asserts the pipeline no-report signal)"
+  - id: "lighthouse"
+    how: "bun run lighthouse  (LHCI; landing page mobile performance >= 0.90, median of three runs, per spec 31 and observability decision 7)"
+mirror: pr-comment           # pr-comment | none
+threat_model: docs/quality/reviews/threat-model.md
