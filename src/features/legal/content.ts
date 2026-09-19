@@ -18,7 +18,8 @@ export const privacySections: readonly LegalSection[] = [
   {
     heading: 'Service providers',
     paragraphs: [
-      'We use Neon to store the early-access record, Resend to deliver transactional email, Google reCAPTCHA to help protect the signup form, and Vercel to host Corpus, including Vercel Web Analytics and Speed Insights.',
+      'We use Neon to store the early-access record, Resend to deliver transactional email, Google reCAPTCHA to help protect the signup form, Vercel to host Corpus, including Vercel Web Analytics and Speed Insights, and Sentry to collect application errors and performance data.',
+      'Error and performance reports sent to Sentry never include your email address, management links or tokens, or the contents of a form. We do not use session replay.',
       'We do not sell your information or use it for unrelated marketing. We do not use email open or click tracking.',
     ],
   },

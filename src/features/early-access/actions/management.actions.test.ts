@@ -1,15 +1,22 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { RecordingErrorReporterAdapter } from '../../../core/testing/recording-error-reporter.adapter';
 import type { EarlyAccessManagementState } from '../../../core/use-cases/resolve-early-access-management.use-case';
 import { handleResolveManagement, handleUnsubscribe } from './management.handlers';
 
+let reporter: RecordingErrorReporterAdapter;
+
 describe('management action mapping', () => {
+  beforeEach(() => {
+    reporter = new RecordingErrorReporterAdapter();
+  });
+
   it('returns active and already-unsubscribed states without changing their public shape', async () => {
     const active: EarlyAccessManagementState = {
       status: 'active',
       maskedEmail: 'g***@example.com',
     };
     await expect(
-      handleResolveManagement({ execute: vi.fn(async () => active) }, 'token'),
+      handleResolveManagement({ execute: vi.fn(async () => active) }, 'token', reporter),
     ).resolves.toEqual(active);
 
     const unsubscribed: EarlyAccessManagementState = {
@@ -17,7 +24,7 @@ describe('management action mapping', () => {
       maskedEmail: 'g***@example.com',
     };
     await expect(
-      handleResolveManagement({ execute: vi.fn(async () => unsubscribed) }, 'token'),
+      handleResolveManagement({ execute: vi.fn(async () => unsubscribed) }, 'token', reporter),
     ).resolves.toEqual(unsubscribed);
   });
 
@@ -26,6 +33,7 @@ describe('management action mapping', () => {
       handleResolveManagement(
         { execute: vi.fn(async () => ({ status: 'invalid' as const })) },
         'bad',
+        reporter,
       ),
     ).resolves.toEqual({ status: 'invalid' });
     await expect(
@@ -36,13 +44,21 @@ describe('management action mapping', () => {
           }),
         },
         'token',
+        reporter,
       ),
     ).resolves.toEqual({ status: 'retry' });
+    expect(reporter.reports).toEqual([
+      {
+        error: expect.objectContaining({ message: 'database body with sensitive details' }),
+        fields: { operation: 'resolve_management' },
+      },
+    ]);
+    expect(JSON.stringify(reporter.reports[0]?.fields)).not.toContain('token');
   });
 
   it('only invokes unsubscribe through its explicit action and maps failures generically', async () => {
     const execute = vi.fn(async () => ({ status: 'unsubscribed' as const }));
-    await expect(handleUnsubscribe({ execute }, 'token')).resolves.toEqual({
+    await expect(handleUnsubscribe({ execute }, 'token', reporter)).resolves.toEqual({
       status: 'unsubscribed',
     });
     expect(execute).toHaveBeenCalledWith('token');
@@ -55,7 +71,9 @@ describe('management action mapping', () => {
           }),
         },
         'token',
+        reporter,
       ),
     ).resolves.toEqual({ status: 'retry' });
+    expect(reporter.reports.map((report) => report.fields)).toEqual([{ operation: 'unsubscribe' }]);
   });
 });

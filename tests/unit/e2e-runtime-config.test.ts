@@ -41,4 +41,15 @@ describe('E2E runtime configuration', () => {
   it('publishes Postgres only to loopback', () => {
     expect(read('compose.yaml')).toContain("'127.0.0.1:55432:5432'");
   });
+
+  // Both runtimes bind-mount or load the developer's .env.local. A DSN there
+  // would be inlined into the E2E client bundle and an auth token would upload
+  // a release nothing deploys; an explicit blank wins over the env file.
+  it('blanks the Sentry DSN and auth token in every local production build', () => {
+    for (const file of ['compose.yaml', 'playwright.config.ts']) {
+      const source = read(file);
+      expect(source, file).toMatch(/NEXT_PUBLIC_SENTRY_DSN: ''/);
+      expect(source, file).toMatch(/SENTRY_AUTH_TOKEN: ''/);
+    }
+  });
 });

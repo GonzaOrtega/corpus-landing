@@ -130,6 +130,8 @@ export const config = {
   // and must not pay the Proxy hop. Raw HTTP clients still enter Proxy so
   // Accept negotiation, 406s and Markdown 404 recovery remain request-aware.
   // Explicit Markdown aliases are always handled, including browser navigation.
+  // `monitoring` is the Sentry tunnel (next.config.ts): SDK envelopes, never
+  // a page, so negotiation has nothing to decide there.
   matcher: [
     '/index.md',
     '/about.md',
@@ -139,12 +141,12 @@ export const config = {
     '/terms.md',
     {
       source:
-        '/((?!api|_next|_vercel|brand|favicon.ico|robots.txt|sitemap.xml|llms.txt|opengraph-image|motion-preflight.js).*)',
+        '/((?!api|monitoring|_next|_vercel|brand|favicon.ico|robots.txt|sitemap.xml|llms.txt|opengraph-image|motion-preflight.js).*)',
       has: [{ type: 'header', key: 'accept', value: 'text/markdown' }],
     },
     {
       source:
-        '/((?!api|_next|_vercel|brand|favicon.ico|robots.txt|sitemap.xml|llms.txt|opengraph-image|motion-preflight.js).*)',
+        '/((?!api|monitoring|_next|_vercel|brand|favicon.ico|robots.txt|sitemap.xml|llms.txt|opengraph-image|motion-preflight.js).*)',
       missing: [{ type: 'header', key: 'sec-fetch-mode', value: 'navigate' }],
     },
   ],

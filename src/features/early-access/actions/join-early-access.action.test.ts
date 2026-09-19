@@ -1,16 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CaptchaRejectedError, SignupClosedError } from '../../../core/errors/early-access-errors';
+import { RecordingErrorReporterAdapter } from '../../../core/testing/recording-error-reporter.adapter';
 import { joinEarlyAccessAction } from './join-early-access.action';
 import { handleJoinEarlyAccess } from './join-early-access.handler';
+
+const wiringReporter = new RecordingErrorReporterAdapter();
 
 vi.mock('../early-access.wiring', () => ({
   getEarlyAccessBackend: () => {
     throw new Error('DATABASE_URL is not configured');
   },
+  getErrorReporter: () => wiringReporter,
 }));
+
+vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
 
 let joinCalls = 0;
 let joinBehavior: () => Promise<void>;
+let reporter: RecordingErrorReporterAdapter;
 const backend = {
   join: async () => {
     joinCalls += 1;
@@ -29,10 +36,13 @@ describe('joinEarlyAccessAction mapping', () => {
   beforeEach(() => {
     joinCalls = 0;
     joinBehavior = async () => undefined;
+    reporter = new RecordingErrorReporterAdapter();
   });
 
   it('returns the exact public success copy for a valid signup', async () => {
-    await expect(handleJoinEarlyAccess(backend, form('Person@Example.com'))).resolves.toEqual({
+    await expect(
+      handleJoinEarlyAccess(backend, form('Person@Example.com'), reporter),
+    ).resolves.toEqual({
       status: 'success',
       message:
         "You're on the list. Check your inbox for confirmation — we'll write again when Corpus is ready.",
@@ -40,14 +50,14 @@ describe('joinEarlyAccessAction mapping', () => {
   });
 
   it('returns the same success for a duplicate', async () => {
-    const first = await handleJoinEarlyAccess(backend, form('person@example.com'));
-    const duplicate = await handleJoinEarlyAccess(backend, form('PERSON@example.com'));
+    const first = await handleJoinEarlyAccess(backend, form('person@example.com'), reporter);
+    const duplicate = await handleJoinEarlyAccess(backend, form('PERSON@example.com'), reporter);
 
     expect(duplicate).toEqual(first);
   });
 
   it('returns explicit invalid-email copy before calling the backend', async () => {
-    await expect(handleJoinEarlyAccess(backend, form('invalid'))).resolves.toEqual({
+    await expect(handleJoinEarlyAccess(backend, form('invalid'), reporter)).resolves.toEqual({
       status: 'invalid-email',
       message: 'That address looks incomplete. Check it and try again.',
     });
@@ -55,45 +65,78 @@ describe('joinEarlyAccessAction mapping', () => {
   });
 
   it('maps a missing CAPTCHA token to generic retry rather than an email error', async () => {
-    await expect(handleJoinEarlyAccess(backend, form('person@example.com', ''))).resolves.toEqual({
+    await expect(
+      handleJoinEarlyAccess(backend, form('person@example.com', ''), reporter),
+    ).resolves.toEqual({
       status: 'retry',
       message: "We couldn't complete that signup. Please try again.",
     });
     expect(joinCalls).toBe(0);
   });
 
+  // The public state is identical on purpose (§24): a bot and an outage must
+  // look the same to the caller. Whether the failure is *reported* is what
+  // differs — a rejected CAPTCHA is the verifier working, an outage is not.
   it.each([
-    ['CAPTCHA rejection', () => new CaptchaRejectedError()],
-    ['persistence failure', () => new Error('database unavailable')],
-  ])('maps %s to the same generic retry state', async (_name, makeError) => {
+    ['CAPTCHA rejection', () => new CaptchaRejectedError(), 0],
+    ['persistence failure', () => new Error('database unavailable'), 1],
+  ])('maps %s to the same generic retry state', async (_name, makeError, reported) => {
     joinBehavior = async () => {
       throw makeError();
     };
 
-    await expect(handleJoinEarlyAccess(backend, form('person@example.com'))).resolves.toEqual({
+    await expect(
+      handleJoinEarlyAccess(backend, form('person@example.com'), reporter),
+    ).resolves.toEqual({
       status: 'retry',
       message: "We couldn't complete that signup. Please try again.",
     });
+    expect(reporter.reports).toHaveLength(reported);
   });
 
-  it('maps launched mode to the closed state', async () => {
+  it('reports the failure before discarding it, with the operation and nothing from the form', async () => {
+    const failure = new Error('database unavailable');
+    joinBehavior = async () => {
+      throw failure;
+    };
+
+    await handleJoinEarlyAccess(backend, form('person@example.com'), reporter);
+
+    expect(reporter.reports).toEqual([
+      { error: failure, fields: { operation: 'join_early_access' } },
+    ]);
+    expect(JSON.stringify(reporter.reports[0]?.fields)).not.toContain('person@example.com');
+  });
+
+  it('maps launched mode to the closed state without reporting', async () => {
     joinBehavior = async () => {
       throw new SignupClosedError();
     };
 
-    await expect(handleJoinEarlyAccess(backend, form('person@example.com'))).resolves.toEqual({
+    await expect(
+      handleJoinEarlyAccess(backend, form('person@example.com'), reporter),
+    ).resolves.toEqual({
       status: 'closed',
     });
+    expect(reporter.reports).toEqual([]);
   });
 });
 
 describe('joinEarlyAccessAction composition boundary', () => {
-  it('returns the generic retry state when credentials are not configured', async () => {
+  it('returns the generic retry state when credentials are not configured, and reports it', async () => {
+    wiringReporter.reports.length = 0;
+
     await expect(
       joinEarlyAccessAction({ status: 'idle' }, form('person@example.com')),
     ).resolves.toEqual({
       status: 'retry',
       message: "We couldn't complete that signup. Please try again.",
     });
+    expect(wiringReporter.reports).toEqual([
+      {
+        error: expect.objectContaining({ message: 'DATABASE_URL is not configured' }),
+        fields: { operation: 'join_early_access', status: 'wiring' },
+      },
+    ]);
   });
 });

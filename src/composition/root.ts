@@ -1,6 +1,7 @@
 import { provideConfigSecrets } from './capabilities/config-secrets';
 import { provideExternalApi } from './capabilities/external-api';
 import { provideNotifications } from './capabilities/notifications';
+import { provideObservability } from './capabilities/observability';
 import { providePersistence } from './capabilities/persistence';
 
 export const buildContext = () => {
@@ -10,6 +11,7 @@ export const buildContext = () => {
     ...providePersistence(configSecrets.serverConfig),
     ...provideExternalApi(configSecrets.serverConfig),
     ...provideNotifications(configSecrets.serverConfig, configSecrets.logger),
+    ...provideObservability(),
   };
 };
 

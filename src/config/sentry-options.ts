@@ -1,0 +1,260 @@
+import type { ErrorEvent, Event, Log, SentryBuildOptions } from '@sentry/nextjs';
+import { EARLY_ACCESS_LOG_FIELDS } from '../core/ports/logger.port';
+import { isPipelineRun, type PipelineSignals } from './runtime-environment';
+
+/**
+ * Pure builders for every `Sentry.init` and `withSentryConfig` call in the
+ * repository. Framework-facing files (`instrumentation*.ts`,
+ * `sentry.*.config.ts`, `next.config.ts`) stay thin so this module carries
+ * the decisions — and the tests — about what leaves the deployment.
+ *
+ * No `server-only` import: `instrumentation-client.ts` shares the scrubbers.
+ * Inputs are typed to the exact variables each builder reads, because the
+ * client can only see `NEXT_PUBLIC_*` values that are referenced literally at
+ * the call site (Next.js inlines the member expression, not `process.env`).
+ */
+
+/** Vercel Preview builds pull "Sensitive" variables as this literal, never a value. */
+const VERCEL_SENSITIVE_PLACEHOLDER = '[SENSITIVE]';
+
+/** Blank, unset, and the Sensitive placeholder all mean "not configured". */
+export const readSetting = (value: string | undefined): string | undefined =>
+  value === undefined || value.length === 0 || value === VERCEL_SENSITIVE_PLACEHOLDER
+    ? undefined
+    : value;
+
+/** The one public-facing tunnel path; `proxy.ts` excludes it from negotiation. */
+export const SENTRY_TUNNEL_ROUTE = '/monitoring';
+
+const PRODUCTION_TRACES_SAMPLE_RATE = 0.1;
+const NON_PRODUCTION_TRACES_SAMPLE_RATE = 1;
+
+/** A number in [0, 1], or undefined for anything else (blank, NaN, out of range). */
+export function parseSampleRate(raw: string | undefined): number | undefined {
+  const setting = readSetting(raw);
+  if (setting === undefined) return undefined;
+  const parsed = Number(setting);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : undefined;
+}
+
+/**
+ * Server tracing is always on: an invalid override falls back to the
+ * per-environment default rather than silently disabling tracing
+ * (`Number('')` is 0) or sampling everything.
+ */
+export function resolveTracesSampleRate(
+  raw: string | undefined,
+  deploymentEnvironment: string | undefined,
+): number {
+  const fallback =
+    deploymentEnvironment === 'production'
+      ? PRODUCTION_TRACES_SAMPLE_RATE
+      : NON_PRODUCTION_TRACES_SAMPLE_RATE;
+  return parseSampleRate(raw) ?? fallback;
+}
+
+/**
+ * Spec §24's never-log list, as key names. Any key matching this is removed
+ * wherever it appears in an outgoing event or log, at any depth. Broad by
+ * design: a false positive drops a harmless field; a false negative ships a
+ * subscriber's address.
+ */
+const DENIED_KEY_PATTERN =
+  /email|token|secret|password|passwd|cookie|authorization|captcha|form.?data|database.?url|connection.?string|response.?body|api.?key/i;
+
+/**
+ * Email addresses, `user:pass@` URL credentials (a Neon connection string
+ * inside a driver error), and credential-bearing query parameters inside
+ * free text. URL credentials go first so the address-shaped `pass@host`
+ * remainder is not mistaken for an email.
+ */
+const URL_CREDENTIALS_PATTERN = /(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi;
+const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+const SENSITIVE_QUERY_PATTERN =
+  /([?&](?:key|token|secret|api_key|apikey|access_token|password|email)=)[^&\s#'"]*/gi;
+
+const MAX_DEPTH = 12;
+
+export function redactText(value: string): string {
+  return value
+    .replace(URL_CREDENTIALS_PATTERN, '$1[credentials]@')
+    .replace(EMAIL_PATTERN, '[email]')
+    .replace(SENSITIVE_QUERY_PATTERN, '$1[redacted]');
+}
+
+/**
+ * Walks any JSON-shaped value: denied keys are dropped, strings are redacted,
+ * everything else passes through. Cycles and very deep values stop at
+ * MAX_DEPTH — the SDK normalises events to a fixed depth anyway.
+ */
+export function scrubValue<T>(value: T, depth = 0): T {
+  if (typeof value === 'string') return redactText(value) as T;
+  if (value === null || typeof value !== 'object' || depth >= MAX_DEPTH) return value;
+  if (Array.isArray(value)) return value.map((item) => scrubValue(item, depth + 1)) as T;
+  const out: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (DENIED_KEY_PATTERN.test(key)) continue;
+    out[key] = scrubValue(entry, depth + 1);
+  }
+  return out as T;
+}
+
+const PINO_ALLOWED = new Set<string>(EARLY_ACCESS_LOG_FIELDS);
+
+/**
+ * Structural drops first — request bodies, cookies, headers, user identity —
+ * then the generic walk. `contexts.pino` is what the Pino integration attaches
+ * from a log line's fields; the adapter already allowlisted them, but the
+ * integration also sees any other pino logger in the process, so the
+ * allowlist is re-applied here rather than trusted.
+ */
+export function scrubEvent<E extends Event>(event: E): E {
+  const { request, user: _user, ...rest } = event;
+  const safeRequest = request
+    ? { url: request.url, method: request.method, query_string: request.query_string }
+    : undefined;
+  const contexts = rest.contexts ? { ...rest.contexts } : undefined;
+  if (contexts?.pino && typeof contexts.pino === 'object') {
+    contexts.pino = Object.fromEntries(
+      Object.entries(contexts.pino).filter(([key]) => PINO_ALLOWED.has(key)),
+    );
+  }
+  return scrubValue({
+    ...rest,
+    ...(contexts ? { contexts } : {}),
+    ...(safeRequest ? { request: safeRequest } : {}),
+  } as E);
+}
+
+export function scrubLog(log: Log): Log {
+  return {
+    ...log,
+    message: typeof log.message === 'string' ? redactText(log.message) : log.message,
+    ...(log.attributes ? { attributes: scrubValue(log.attributes) } : {}),
+  };
+}
+
+/**
+ * Framework control flow and browser noise that carry no signal. NEXT_*
+ * digests are how the App Router implements redirect()/notFound(); the SDK
+ * filters most of them already, listing them here is belt and braces.
+ */
+const IGNORED_ERRORS: Array<string | RegExp> = [
+  /^NEXT_REDIRECT/,
+  /^NEXT_NOT_FOUND/,
+  /^NEXT_HTTP_ERROR_FALLBACK/,
+  /ResizeObserver loop/,
+  /^AbortError/,
+  'The operation was aborted',
+];
+
+/** Everything the SDK would otherwise collect on its own, switched off. */
+const DATA_COLLECTION = {
+  userInfo: false,
+  cookies: false,
+  httpHeaders: false,
+  httpBodies: [] as never[],
+  urlQueryParams: false,
+  databaseQueryData: false,
+  stackFrameVariables: false,
+};
+
+export interface ClientSentryInput {
+  NEXT_PUBLIC_SENTRY_DSN?: string;
+  /** Browser tracing is opt-in (see buildClientSentryOptions); unset means off. */
+  NEXT_PUBLIC_SENTRY_BROWSER_TRACES_SAMPLE_RATE?: string;
+}
+
+export interface ServerSentryInput extends PipelineSignals {
+  NEXT_PUBLIC_SENTRY_DSN?: string;
+  SENTRY_TRACES_SAMPLE_RATE?: string;
+  VERCEL_ENV?: string;
+  CORPUS_RELEASE_STAGE?: string;
+}
+
+function sharedOptions(dsn: string | undefined, tracesSampleRate: number | undefined) {
+  return {
+    dsn,
+    tracesSampleRate,
+    enableLogs: true,
+    dataCollection: DATA_COLLECTION,
+    ignoreErrors: IGNORED_ERRORS,
+    beforeSend: (event: ErrorEvent) => scrubEvent(event),
+    beforeSendTransaction: <E extends Event>(event: E) => scrubEvent(event),
+    beforeSendLog: (log: Log) => scrubLog(log),
+  };
+}
+
+/**
+ * The browser cannot tell a pipeline build from a deployment, so the DSN is
+ * the only switch: it is inlined at build time and every non-Vercel build
+ * (compose, Playwright, Lighthouse) blanks it explicitly.
+ *
+ * Browser tracing is opt-in. Measured on the landing page with the SDK
+ * deferred past `load` (Lighthouse mobile, median of 3, baseline 0.93):
+ * errors + logs alone score 0.91–0.92; with page-load/navigation tracing
+ * 0.88–0.90 against a 0.9 gate. Server-side tracing covers Server Actions,
+ * RSC and the cron regardless; set the variable to trade the points for
+ * browser spans.
+ */
+export function buildClientSentryOptions(env: ClientSentryInput) {
+  const dsn = readSetting(env.NEXT_PUBLIC_SENTRY_DSN);
+  return {
+    ...sharedOptions(dsn, parseSampleRate(env.NEXT_PUBLIC_SENTRY_BROWSER_TRACES_SAMPLE_RATE)),
+    enabled: dsn !== undefined,
+    sendClientReports: false,
+  };
+}
+
+/**
+ * Same on/off rule as `provideNotifications`: a pipeline run never reports,
+ * however fully configured, because the E2E container can read a real DSN.
+ * `release` and `environment` are left to the build plugin, which derives
+ * them from the same commit it uploaded source maps for.
+ */
+export function buildServerSentryOptions(env: ServerSentryInput) {
+  const dsn = readSetting(env.NEXT_PUBLIC_SENTRY_DSN);
+  return {
+    ...sharedOptions(dsn, resolveTracesSampleRate(env.SENTRY_TRACES_SAMPLE_RATE, env.VERCEL_ENV)),
+    enabled: dsn !== undefined && !isPipelineRun(env),
+    initialScope: {
+      tags: {
+        release_stage: env.CORPUS_RELEASE_STAGE || 'early-access',
+        vercel_env: env.VERCEL_ENV || 'local',
+      },
+    },
+  };
+}
+
+export interface SentryBuildInput {
+  SENTRY_ORG?: string;
+  SENTRY_PROJECT?: string;
+  SENTRY_AUTH_TOKEN?: string;
+  VERCEL_ENV?: string;
+  CI?: string;
+}
+
+/**
+ * Source maps and releases are uploaded only from a Vercel build (the CLI
+ * `vercel build` in the workflows sets VERCEL_ENV too) that carries a real
+ * token — never from the E2E container or a laptop, which would create
+ * releases for builds nothing deploys. Upload failures warn: a Sentry outage
+ * must not block a production release.
+ */
+export function buildSentryBuildOptions(env: SentryBuildInput): SentryBuildOptions {
+  const authToken = readSetting(env.SENTRY_AUTH_TOKEN);
+  const uploads = env.VERCEL_ENV !== undefined && authToken !== undefined;
+  return {
+    org: readSetting(env.SENTRY_ORG),
+    project: readSetting(env.SENTRY_PROJECT),
+    authToken: uploads ? authToken : undefined,
+    sourcemaps: { disable: !uploads, deleteSourcemapsAfterUpload: true },
+    release: { create: uploads, finalize: uploads },
+    tunnelRoute: SENTRY_TUNNEL_ROUTE,
+    telemetry: false,
+    silent: env.CI === undefined,
+    errorHandler: (error: Error) => {
+      console.warn(`Sentry build step failed; continuing without it: ${error.message}`);
+    },
+  };
+}

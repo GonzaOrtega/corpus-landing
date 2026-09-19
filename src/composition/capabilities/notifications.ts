@@ -4,6 +4,7 @@ import {
   type ResendEmailClient,
   ResendEmailSenderAdapter,
 } from '../../adapters/email/resend-email-sender.adapter';
+import { isPipelineRun } from '../../config/runtime-environment';
 import type { ServerConfig } from '../../config/server-env';
 import type { EmailSender } from '../../core/ports/email-sender.port';
 import type { Logger } from '../../core/ports/logger.port';
@@ -46,16 +47,11 @@ export const provideProductionNotifications = (
  * The pipeline must never send. It is excluded by explicit signal rather than by
  * absent credentials: compose bind-mounts the repo (`.:/work`) and
  * playwright.config.ts calls `loadEnvConfig`, so `.env.local` — real key
- * included — is readable inside the E2E container. Any one signal is enough.
- *
- *   CI                      compose's e2e service sets it, as does GitHub Actions
- *   NODE_ENV === 'test'     Vitest
- *   E2E_NEON_HTTP_ENDPOINT  a run pointed at the ephemeral E2E database
+ * included — is readable inside the E2E container. Any one signal is enough;
+ * the signals themselves live in `runtime-environment.ts`, shared with the
+ * observability capability for the same reason.
  */
-const inPipeline = (): boolean =>
-  process.env.CI !== undefined ||
-  process.env.NODE_ENV === 'test' ||
-  process.env.E2E_NEON_HTTP_ENDPOINT !== undefined;
+const inPipeline = (): boolean => isPipelineRun(process.env);
 
 /**
  * Local, Preview and Production each send from their own Resend domain using

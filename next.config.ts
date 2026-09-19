@@ -1,4 +1,6 @@
+import { withSentryConfig } from '@sentry/nextjs/config';
 import type { NextConfig } from 'next';
+import { buildSentryBuildOptions } from './src/config/sentry-options';
 
 /**
  * Verified against Google's reCAPTCHA CSP guidance
@@ -102,4 +104,19 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+/**
+ * Sentry's build plugin: source-map upload and release creation from Vercel
+ * builds only, a same-origin tunnel route so the CSP above stays at
+ * `connect-src 'self'`, and never a failed build over a Sentry outage. The
+ * decisions are in `buildSentryBuildOptions`, with its tests.
+ */
+export default withSentryConfig(
+  nextConfig,
+  buildSentryBuildOptions({
+    SENTRY_ORG: process.env.SENTRY_ORG,
+    SENTRY_PROJECT: process.env.SENTRY_PROJECT,
+    SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
+    VERCEL_ENV: process.env.VERCEL_ENV,
+    CI: process.env.CI,
+  }),
+);
