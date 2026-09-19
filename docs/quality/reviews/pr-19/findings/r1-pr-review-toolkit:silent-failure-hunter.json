@@ -1,0 +1,89 @@
+[
+  {
+    "file": "app/error.tsx",
+    "line": 23,
+    "category": "correctness",
+    "severity": "important",
+    "summary": "The \"something went wrong\" page hands the error to the reporting library without first making sure that library has been switched on, so in the very case the page exists for the report is quietly thrown away, and if the report itself fails nobody hears about that either.",
+    "requires": [
+      "browser reporting enabled (a DSN is set for the deployment)",
+      "the failure happens before the deferred browser start-up has run - e.g. an error while the page is being brought to life in the browser, which is exactly what this boundary is for"
+    ],
+    "repro": "device",
+    "evidence": "app/error.tsx:23 and app/global-error.tsx:19 lazily import src/config/sentry-client and immediately call captureException on it. That module only re-exports the SDK call; the one place that actually starts the SDK is instrumentation-client.ts, which schedules start-up after the window load event plus an idle callback. A hydration or client render error runs the boundary's effect well before that, so captureException executes with no initialised client and the SDK discards the event without a word. The call is also a floating `void ...then(...)` with no rejection handler, so if the lazy chunk fails to download - a very common cause of the client error being reported after a redeploy - the report is lost and an unhandled rejection is raised instead. A shared \"ensure started, then capture\" helper (the same one instrumentation-client uses) plus a catch that at least console.errors would close both holes."
+  },
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 152,
+    "category": "security",
+    "severity": "important",
+    "summary": "The block meant to switch off everything the reporting library collects by itself uses two setting names the library does not recognise, and merely supplying the block makes the library start from \"collect everything\", so request headers and URL query parameters end up switched on rather than off.",
+    "requires": [
+      "reporting enabled on a deployment (DSN set, not a pipeline run)"
+    ],
+    "repro": "test",
+    "evidence": "The SDK resolves this option by taking the all-on defaults as the base whenever the option is present at all, then applying only the keys it knows: userInfo, cookies, httpHeaders as {request, response}, httpBodies, queryParams, genAI, stackFrameVariables, frameContextLines. Here httpHeaders is a boolean, so the lookup for request/response yields undefined and both fall back to the all-on default; urlQueryParams and databaseQueryData are not keys at all, so query-parameter collection also falls back to all-on. All-on means collected with an empty denylist, which is weaker than leaving the option out entirely (the no-PII default applies a sensitive-header denylist). The structural drop in beforeSend still removes event.request, so the worst of it is neutralised for error events, but span attributes carrying header values and the retained request.query_string are only covered by the key regex and by a query redaction pattern that requires a leading ? or &, so a bare query string is not redacted. sentry-options.test.ts asserts the literal object against itself and therefore cannot detect any of this. Verified against @sentry/core 10.63 typings and resolver (the lockfile pins 10.75); on those typings the boolean httpHeaders is also a type error, so either the option shape needs fixing or the typecheck gate is not seeing this file."
+  },
+  {
+    "file": "instrumentation-client.ts",
+    "line": 40,
+    "category": "correctness",
+    "severity": "minor",
+    "summary": "Browser error reporting is started from an idle moment with no deadline and is never retried, so in a background tab, or after a single failed download, the page reports nothing for the rest of its life and nothing says so.",
+    "requires": [
+      "browser reporting enabled (a DSN is set)",
+      "a hidden/backgrounded tab, or one failed fetch of the reporting chunk"
+    ],
+    "repro": "device",
+    "evidence": "Line 40 schedules start-up with requestIdleCallback and no timeout option; browsers may not run idle callbacks at all while a tab is hidden, so start-up can be postponed indefinitely. Line 31 caches the dynamic import with `client ??= import(...)`, so a rejected import is cached forever and every later caller re-uses the same rejection - there is no second attempt. Neither the start-up call (line 49) nor the navigation call (line 58) attaches a rejection handler, so the only trace of the failure is an unhandled rejection in the console. A timeout on the idle callback, clearing the cached promise on rejection, and a catch that reports the failure locally would make the gap visible and recoverable."
+  },
+  {
+    "file": "src/features/early-access/actions/join-early-access.action.ts",
+    "line": 28,
+    "category": "correctness",
+    "severity": "minor",
+    "summary": "The new tracing wrapper, and the request-header lookup it needs, sit outside the signup action's own safety net, so a failure inside the monitoring code now breaks the form instead of showing the visitor the polite \"please try again\" message.",
+    "requires": [
+      "headers() or the tracing wrapper throwing or rejecting inside a Server Action"
+    ],
+    "repro": "test",
+    "evidence": "`await headers()` is evaluated as an argument expression before withServerActionInstrumentation is entered, and the wrapper call itself is outside the try/catch that produces the retry state; the same pattern is in resolve-management.action.ts and unsubscribe.action.ts. The SDK wraps its own `await options.headers` in a try/catch precisely so a header failure only costs the trace, but awaiting at the call site moves that failure outside its protection. Before this change joinEarlyAccessAction could not reject; now a fault in the observability layer changes the visitor-facing contract. Wrapping the whole body - header lookup and wrapper call included - in the existing try/catch restores it."
+  },
+  {
+    "file": "src/adapters/observability/noop-error-reporter.adapter.ts",
+    "line": 10,
+    "category": "correctness",
+    "severity": "minor",
+    "summary": "Wherever no reporting address is configured - every developer machine, and any preview not yet set up - the failure is handed to an empty function, so it still vanishes with no log line anywhere.",
+    "requires": [
+      "NEXT_PUBLIC_SENTRY_DSN unset or blank, or a pipeline run"
+    ],
+    "repro": "none",
+    "evidence": "provideObservability selects NoopErrorReporterAdapter whenever the DSN is absent or the run is a pipeline run, and the adapter's captureException has an empty body. The boundary handlers report only through this port - they do not also write a line through the Logger port - so the exact scenario the change set out to fix (a signup failing for an unknown reason, on a laptop) still produces no output at all. Having the no-op write the error through the existing logger, or console.error outside production, would keep local debugging honest without sending anything anywhere."
+  },
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 129,
+    "category": "security",
+    "severity": "minor",
+    "summary": "The design says fields picked up from the application log are re-checked against the short list of fields allowed to leave the machine; for log records they are only checked against a list of forbidden names, so any other field a logger attaches still goes out.",
+    "requires": [
+      "reporting enabled on a deployment",
+      "any pino logger in the process emitting fields outside the allowlist"
+    ],
+    "repro": "test",
+    "evidence": "scrubEvent re-applies the logger allowlist to contexts.pino, matching the design's \"re-filtered against the logger allowlist rather than trusted\". scrubLog does not: it only runs the denied-key regex over log.attributes. The pino integration is left at its default of instrumenting every pino logger in the process, which is the very reason the design does not trust the adapter's own filtering. sentry-options.test.ts only feeds attributes whose keys match the regex, so the divergence is invisible to it. Re-using the same allowlist filter in scrubLog would make the two paths agree."
+  },
+  {
+    "file": "src/composition/capabilities/observability.ts",
+    "line": 24,
+    "category": "correctness",
+    "severity": "minor",
+    "summary": "Whether boundary failures get reported is decided when the site is built, while the reporting library itself decides when the site runs, so the two can disagree and failures can be dropped silently while everything else is reported normally.",
+    "requires": [
+      "NEXT_PUBLIC_SENTRY_DSN differing between build time and run time for the same deployment"
+    ],
+    "repro": "none",
+    "evidence": "Line 24 reads process.env.NEXT_PUBLIC_SENTRY_DSN as a literal member expression, which Next.js substitutes with the build-time value in server chunks as well as client chunks, whereas buildServerSentryOptions is handed process.env and reads the same variable dynamically at run time. The comment above it claims this \"mirrors the SDK's own enabled rule\", which only holds while the two values agree; when they do not, the reporter is a no-op inside a process whose SDK is live (or the reverse), with nothing to indicate it. Passing the value through the same runtime read used by buildServerSentryOptions removes the asymmetry."
+  }
+]

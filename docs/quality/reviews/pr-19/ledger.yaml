@@ -1,14 +1,732 @@
 version: 1
 pr: 19
-status: intake
+status: awaiting-triage
 rounds:
-  []
+  - "n": 1
+    head: 7f3e5917f6a88711d9f9c6e8b61e41b6476dabef
+    scope: full
+    reviewers:
+      - pr-review-toolkit:code-reviewer
+      - pr-review-toolkit:silent-failure-hunter
+      - pr-review-toolkit:pr-test-analyzer
+      - security
+    findings:
+      - R-01
+      - R-02
+      - R-03
+      - R-04
+      - R-05
+      - R-06
+      - R-07
+      - R-08
+      - R-09
+      - R-10
+      - R-11
+      - R-12
+      - R-13
+      - R-14
+      - R-15
+      - R-16
+      - R-17
+      - R-18
+      - R-19
+      - R-20
+      - R-21
+      - R-22
+      - R-23
+      - R-24
+      - R-25
+      - R-26
 findings:
-  []
+  - id: R-01
+    round: 1
+    fingerprint: 59b495273ecbcd67
+    file: src/config/sentry-options.ts
+    line: 114
+    category: security
+    severity: critical
+    summary: "The web address of the page is forwarded to Sentry exactly as it is, and the part after the '#' is never hidden — but that is precisely where the subscriber's secret management key sits while they are on the manage page, so a browser error report from that page can carry the key out of the building."
+    requires:
+      - a deployment with the Sentry DSN set (production or preview)
+      - "a browser-side event captured while the visitor is still on the manage page with the secret in the address — most durably after a render or hydration error, because the code that strips the secret from the address lives in an effect that a failed render never reaches"
+      - the Sentry DSN is configured so the browser part of the SDK is switched on
+      - "a visitor opens their management link and the page hits a client-side error (a failed script chunk, a hydration failure, or a second failure after pressing 'Try again') before the page's own code has removed the secret part from the address bar"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, critical"
+    fix_commits:
+      []
+    issue: null
+  - id: R-02
+    round: 1
+    fingerprint: 161306587baf3cea
+    file: app/error.tsx
+    line: 23
+    category: correctness
+    severity: important
+    summary: "The 'something went wrong' screen asks Sentry to record the error, but nothing has switched Sentry on at that moment, so the report is quietly dropped — losing exactly the browser errors these screens exist to report."
+    requires:
+      - a client-side render or hydration error
+      - "the error happening before the deferred start-up that only runs after the page's load event and an idle callback"
+      - browser reporting enabled (a DSN is set for the deployment)
+      - "the failure happens before the deferred browser start-up has run - e.g. an error while the page is being brought to life in the browser, which is exactly what this boundary is for"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-03
+    round: 1
+    fingerprint: aa71df7522660f37
+    file: src/config/sentry-options.ts
+    line: 183
+    category: security
+    severity: minor
+    summary: "Three cleaning steps are installed for errors, traces and log lines, but not for the standalone performance measurements the browser sends on their own, so if browser performance tracking is ever switched on those would leave uncleaned."
+    requires:
+      - "NEXT_PUBLIC_SENTRY_BROWSER_TRACES_SAMPLE_RATE set, which the runbook describes as a supported future step"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-04
+    round: 1
+    fingerprint: ea285c2e091abd0b
+    file: src/config/sentry-options.ts
+    line: 253
+    category: security
+    severity: important
+    summary: "The '/monitoring' address the browser reports through is an open, unauthenticated forwarder: anyone can post anything through the site's own domain to any Sentry account, at the site's expense."
+    requires:
+      - a deployed site (the forwarder only exists once the build plugin adds its rewrite)
+      - any build of the site (the forwarding rule is installed by the build plugin whether or not a DSN is configured)
+    repro: device
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-05
+    round: 1
+    fingerprint: b87a1014cd1ef973
+    file: src/config/maintenance-schedule.ts
+    line: 4
+    category: docs
+    severity: minor
+    summary: "A comment tells the next reader that a particular test guards the nightly job's schedule, but no test by that name exists — the real check lives somewhere else."
+    requires:
+      []
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-06
+    round: 1
+    fingerprint: e5b8ff7b7bdb7e11
+    file: src/config/sentry-options.ts
+    line: 152
+    category: security
+    severity: important
+    summary: "The block meant to switch off everything the reporting library collects by itself uses two setting names the library does not recognise, and merely supplying the block makes the library start from \"collect everything\", so request headers and URL query parameters end up switched on rather than off."
+    requires:
+      - "reporting enabled on a deployment (DSN set, not a pipeline run)"
+      - "DISPROVEN against the pinned @sentry/core 10.75.0: datacollection.d.ts types httpHeaders as CollectBehavior|HttpHeadersCollection (bare false is valid), urlQueryParams is the current key and queryParams is the deprecated one, and databaseQueryData exists. resolveDataCollectionOptions.js merges with ?? so each explicit false is kept; isCollectBehavior(false) expands httpHeaders to {request:false,response:false}. Residual true issue is minor only: graphQL, genAI and frameContextLines are unset and so inherit the all-on DEFAULTS, inert here as no GraphQL or AI integration is installed."
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-07
+    round: 1
+    fingerprint: 2b80e6f96df99d04
+    file: instrumentation-client.ts
+    line: 40
+    category: correctness
+    severity: minor
+    summary: "Browser error reporting is started from an idle moment with no deadline and is never retried, so in a background tab, or after a single failed download, the page reports nothing for the rest of its life and nothing says so."
+    requires:
+      - browser reporting enabled (a DSN is set)
+      - "a hidden/backgrounded tab, or one failed fetch of the reporting chunk"
+    repro: device
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-08
+    round: 1
+    fingerprint: 41ee7c440d5d5162
+    file: src/features/early-access/actions/join-early-access.action.ts
+    line: 28
+    category: correctness
+    severity: minor
+    summary: "The new tracing wrapper, and the request-header lookup it needs, sit outside the signup action's own safety net, so a failure inside the monitoring code now breaks the form instead of showing the visitor the polite \"please try again\" message."
+    requires:
+      - headers() or the tracing wrapper throwing or rejecting inside a Server Action
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-09
+    round: 1
+    fingerprint: 439c2955cb68ebfc
+    file: src/adapters/observability/noop-error-reporter.adapter.ts
+    line: 10
+    category: correctness
+    severity: minor
+    summary: "Wherever no reporting address is configured - every developer machine, and any preview not yet set up - the failure is handed to an empty function, so it still vanishes with no log line anywhere."
+    requires:
+      - "NEXT_PUBLIC_SENTRY_DSN unset or blank, or a pipeline run"
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-10
+    round: 1
+    fingerprint: 8ae16e8af3e45801
+    file: src/config/sentry-options.ts
+    line: 129
+    category: security
+    severity: minor
+    summary: "The design says fields picked up from the application log are re-checked against the short list of fields allowed to leave the machine; for log records they are only checked against a list of forbidden names, so any other field a logger attaches still goes out."
+    requires:
+      - reporting enabled on a deployment
+      - any pino logger in the process emitting fields outside the allowlist
+      - some other component in the process writes structured log lines through the same logging library
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-11
+    round: 1
+    fingerprint: b4404f480a0528b9
+    file: src/composition/capabilities/observability.ts
+    line: 24
+    category: correctness
+    severity: minor
+    summary: "Whether boundary failures get reported is decided when the site is built, while the reporting library itself decides when the site runs, so the two can disagree and failures can be dropped silently while everything else is reported normally."
+    requires:
+      - NEXT_PUBLIC_SENTRY_DSN differing between build time and run time for the same deployment
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-12
+    round: 1
+    fingerprint: de664d1472d63d35
+    file: src/config/sentry-options.ts
+    line: 182
+    category: test-gap
+    severity: critical
+    summary: "Every test of the privacy scrubbers calls them directly, and no test checks that they are actually attached to the settings handed to Sentry, so deleting one line would silently send everything unscrubbed while the whole suite stays green."
+    requires:
+      - a future edit removes or renames beforeSend / beforeSendTransaction / beforeSendLog in sharedOptions
+      - a deployment with a DSN configured
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, critical"
+    fix_commits:
+      []
+    issue: null
+  - id: R-13
+    round: 1
+    fingerprint: 44ebe514cc8a1d05
+    file: src/config/sentry-options.test.ts
+    line: 17
+    category: test-gap
+    severity: important
+    summary: "The approved design says the Sentry tests must check against the same banned-values list the logger tests use, but the two lists are separate copies that have already drifted apart."
+    requires:
+      - a new never-log field is added to one test file and not the other
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-14
+    round: 1
+    fingerprint: 5f58cca0c78e19b7
+    file: src/config/sentry-options.ts
+    line: 78
+    category: security
+    severity: important
+    summary: "The text scrubber never touches the part of a web address after the '#', which is exactly where this product puts its secret management link, and no test covers that case even though one test looks like it does."
+    requires:
+      - "a browser-side event, log or breadcrumb captured while the address still carries the management fragment"
+      - a DSN configured on that deployment
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-15
+    round: 1
+    fingerprint: f0e3f9223819b117
+    file: src/features/early-access/actions/resolve-management.action.ts
+    line: 12
+    category: test-gap
+    severity: important
+    summary: "Nothing checks that the three form submissions are traced without their form contents and without their answer, so a one-word change could start attaching the visitor's masked address and state to the trace unnoticed."
+    requires:
+      - a future edit sets recordResponse to true or passes formData into the instrumentation options
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-16
+    round: 1
+    fingerprint: 45c463f51a34b305
+    file: tests/unit/e2e-runtime-config.test.ts
+    line: 48
+    category: test-gap
+    severity: important
+    summary: "The design and the runbook both promise that the three local measurement runs never report to Sentry, but the new test only checks two of them, and the third genuinely does not blank the setting."
+    requires:
+      - a developer with a DSN in their local environment file running the local performance check
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-17
+    round: 1
+    fingerprint: bff544936cd3f5d7
+    file: app/error.tsx
+    line: 20
+    category: test-gap
+    severity: minor
+    summary: "The two screens that catch failures happening inside the visitor's browser, and the loader that starts the browser reporter after the page settles, have no tests at all."
+    requires:
+      - "a future edit breaks the lazy import path, the capture call, or the deferral"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-18
+    round: 1
+    fingerprint: 09db7b436e9944ed
+    file: proxy.ts
+    line: 144
+    category: test-gap
+    severity: minor
+    summary: "The address the browser sends its reports to is written out by hand in two places, and unlike the cron schedule this PR does pin, nothing checks the two stay the same."
+    requires:
+      - the tunnel path is renamed in one place and not the other
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-19
+    round: 1
+    fingerprint: c038914757fbff21
+    file: src/config/maintenance-schedule.ts
+    line: 3
+    category: docs
+    severity: minor
+    summary: A comment sends the next maintainer to a test file that does not exist; the real check lives somewhere else.
+    requires:
+      []
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-20
+    round: 1
+    fingerprint: 1e0173a365c86478
+    file: src/config/sentry-options.ts
+    line: 92
+    category: test-gap
+    severity: minor
+    summary: "The scrubber stops cleaning once a payload nests more than twelve levels deep and hands the rest through untouched, and no test pins that boundary."
+    requires:
+      - an outgoing payload nested deeper than twelve levels that still reaches the hook unflattened
+      - "Effectively unreachable: the SDK normalises the event to depth 3 with cycle replacement before beforeSend runs, so a payload cannot still be 12 levels deep at the hook."
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-21
+    round: 1
+    fingerprint: 42c968004b98160d
+    file: src/features/early-access/actions/management.actions.test.ts
+    line: 56
+    category: test-gap
+    severity: minor
+    summary: "A check meant to prove the secret link never reaches the reporter is written so that it can never fail, which makes the coverage look stronger than it is."
+    requires:
+      []
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-22
+    round: 1
+    fingerprint: f4760d314c57fcf8
+    file: src/features/early-access/actions/unsubscribe.action.ts
+    line: 16
+    category: test-gap
+    severity: minor
+    summary: The signup form has a test proving that a broken configuration is still reported before the visitor sees the polite retry message; the two management actions have the same code path with no such test.
+    requires:
+      - "the wiring lookup in a management action throws, for example missing database configuration"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-23
+    round: 1
+    fingerprint: e4fba8d7726b1d7b
+    file: tests/unit/e2e-runtime-config.test.ts
+    line: 48
+    category: security
+    severity: important
+    summary: "The promise that the speed-measurement run never reports anything is not actually implemented, so a developer with real credentials in their local settings file will silently send local traffic to the live error tracker."
+    requires:
+      - a developer has a real Sentry DSN in their local .env.local and runs the local speed-measurement command
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-24
+    round: 1
+    fingerprint: 46c8438d9484b827
+    file: src/config/sentry-options.ts
+    line: 74
+    category: security
+    severity: minor
+    summary: "The rule that blanks out credential-carrying web-address parameters only fires when the parameter is preceded by '?' or '&', which is never true for the very field the scrubber goes out of its way to keep."
+    requires:
+      - "the event's stored query-string field is populated — today the SDK is configured not to collect it, so this only bites if that switch is ever flipped back or another source sets the field"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-25
+    round: 1
+    fingerprint: 20b5bbe61d7ace01
+    file: src/config/sentry-options.ts
+    line: 80
+    category: docs
+    severity: minor
+    summary: "The claim that the database address is stripped before anything leaves the machine is stronger than what the code does: only the username and password are removed, and the database host still travels on every outgoing-call trace."
+    requires:
+      - server tracing enabled (it is on by default in every environment) or a driver error whose text contains the connection string
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-26
+    round: 1
+    fingerprint: 32a8f80879c27d61
+    file: src/config/sentry-options.test.ts
+    line: 67
+    category: test-gap
+    severity: minor
+    summary: "No test feeds the scrubber an event shaped like one from a real browser on the management page, so the case where the secret link sits in the address is never checked."
+    requires:
+      []
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
 evidence:
   []
 waivers:
   []
 eli5:
-  []
+  - round: 1
+    text: "Four reviewers read this change on their own, without seeing each other's notes. Between them they raised twenty-six things. Sixteen are small and have already been parked for later automatically. Ten are waiting on you.\n\nThe one that matters most: when someone wants to change or cancel their early-access signup, we email them a link with a secret key in it, and that key is the only thing standing between a stranger and that person's record — there are no passwords here, the link *is* the password. The key sits in the tail end of the web address, after the \"#\". This change starts sending crash reports to an outside company, and those reports include the full web address of the page the person was on, tail end included. The code written to wipe secrets out of those reports knows how to spot several shapes of secret, but not that one. So if the manage page breaks in someone's browser before it has had the half-second it needs to tidy the address, their key gets posted to a third party. Two reviewers found this separately. The privacy notice this very change adds to the site currently promises the opposite.\n\nThe second one: this change adds a \"something went wrong\" screen, and that screen asks the crash reporter to write the error down. But the crash reporter is deliberately started late, after the page has finished loading, so that it doesn't slow the site down. A crash during loading therefore happens while the reporter is still asleep, and the note goes nowhere. The screen exists to catch exactly those crashes. Two reviewers found this one too.\n\nOne thing I owe you straight: a third reviewer reported something serious-sounding — that the switches turning off data collection were misspelled and silently doing nothing. It was wrong. It had checked against an older version of the library than this project actually installs. I pulled the real version and read it myself: the switches are correct and they do work. That is R-06 in the list, and my recommendation is that you drop it rather than fix it. I have written the proof into the record so nobody re-raises it next round.\n\nWhat you need to decide: for each of the ten, whether it gets fixed before this merges or pushed to later. You can accept the whole list, or name the ones you want changed. Nothing gets touched until you answer.\n"
 comment_id: null

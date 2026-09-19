@@ -1,0 +1,85 @@
+[
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 114,
+    "category": "security",
+    "severity": "critical",
+    "summary": "The scrubber deliberately keeps the full page address of an error, and nothing in it ever cleans the part after the '#' — which is exactly where this product puts the secret link that lets someone manage a subscription.",
+    "requires": [
+      "the Sentry DSN is configured so the browser part of the SDK is switched on",
+      "a visitor opens their management link and the page hits a client-side error (a failed script chunk, a hydration failure, or a second failure after pressing 'Try again') before the page's own code has removed the secret part from the address bar"
+    ],
+    "repro": "test",
+    "evidence": "The confirmation email builds the management link by putting the raw token in the URL fragment (send-confirmation-email.use-case.ts sets managementUrl.hash), and the manage page only strips it in a client effect. The browser SDK attaches the full current address, fragment included, as the event's request URL. scrubEvent rebuilds request as {url, method, query_string} and passes url through redactText, which only handles addresses-that-look-like-email, 'scheme://user@' credentials, and query parameters introduced by ? or &. The repo's own test at sentry-options.test.ts:54-56 asserts that a '#...' tail survives redaction unchanged. With browser tracing switched on the same value also lands on the page-load span as a full-URL attribute. Result: the one credential the product has can reach the error tracker verbatim, contradicting the sentence added to the privacy page in this PR."
+  },
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 253,
+    "category": "security",
+    "severity": "important",
+    "summary": "The new /monitoring path is an open, unauthenticated relay: anyone can post anything to it and the site will forward it to whichever error-tracking account the caller names in the web address.",
+    "requires": [
+      "any build of the site (the forwarding rule is installed by the build plugin whether or not a DSN is configured)"
+    ],
+    "repro": "device",
+    "evidence": "tunnelRoute installs a Next.js rewrite, not a guarded route handler. The rewrite matches /monitoring with query keys o and p and forwards the untouched request body to a destination assembled from those two caller-supplied numbers. The destination hostname is confined to the vendor's ingest domain, so this is not general server-side request forgery, but there is no authentication, no rate limit, no body-size limit of the site's own, and no check that the account named is the site's account. That makes the deployment a free forwarder and an unmetered consumer of hosting invocations and bandwidth, which the threat model lists as in scope. Picking a fixed, guessable path also removes the discovery friction the SDK's randomised default would have given."
+  },
+  {
+    "file": "tests/unit/e2e-runtime-config.test.ts",
+    "line": 48,
+    "category": "security",
+    "severity": "important",
+    "summary": "The promise that the speed-measurement run never reports anything is not actually implemented, so a developer with real credentials in their local settings file will silently send local traffic to the live error tracker.",
+    "requires": [
+      "a developer has a real Sentry DSN in their local .env.local and runs the local speed-measurement command"
+    ],
+    "repro": "test",
+    "evidence": "The design note and the new runbook both state that the containerised end-to-end run, the unit tests and the speed-measurement run never report. The container and the browser-test runner are each given an explicit empty DSN, and this new test asserts exactly those two files. The speed-measurement configuration is untouched by this PR: it starts a local production build that inherits the developer's local settings file, and nothing blanks the DSN or the upload token there. Locally none of the pipeline signals are set either, so the server side of the SDK is enabled too. The gate therefore fails open in the one environment the documentation singles out by name."
+  },
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 74,
+    "category": "security",
+    "severity": "minor",
+    "summary": "The rule that blanks out credential-carrying web-address parameters only fires when the parameter is preceded by '?' or '&', which is never true for the very field the scrubber goes out of its way to keep.",
+    "requires": [
+      "the event's stored query-string field is populated — today the SDK is configured not to collect it, so this only bites if that switch is ever flipped back or another source sets the field"
+    ],
+    "repro": "test",
+    "evidence": "The pattern is anchored on [?&] before the parameter name. The SDK builds the stored query-string field by taking the address's search portion and dropping the leading '?', so the first parameter in that field has no separator in front of it and is left untouched. scrubEvent explicitly preserves that field while dropping everything else about the request, which makes this the one place the anchoring matters. The layer that the design note counts as the second of three does not hold on its own here."
+  },
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 80,
+    "category": "docs",
+    "severity": "minor",
+    "summary": "The claim that the database address is stripped before anything leaves the machine is stronger than what the code does: only the username and password are removed, and the database host still travels on every outgoing-call trace.",
+    "requires": [
+      "server tracing enabled (it is on by default in every environment) or a driver error whose text contains the connection string"
+    ],
+    "repro": "none",
+    "evidence": "The text redactor replaces only the 'user:password@' portion of a connection-string-shaped value; the repo's own test asserts that the surviving result is still a full connection string minus credentials, host and database name included. Separately, traces of outgoing calls carry the destination host and full endpoint address as span attributes for the database, the mail provider and the spam-check service, and none of those attribute names match the key denylist. The main spec's never-log list bans the connection string, not the hostname, so this is a wording problem rather than a spec breach — but it is the exact sentence the PR summary, the runbook and the new privacy-page paragraph ask readers to trust."
+  },
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 129,
+    "category": "security",
+    "severity": "minor",
+    "summary": "The strict allowlist is re-applied to log fields that ride along with an error, but not to the same fields when they travel as plain log lines, so the two paths give different guarantees than the design note describes.",
+    "requires": [
+      "some other component in the process writes structured log lines through the same logging library"
+    ],
+    "repro": "test",
+    "evidence": "scrubEvent re-filters the attached logging context against the seven-field allowlist, with a comment explaining that the integration also observes any other logger in the process. The log path (scrubLog) applies only the substring denylist and the free-text redactions, never the allowlist. The integration is left on automatic-instrumentation mode, so it does pick up every logger in the process. The design note presents both as one enforcement; they are not. Today the application's own logger already filters at source, so this is a defence-in-depth gap rather than a live leak."
+  },
+  {
+    "file": "src/config/sentry-options.test.ts",
+    "line": 67,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "No test feeds the scrubber an event shaped like one from a real browser on the management page, so the case where the secret link sits in the address is never checked.",
+    "requires": [],
+    "repro": "test",
+    "evidence": "The scrubEvent tests use a bare site root as the request address, and the shared 'is it clean' helper checks only against a fixed list of forbidden strings that contains no fragment-borne token. The redactText test one screen earlier actually asserts that a '#' tail is preserved, so the behaviour is pinned as correct rather than flagged. A regression test should assert that an event whose request address is a management link comes out with the token removed."
+  }
+]

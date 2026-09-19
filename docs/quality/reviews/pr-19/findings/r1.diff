@@ -1,0 +1,2469 @@
+diff --git a/.env.example b/.env.example
+index cce7e6d..092720d 100644
+--- a/.env.example
++++ b/.env.example
+@@ -50,6 +50,27 @@ LAUNCH_DRY_RUN_RECIPIENT=
+ # leaves the server or the database as raw text.
+ MANAGEMENT_TOKEN_SECRET=
+ 
++# --- Error reporting, tracing and logs (Sentry) ---------------------------
++# See docs/operations/sentry.md and the 2026-09-19 observability spec.
++# Public DSN, inlined into the browser bundle at build time. Unset or blank
++# disables the SDK everywhere; CI, Vitest and the E2E container never report
++# even when it is set.
++NEXT_PUBLIC_SENTRY_DSN=
++# Optional 0..1 override for server-side tracing (Server Actions, RSC, cron,
++# outgoing calls). Defaults: 0.1 in Production, 1 elsewhere.
++SENTRY_TRACES_SAMPLE_RATE=
++# Browser page-load/navigation tracing is OFF unless this is set (0..1). It is
++# the one piece measured to cost Lighthouse performance points; see
++# docs/operations/sentry.md before enabling it.
++NEXT_PUBLIC_SENTRY_BROWSER_TRACES_SAMPLE_RATE=
++# Source-map upload target (build time only, not secret).
++SENTRY_ORG=
++SENTRY_PROJECT=
++# Build-time only, never read by the app. Lives in GitHub Actions secrets for
++# the workflows that run `vercel build`; a Vercel "Sensitive" variable pulls as
++# [SENSITIVE] and is treated as unset. Without it the build only skips upload.
++SENTRY_AUTH_TOKEN=
++
+ # --- Automation-only (not read by the app at runtime) ---------------------
+ # CI/CD and deploy automation may additionally require Vercel and Neon
+ # project IDs/tokens. Those are GitHub Actions repository secrets, not
+diff --git a/README.md b/README.md
+index b5c728f..0a71853 100644
+--- a/README.md
++++ b/README.md
+@@ -120,6 +120,11 @@ connection strings, account identifiers, subscriber data, or raw tokens.
+ | `CRON_SECRET` | Secret | Bearer credential for the maintenance route. |
+ | `LAUNCH_DRY_RUN_RECIPIENT` | Secret | Approved recipient for launch-email review. |
+ | `MANAGEMENT_TOKEN_SECRET` | Secret | Server-only key for deterministic launch management tokens. |
++| `NEXT_PUBLIC_SENTRY_DSN` | Public configuration | Sentry DSN for errors, traces and logs; unset disables the SDK. See [the Sentry runbook](docs/operations/sentry.md). |
++| `SENTRY_TRACES_SAMPLE_RATE` | Server | Optional 0..1 override for server-side tracing (defaults: 0.1 in Production, 1 elsewhere). |
++| `NEXT_PUBLIC_SENTRY_BROWSER_TRACES_SAMPLE_RATE` | Public configuration | Opt-in browser tracing rate (0..1); off when unset because it costs Lighthouse performance points. |
++| `SENTRY_ORG`, `SENTRY_PROJECT` | Build automation | Source-map upload target. |
++| `SENTRY_AUTH_TOKEN` | Secret (build automation) | Source-map upload credential for the `vercel build` steps in GitHub Actions; never a Vercel Sensitive variable. |
+ 
+ Automation also uses scoped Vercel and Neon identifiers and tokens described
+ in the linked operations runbooks. `.env.example` is a names-and-descriptions
+diff --git a/app/api/cron/maintenance/route.test.ts b/app/api/cron/maintenance/route.test.ts
+new file mode 100644
+index 0000000..75aa8c9
+--- /dev/null
++++ b/app/api/cron/maintenance/route.test.ts
+@@ -0,0 +1,78 @@
++import { readFileSync } from 'node:fs';
++import { describe, expect, it, vi } from 'vitest';
++import {
++  MAINTENANCE_CRON_SCHEDULE,
++  MAINTENANCE_MONITOR_CONFIG,
++  MAINTENANCE_MONITOR_SLUG,
++} from '../../../../src/config/maintenance-schedule';
++
++vi.mock('server-only', () => ({}));
++
++const sentry = vi.hoisted(() => ({
++  flush: vi.fn(async () => true),
++  monitors: [] as Array<{ slug: string; config: unknown }>,
++  spans: [] as Array<{ name: string; op?: string }>,
++}));
++
++vi.mock('@sentry/nextjs', () => ({
++  withMonitor: <T>(slug: string, callback: () => T, config: unknown): T => {
++    sentry.monitors.push({ slug, config });
++    return callback();
++  },
++  startSpan: <T>(options: { name: string; op?: string }, callback: () => T): T => {
++    sentry.spans.push(options);
++    return callback();
++  },
++  flush: sentry.flush,
++}));
++
++const { monitoredMaintenanceRun } = await import('./route');
++
++const result = {
++  confirmationRetriesProcessed: 1,
++  confirmationExhausted: 0,
++  unsubscribedAnonymized: 0,
++  launchedAnonymized: 0,
++};
++
++describe('maintenance cron monitor', () => {
++  it('upserts the Sentry monitor with the schedule Vercel actually runs', () => {
++    const vercel = JSON.parse(readFileSync('vercel.json', 'utf8')) as {
++      crons: Array<{ path: string; schedule: string }>;
++    };
++
++    expect(vercel.crons).toEqual([
++      { path: '/api/cron/maintenance', schedule: MAINTENANCE_CRON_SCHEDULE },
++    ]);
++    expect(MAINTENANCE_MONITOR_CONFIG.schedule).toEqual({
++      type: 'crontab',
++      value: MAINTENANCE_CRON_SCHEDULE,
++    });
++  });
++
++  it('runs inside a check-in and a cron span, then flushes before the function freezes', async () => {
++    sentry.monitors.length = 0;
++    sentry.spans.length = 0;
++    sentry.flush.mockClear();
++
++    await expect(monitoredMaintenanceRun(async () => result)).resolves.toEqual(result);
++
++    expect(sentry.monitors).toEqual([
++      { slug: MAINTENANCE_MONITOR_SLUG, config: MAINTENANCE_MONITOR_CONFIG },
++    ]);
++    expect(sentry.spans).toEqual([{ name: 'early-access maintenance', op: 'cron' }]);
++    expect(sentry.flush).toHaveBeenCalledWith(2000);
++  });
++
++  it('keeps propagating failures (the 500 contract) and still flushes', async () => {
++    sentry.flush.mockClear();
++
++    await expect(
++      monitoredMaintenanceRun(async () => {
++        throw new Error('DATABASE_URL is not configured');
++      }),
++    ).rejects.toThrow('DATABASE_URL is not configured');
++
++    expect(sentry.flush).toHaveBeenCalledTimes(1);
++  });
++});
+diff --git a/app/api/cron/maintenance/route.ts b/app/api/cron/maintenance/route.ts
+index 3fcf995..82b2686 100644
+--- a/app/api/cron/maintenance/route.ts
++++ b/app/api/cron/maintenance/route.ts
+@@ -1,7 +1,39 @@
+-import { getMaintenanceOperation } from '../../../../src/composition/server/maintenance.wiring';
++import * as Sentry from '@sentry/nextjs';
++import {
++  getMaintenanceOperation,
++  type MaintenanceResult,
++} from '../../../../src/composition/server/maintenance.wiring';
++import {
++  MAINTENANCE_MONITOR_CONFIG,
++  MAINTENANCE_MONITOR_SLUG,
++} from '../../../../src/config/maintenance-schedule';
+ import { handleMaintenanceRequest } from './maintenance-route.handler';
+ 
++/**
++ * Wraps the authorised run — and only the authorised run — in a Sentry cron
++ * check-in and a span. An unauthenticated caller is rejected before any of
++ * this exists (maintenance.wiring.test.ts). Errors keep propagating so the
++ * 500 contract and `onRequestError` capture are unchanged. The explicit
++ * flush matters: Turbopack route handlers are not SDK-wrapped, so nothing
++ * else drains the check-in before Vercel freezes the function.
++ */
++export async function monitoredMaintenanceRun(
++  run: () => Promise<MaintenanceResult>,
++): Promise<MaintenanceResult> {
++  try {
++    return await Sentry.withMonitor(
++      MAINTENANCE_MONITOR_SLUG,
++      () => Sentry.startSpan({ name: 'early-access maintenance', op: 'cron' }, run),
++      MAINTENANCE_MONITOR_CONFIG,
++    );
++  } finally {
++    await Sentry.flush(2000);
++  }
++}
++
+ export async function GET(request: Request): Promise<Response> {
+   const maintenance = getMaintenanceOperation();
+-  return handleMaintenanceRequest(request, maintenance.cronSecret, maintenance.execute);
++  return handleMaintenanceRequest(request, maintenance.cronSecret, () =>
++    monitoredMaintenanceRun(maintenance.execute),
++  );
+ }
+diff --git a/app/error.tsx b/app/error.tsx
+new file mode 100644
+index 0000000..f22960f
+--- /dev/null
++++ b/app/error.tsx
+@@ -0,0 +1,43 @@
++'use client';
++
++import Link from 'next/link';
++import { useEffect } from 'react';
++
++/**
++ * Route-segment error boundary: keeps the root layout (fonts, styles) and
++ * reuses the not-found page's styling so no new visual design is introduced.
++ * Server-side render errors are already reported through `onRequestError`;
++ * this covers errors thrown during client rendering and hydration, which no
++ * server hook sees.
++ */
++export default function ErrorPage({
++  error,
++  retry,
++}: {
++  error: Error & { digest?: string };
++  retry: () => void;
++}) {
++  useEffect(() => {
++    // Dynamic on purpose: a static import would put the SDK in the root
++    // client chunk of every page; see instrumentation-client.ts.
++    void import('@/src/config/sentry-client').then((sentry) => sentry.captureException(error));
++  }, [error]);
++
++  return (
++    <main className="legal-page wrap">
++      <Link className="legal-back" href="/">
++        ← Corpus
++      </Link>
++      <p className="eyebrow">Corpus</p>
++      <h1>Something went wrong</h1>
++      <p className="legal-description">
++        This page could not be shown. You can try again, or go back to the start.
++      </p>
++      <p>
++        <button className="button" onClick={() => retry()} type="button">
++          Try again
++        </button>
++      </p>
++    </main>
++  );
++}
+diff --git a/app/global-error.tsx b/app/global-error.tsx
+new file mode 100644
+index 0000000..3afed9e
+--- /dev/null
++++ b/app/global-error.tsx
+@@ -0,0 +1,43 @@
++'use client';
++
++import { useEffect } from 'react';
++
++/**
++ * Replaces the root layout when the layout itself fails, so it must render
++ * its own document and cannot rely on the app's stylesheet or fonts.
++ */
++export default function GlobalError({
++  error,
++  retry,
++}: {
++  error: Error & { digest?: string };
++  retry: () => void;
++}) {
++  useEffect(() => {
++    // Dynamic on purpose: a static import would put the SDK in the root
++    // client chunk of every page; see instrumentation-client.ts.
++    void import('@/src/config/sentry-client').then((sentry) => sentry.captureException(error));
++  }, [error]);
++
++  return (
++    <html lang="en">
++      <body>
++        <main
++          style={{
++            fontFamily: 'system-ui, sans-serif',
++            margin: '4rem auto',
++            maxWidth: '36rem',
++            padding: '0 1rem',
++          }}
++        >
++          <p>Corpus</p>
++          <h1>Something went wrong</h1>
++          <p>The site could not be shown. You can try again, or come back a little later.</p>
++          <button onClick={() => retry()} type="button">
++            Try again
++          </button>
++        </main>
++      </body>
++    </html>
++  );
++}
+diff --git a/bun.lock b/bun.lock
+index 7678e51..44398d7 100644
+Binary files a/bun.lock and b/bun.lock differ
+diff --git a/compose.yaml b/compose.yaml
+index 4b3c778..9f9f87d 100644
+--- a/compose.yaml
++++ b/compose.yaml
+@@ -87,6 +87,12 @@ services:
+       # configuration" — this is that signal.
+       CORPUS_FAKE_CAPTCHA: '1'
+       CI: 'true'
++      # Blank on purpose, for the same bind-mount reason as SITE_URL: a developer's
++      # .env.local DSN would otherwise be inlined into this build's client bundle
++      # and an auth token would upload a release nothing deploys. An explicit
++      # empty value wins over the env file (Next.js never overrides a set var).
++      NEXT_PUBLIC_SENTRY_DSN: ''
++      SENTRY_AUTH_TOKEN: ''
+     volumes:
+       - .:/work
+       # Container-side node_modules: the host's may hold darwin or glibc-
+diff --git a/docs/operations/sentry.md b/docs/operations/sentry.md
+new file mode 100644
+index 0000000..92ea09a
+--- /dev/null
++++ b/docs/operations/sentry.md
+@@ -0,0 +1,98 @@
++# Sentry: errors, traces, logs and the cron monitor
++
++Design: `docs/superpowers/specs/2026-09-19-sentry-observability-design.md`.
++This runbook is the procedure; the spec is the why.
++
++## What is instrumented
++
++| Surface | Mechanism | Where |
++| --- | --- | --- |
++| Uncaught server errors (RSC, route handlers, Server Actions, proxy) | `onRequestError` | `instrumentation.ts` |
++| Server Action spans and trace continuation | `withServerActionInstrumentation` | `src/features/early-access/actions/*.action.ts` |
++| Failures a boundary collapses into `retry` | `ErrorReporter` port → Sentry adapter | handlers under `src/features/early-access/actions/` |
++| Use-case delivery failures and all operational log lines | Pino integration | `sentry.server.config.ts` |
++| Maintenance cron check-ins and span | `withMonitor` + `startSpan` + `flush` | `app/api/cron/maintenance/route.ts` |
++| Client render errors | error boundaries | `app/error.tsx`, `app/global-error.tsx` |
++| Browser errors and console warn/error logs; page-load/navigation tracing when opted in | browser SDK, loaded after `load` | `instrumentation-client.ts`, `src/config/sentry-client.ts` |
++
++Not instrumented: the Bun launch CLI (`scripts/launch-email.ts`). Its errors
++are in the GitHub Actions job log.
++
++## One-time setup
++
++1. Create a Sentry project of type **Next.js**. Note the organisation slug,
++   project slug and DSN.
++2. Vercel project → Environment Variables (Production and Preview):
++   - `NEXT_PUBLIC_SENTRY_DSN` — the DSN. Plain, not Sensitive: it is inlined
++     into the browser bundle by design.
++   - `SENTRY_ORG`, `SENTRY_PROJECT` — plain.
++   - Optionally `SENTRY_TRACES_SAMPLE_RATE` (server tracing override) and
++     `NEXT_PUBLIC_SENTRY_BROWSER_TRACES_SAMPLE_RATE` (browser tracing, off by
++     default — see "Browser tracing" below).
++   - **Do not** add `SENTRY_AUTH_TOKEN` to Vercel. The builds that deploy
++     run `vercel build` in GitHub Actions, and a Vercel Sensitive variable
++     pulls as the literal `[SENSITIVE]`, which the build treats as unset.
++3. GitHub repository:
++   - Actions **secret** `SENTRY_AUTH_TOKEN` — an organisation auth token with
++     `project:releases` and `org:read` scopes.
++   - Actions **variables** `SENTRY_ORG` and `SENTRY_PROJECT`.
++   - The `vercel build` steps of `preview.yml` and `deploy-production.yml`
++     must pass all three as step `env` (the production step also sets
++     `SENTRY_RELEASE: ${{ inputs.sha }}`). Workflow files can only be changed
++     by a credential with the `workflow` scope, so this is a separate,
++     human-applied change; until it lands, deployed builds simply skip the
++     upload and stack traces stay minified.
++4. In Sentry, create alert rules (none are defined in code):
++   - New issue in environment `vercel-production` → notify.
++   - Cron monitor `early-access-maintenance` missed or failed → notify. The
++     monitor is upserted by the first check-in with schedule `0 5 * * *` UTC,
++     a 10-minute check-in margin and a 15-minute maximum runtime.
++
++Local development: put `NEXT_PUBLIC_SENTRY_DSN` in `.env.local` only if you
++want local events in Sentry (environment `development`). `bun run test`,
++`bun run test:e2e` and `bun run lighthouse` never report regardless.
++
++## Verifying a deployment
++
++After the first Preview deploy with a DSN:
++
++1. Open the site with the browser devtools Network tab. Envelope requests go
++   to `/monitoring` on the site's own origin; nothing is requested from
++   `*.sentry.io`. The CSP is unchanged.
++2. Trigger a Server Action failure on the Preview (for example, point the
++   Preview's `DATABASE_URL` at an unreachable host for one request) and check
++   the resulting issue: tags `operation=join_early_access`, `release_stage`,
++   `vercel_env=preview`; **no** email address, cookie, header, form field or
++   connection string anywhere in the event. If any appears, that is a
++   regression in `src/config/sentry-options.ts` — add the case to its test.
++3. Sentry → Crons: `early-access-maintenance` shows a check-in after the next
++   05:00 UTC run (or call the route with the bearer secret).
++4. Sentry → Logs: the `Early-access maintenance completed` line appears with
++   only `operation`, `status`, `aggregateCount` and `durationMs`.
++5. Sentry → Releases: the Preview commit SHA has uploaded source maps, and a
++   stack trace resolves to TypeScript source.
++
++## Browser tracing
++
++Page-load and navigation spans from the browser are off until
++`NEXT_PUBLIC_SENTRY_BROWSER_TRACES_SAMPLE_RATE` is set. Measured on the
++landing page they cost about two Lighthouse performance points against the
++0.9 gate (the spec's decision 7 has the table). To enable them: set the
++variable on Preview first, let the `lighthouse` PR check run against that
++preview, and promote the setting to Production only if it stays green.
++Server-side tracing (Server Actions, RSC renders, the cron, outgoing calls to
++Neon, Resend and reCAPTCHA) is on regardless.
++
++## What is never sent
++
++Spec §24's list, enforced in `src/config/sentry-options.ts` and tested in
++`src/config/sentry-options.test.ts`: email addresses (also redacted inside
++free text), management tokens and hashes, CAPTCHA tokens and scores, provider
++response bodies, connection strings and URL credentials, secrets, request
++bodies, cookies, headers and user identity. Session Replay is not enabled.
++
++## Turning it off
++
++Remove `NEXT_PUBLIC_SENTRY_DSN` from the environment and redeploy. The SDK
++initialises disabled, the tunnel route receives nothing, and the code paths
++stay in place for the next deployment that sets it again.
+diff --git a/docs/quality/reviews/pr-19/gate.yaml b/docs/quality/reviews/pr-19/gate.yaml
+new file mode 100644
+index 0000000..c12d88c
+--- /dev/null
++++ b/docs/quality/reviews/pr-19/gate.yaml
+@@ -0,0 +1,56 @@
++# review-gate gate. Human-owned: the CLI reads this and never writes it back.
++version: 1
++pr: 19
++branch: "claude/eager-brahmagupta-1r8cat"
++base: "main"
++intake_sha: a158f85bb5b007cf690d637a9d681d47afd3dc20   # commits at or before this SHA are exempt from trailer rules
++spec: "docs/superpowers/specs/2026-09-19-sentry-observability-design.md"
++about:
++  project: |
++    corpus-landing is the public early-access page for Corpus. Anyone can visit it, read what the product is, and hand over an email address to be told when it launches. They confirm that address by clicking a link in a mail, and they can later use a second opaque link to change their mind and leave. There are no accounts and no passwords: the links themselves are the only key. One day the site will send a single launch mail to everyone who stayed, and then it turns into a plain 'Get Corpus' page. It is built with Next.js on Vercel, keeps its list in a Postgres database at Neon, and sends its mail through Resend. The code is arranged so the rules of the product sit in the middle and never reach out to any outside service directly; the parts that talk to the database, the mail provider and now the error tracker are plugged in around the edge.
++  feature: |
++    This change gives the running site a way to tell its operators when something breaks. Until now, when a signup failed, the page deliberately showed the visitor the same polite 'please retry' message no matter the cause, and the real reason was thrown away, so nobody could tell a database outage from a rejected spam check. The nightly cleanup job failed silently too. This adds Sentry: errors from the server, the browser and the cleanup job are now reported, slow operations are traced, and the log lines the site already writes are collected somewhere a human can read them. The hard part, and the part worth reviewing, is what must NOT be sent: email addresses, the secret links, the spam-check score, the mail provider's replies, the database address and every secret are stripped before anything leaves the machine, and the code tries to do that three separate times over in case one layer misses. It also has to stay quiet during tests and building, and it must not slow the page down enough to fail the site's speed budget.
++scope:                       # globs; findings outside them are deferred to issues
++  - "src/config/**"
++  - "src/adapters/observability/**"
++  - "src/adapters/logging/**"
++  - "src/core/ports/**"
++  - "src/core/testing/**"
++  - "src/composition/**"
++  - "src/features/early-access/actions/**"
++  - "src/features/early-access/early-access.wiring.ts"
++  - "src/features/legal/content.ts"
++  - "app/**"
++  - "instrumentation.ts"
++  - "instrumentation-client.ts"
++  - "sentry.server.config.ts"
++  - "sentry.edge.config.ts"
++  - "next.config.ts"
++  - "proxy.ts"
++  - "playwright.config.ts"
++  - "compose.yaml"
++  - "package.json"
++  - "bun.lock"
++  - ".env.example"
++  - "README.md"
++  - "tests/unit/**"
++  - "docs/operations/sentry.md"
++  - "docs/superpowers/specs/2026-09-19-sentry-observability-design.md"
++round_cap: 2
++severity_floor: important    # findings below this become "later"
++reviewers:
++  - "pr-review-toolkit:code-reviewer"
++  - "pr-review-toolkit:silent-failure-hunter"
++  - "pr-review-toolkit:pr-test-analyzer"
++  - "security"
++done:                        # evidence the ledger must carry on a fresh SHA before merge
++  - id: "check"
++    how: "bun run check  (typecheck + biome lint + stack conformance audit)"
++  - id: "unit"
++    how: "bun run test  (Vitest; includes sentry-options.test.ts scrubber assertions against the never-log values)"
++  - id: "e2e"
++    how: "bun run test:e2e  (containerized Playwright via docker compose; asserts the pipeline no-report signal)"
++  - id: "lighthouse"
++    how: "bun run lighthouse  (LHCI; landing page mobile performance >= 0.90, median of three runs, per spec 31 and observability decision 7)"
++mirror: pr-comment           # pr-comment | none
++threat_model: docs/quality/reviews/threat-model.md
+diff --git a/docs/quality/reviews/pr-19/ledger.yaml b/docs/quality/reviews/pr-19/ledger.yaml
+new file mode 100644
+index 0000000..b14bcf7
+--- /dev/null
++++ b/docs/quality/reviews/pr-19/ledger.yaml
+@@ -0,0 +1,14 @@
++version: 1
++pr: 19
++status: intake
++rounds:
++  []
++findings:
++  []
++evidence:
++  []
++waivers:
++  []
++eli5:
++  []
++comment_id: null
+\ No newline at end of file
+diff --git a/docs/superpowers/specs/2026-09-19-sentry-observability-design.md b/docs/superpowers/specs/2026-09-19-sentry-observability-design.md
+new file mode 100644
+index 0000000..d1d8cbe
+--- /dev/null
++++ b/docs/superpowers/specs/2026-09-19-sentry-observability-design.md
+@@ -0,0 +1,141 @@
++# Application observability with Sentry
++
++**Date:** 2026-09-19
++**Status:** design proposed
++**Scope:** error reporting, distributed tracing, structured logs and cron
++monitoring for the public site, its Server Actions and the maintenance cron
++**Relates to:** `docs/superpowers/specs/2026-09-06-corpus-landing-design.md`
++(the approved design spec). **This document amends it**: it supersedes the
++"No Sentry in v1" line in §24 and the "Sentry" entry in the §36 "No" list, and
++reinterprets nothing else. §24's never-log list and §25's exclusion of session
++replay and behavioural analytics remain in force and are restated below as
++obligations on the integration.
++
++## Problem
++
++The v1 spec deferred error tracking. In production that left three blind
++spots:
++
++- Every Server Action collapses failure into a generic `retry` state on
++  purpose (§24), so a database outage, a Resend rejection and a CAPTCHA refusal
++  were indistinguishable from the outside — and invisible from the inside,
++  because the `catch` blocks discarded the error.
++- The maintenance cron (§10.3) fails to a bare 500 that nobody is paged for,
++  and a run that never starts is not detected at all.
++- The Pino logger emits allowlisted operational lines that no system collects.
++
++## Decisions
++
++### 1. Sentry, with the SDK's Next.js integration, and nothing client-side beyond errors, traces and logs
++
++`@sentry/nextjs` is added as the one observability dependency. Session Replay,
++the feedback widget and any behavioural instrumentation stay out (§25). The
++browser SDK captures unhandled errors and console warnings/errors as logs;
++browser tracing (page load, navigation, same-origin requests) is available
++but opt-in — see decision 7.
++
++### 2. The never-log list is enforced by the SDK configuration, not by convention
++
++§24's list — email, normalised email, raw management token, token hash,
++CAPTCHA token, CAPTCHA score, Resend response body, database connection
++string, secrets, full request form data — is enforced three times over:
++
++1. `dataCollection` switches off every automatic source: user identity,
++   cookies, request/response headers and bodies, query parameters, database
++   query data and stack-frame local variables.
++2. `beforeSend`, `beforeSendTransaction` and `beforeSendLog` drop request
++   bodies, cookies, headers and user fields structurally, then walk the whole
++   payload removing keys matching the list and redacting email addresses,
++   URL credentials and credential-bearing query parameters inside any string.
++   The Pino context is re-filtered against the logger allowlist rather than
++   trusted.
++3. Server Actions are instrumented without `formData` and without the
++   response; the boundary reporter forwards only the Logger port's scalar
++   allowlist as tags.
++
++`src/config/sentry-options.test.ts` asserts all of this against the same
++forbidden values `pino-logger.adapter.test.ts` uses.
++
++### 3. Boundaries report through a port; use cases stay unaware
++
++A new core port, `ErrorReporter`, is injected into the Server Action handlers.
++They report the error they are about to collapse, with an operation name, and
++then return the same public state as before — a rejected CAPTCHA and a closed
++signup are not reported, because they are the system working. `core` never
++imports the SDK; `SentryErrorReporterAdapter` and `NoopErrorReporterAdapter`
++are constructed only in `src/composition/capabilities/observability.ts`.
++
++Use-case-level delivery failures are already logged at `error` level through
++the Logger port. The Sentry Pino integration turns those lines into handled
++issues and every level into a log, so the use cases change nothing.
++
++### 4. Turbopack means explicit instrumentation
++
++Next 16 builds with Turbopack, where the SDK performs no build-time wrapping.
++Therefore: each Server Action is wrapped in
++`withServerActionInstrumentation`; the cron route wraps its authorised run in
++a Sentry cron monitor (`early-access-maintenance`, schedule asserted equal to
++`vercel.json`) and a span, and flushes before returning; `onRequestError`
++captures everything uncaught on the server; `app/error.tsx` and
++`app/global-error.tsx` capture client render errors.
++
++### 5. Same-origin tunnel, no CSP change
++
++Browser envelopes go to `/monitoring` on the site's own origin and are
++forwarded server-side. §22's CSP stays at `connect-src 'self'`; no third-party
++origin is added and `proxy.ts` leaves the path alone.
++
++### 6. Pipeline never reports; non-Vercel builds never upload
++
++The server SDK is enabled only with a DSN **and** outside a pipeline run
++(`CI`, `NODE_ENV=test`, `E2E_NEON_HTTP_ENDPOINT` — the same signals §34 uses
++for email). The browser cannot see those signals, so every local production
++build (compose, Playwright, Lighthouse) blanks the DSN explicitly. Source
++maps and releases are uploaded only from a build with `VERCEL_ENV` set and a
++real auth token, and an upload failure is a warning, never a failed build.
++
++### 7. Sampling, environments and releases — and the Lighthouse budget
++
++Server traces: 10% in Production, 100% elsewhere, overridable through
++`SENTRY_TRACES_SAMPLE_RATE`. Errors and logs: unsampled. Environment and
++release come from the build plugin (`vercel-production`, `vercel-preview`;
++the commit SHA), so an issue always resolves against the source maps of the
++build that produced it. Events carry `release_stage` and `vercel_env` tags.
++
++The browser SDK is loaded after the page's `load` event through a
++tree-shaken module (`src/config/sentry-client.ts`), not before hydration.
++Measured on the landing page (Lighthouse mobile, median of three runs,
++baseline 0.93 against the 0.9 gate of §31):
++
++| Variant | Performance | Total blocking time |
++| --- | --- | --- |
++| Baseline, no SDK | 0.93 | ~90 ms |
++| SDK eager, before hydration | 0.89–0.92 | 120–200 ms |
++| SDK deferred, errors + logs only | 0.91–0.92 | 130–160 ms |
++| SDK deferred, with browser tracing | 0.88–0.90 | 200–220 ms |
++
++Browser tracing is therefore **off unless `NEXT_PUBLIC_SENTRY_BROWSER_TRACES_SAMPLE_RATE`
++is set**. Server-side tracing already covers every Server Action, RSC render,
++cron run and outgoing call; enabling browser spans is a deliberate trade of
++those points, made per deployment and checked by the preview Lighthouse job.
++
++### 8. Out of scope, deliberately
++
++- The Bun launch CLI (`scripts/launch-email.ts`) is not instrumented. It is a
++  one-off, human-gated process with its own GitHub Actions log; adding a
++  second SDK for one script is not worth its surface.
++- No alerting rules are defined in code; the runbook describes the ones to
++  create in Sentry.
++
++## Consequences
++
++- Sentry becomes a processor. The privacy page names it and states what is
++  never sent (§26).
++- `docs/architecture.md` gains an Observability adapter and the
++  `ErrorReporter` port; that file is protected and is updated separately.
++- New environment contract: `NEXT_PUBLIC_SENTRY_DSN`,
++  `SENTRY_TRACES_SAMPLE_RATE`, `NEXT_PUBLIC_SENTRY_BROWSER_TRACES_SAMPLE_RATE`,
++  `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` (names in
++  `.env.example`, procedure in `docs/operations/sentry.md`).
++- The client bundle grows by about 52 KB gzipped, fetched after load; the
++  Lighthouse performance gate (≥ 0.9 mobile) remains the arbiter.
+diff --git a/instrumentation-client.ts b/instrumentation-client.ts
+new file mode 100644
+index 0000000..acf41bc
+--- /dev/null
++++ b/instrumentation-client.ts
+@@ -0,0 +1,59 @@
++import { buildClientSentryOptions } from './src/config/sentry-options';
++
++type SentryClient = typeof import('./src/config/sentry-client');
++
++/**
++ * Browser SDK, loaded after the page's `load` event rather than before
++ * hydration. Measured on the landing page, initialising it eagerly cost
++ * three Lighthouse performance points against a 0.9 gate; deferred, the
++ * SDK's parse and init leave the critical path. The trade: an error thrown
++ * in the first moments before the chunk arrives is not reported, and the
++ * pageload span is assembled from buffered Performance entries rather than
++ * observed live. Without a DSN nothing is fetched at all.
++ *
++ * Each `NEXT_PUBLIC_*` variable is spelled out because Next.js inlines the
++ * literal member expression at build time — passing `process.env` through
++ * would leave every value undefined in the bundle.
++ *
++ * No Session Replay and no user feedback widget (spec §25). Console
++ * warnings and errors are forwarded as logs. Browser tracing is opt-in
++ * (see buildClientSentryOptions) and propagates only to same-origin requests.
++ */
++const options = buildClientSentryOptions({
++  NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
++  NEXT_PUBLIC_SENTRY_BROWSER_TRACES_SAMPLE_RATE:
++    process.env.NEXT_PUBLIC_SENTRY_BROWSER_TRACES_SAMPLE_RATE,
++});
++
++let client: Promise<SentryClient> | undefined;
++
++function loadSentry(): Promise<SentryClient> {
++  client ??= import('./src/config/sentry-client').then((sentry) => {
++    sentry.startSentryClient(options);
++    return sentry;
++  });
++  return client;
++}
++
++function afterLoad(task: () => void): void {
++  const idle = (): void => {
++    if ('requestIdleCallback' in window) window.requestIdleCallback(task);
++    else setTimeout(task, 0);
++  };
++  if (document.readyState === 'complete') idle();
++  else window.addEventListener('load', idle, { once: true });
++}
++
++if (options.enabled) {
++  afterLoad(() => {
++    void loadSentry();
++  });
++}
++
++export function onRouterTransitionStart(
++  url: string,
++  navigationType: 'push' | 'replace' | 'traverse',
++): void {
++  if (!options.enabled) return;
++  void loadSentry().then((sentry) => sentry.captureRouterTransitionStart(url, navigationType));
++}
+diff --git a/instrumentation.ts b/instrumentation.ts
+new file mode 100644
+index 0000000..aa8ccac
+--- /dev/null
++++ b/instrumentation.ts
+@@ -0,0 +1,19 @@
++import * as Sentry from '@sentry/nextjs';
++
++/**
++ * Next.js instrumentation hook (App Router, Next 15+). The runtime configs
++ * are loaded with dynamic imports on purpose: `withSentryConfig` prepends
++ * build-time globals (release, tunnel path) to this file under Turbopack,
++ * and a static import would be hoisted above them.
++ */
++export async function register(): Promise<void> {
++  if (process.env.NEXT_RUNTIME === 'nodejs') {
++    await import('./sentry.server.config');
++  }
++  if (process.env.NEXT_RUNTIME === 'edge') {
++    await import('./sentry.edge.config');
++  }
++}
++
++/** Every uncaught error in RSC rendering, route handlers, Server Actions and the proxy. */
++export const onRequestError = Sentry.captureRequestError;
+diff --git a/next.config.ts b/next.config.ts
+index b41ed11..de32397 100644
+--- a/next.config.ts
++++ b/next.config.ts
+@@ -1,4 +1,6 @@
++import { withSentryConfig } from '@sentry/nextjs/config';
+ import type { NextConfig } from 'next';
++import { buildSentryBuildOptions } from './src/config/sentry-options';
+ 
+ /**
+  * Verified against Google's reCAPTCHA CSP guidance
+@@ -102,4 +104,19 @@ const nextConfig: NextConfig = {
+   },
+ };
+ 
+-export default nextConfig;
++/**
++ * Sentry's build plugin: source-map upload and release creation from Vercel
++ * builds only, a same-origin tunnel route so the CSP above stays at
++ * `connect-src 'self'`, and never a failed build over a Sentry outage. The
++ * decisions are in `buildSentryBuildOptions`, with its tests.
++ */
++export default withSentryConfig(
++  nextConfig,
++  buildSentryBuildOptions({
++    SENTRY_ORG: process.env.SENTRY_ORG,
++    SENTRY_PROJECT: process.env.SENTRY_PROJECT,
++    SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
++    VERCEL_ENV: process.env.VERCEL_ENV,
++    CI: process.env.CI,
++  }),
++);
+diff --git a/package.json b/package.json
+index 569d8a4..97f5d5a 100644
+--- a/package.json
++++ b/package.json
+@@ -34,6 +34,7 @@
+   "dependencies": {
+     "@neondatabase/serverless": "^1.1.0",
+     "@react-email/components": "^1.0.12",
++    "@sentry/nextjs": "^10.75.0",
+     "@vercel/analytics": "^2.0.1",
+     "@vercel/speed-insights": "^2.0.0",
+     "drizzle-orm": "^0.45.2",
+diff --git a/playwright.config.ts b/playwright.config.ts
+index bdf5573..8608adb 100644
+--- a/playwright.config.ts
++++ b/playwright.config.ts
+@@ -68,6 +68,10 @@ export default defineConfig({
+           // Same reason as compose.yaml: no VERCEL_ENV here, and the fake CAPTCHA
+           // is opt-in rather than selected by that absence.
+           CORPUS_FAKE_CAPTCHA: '1',
++          // Same reason as compose.yaml: loadEnvConfig above read .env.local, and a
++          // real DSN or auth token must not reach this build.
++          NEXT_PUBLIC_SENTRY_DSN: '',
++          SENTRY_AUTH_TOKEN: '',
+           ...(process.env.E2E_NEON_HTTP_ENDPOINT
+             ? {
+                 E2E_NEON_HTTP_ENDPOINT: process.env.E2E_NEON_HTTP_ENDPOINT,
+diff --git a/proxy.ts b/proxy.ts
+index 0a972db..1e6f0a6 100644
+--- a/proxy.ts
++++ b/proxy.ts
+@@ -130,6 +130,8 @@ export const config = {
+   // and must not pay the Proxy hop. Raw HTTP clients still enter Proxy so
+   // Accept negotiation, 406s and Markdown 404 recovery remain request-aware.
+   // Explicit Markdown aliases are always handled, including browser navigation.
++  // `monitoring` is the Sentry tunnel (next.config.ts): SDK envelopes, never
++  // a page, so negotiation has nothing to decide there.
+   matcher: [
+     '/index.md',
+     '/about.md',
+@@ -139,12 +141,12 @@ export const config = {
+     '/terms.md',
+     {
+       source:
+-        '/((?!api|_next|_vercel|brand|favicon.ico|robots.txt|sitemap.xml|llms.txt|opengraph-image|motion-preflight.js).*)',
++        '/((?!api|monitoring|_next|_vercel|brand|favicon.ico|robots.txt|sitemap.xml|llms.txt|opengraph-image|motion-preflight.js).*)',
+       has: [{ type: 'header', key: 'accept', value: 'text/markdown' }],
+     },
+     {
+       source:
+-        '/((?!api|_next|_vercel|brand|favicon.ico|robots.txt|sitemap.xml|llms.txt|opengraph-image|motion-preflight.js).*)',
++        '/((?!api|monitoring|_next|_vercel|brand|favicon.ico|robots.txt|sitemap.xml|llms.txt|opengraph-image|motion-preflight.js).*)',
+       missing: [{ type: 'header', key: 'sec-fetch-mode', value: 'navigate' }],
+     },
+   ],
+diff --git a/sentry.edge.config.ts b/sentry.edge.config.ts
+new file mode 100644
+index 0000000..e8760c2
+--- /dev/null
++++ b/sentry.edge.config.ts
+@@ -0,0 +1,9 @@
++import * as Sentry from '@sentry/nextjs';
++import { buildServerSentryOptions } from './src/config/sentry-options';
++
++/**
++ * Edge runtime. Nothing in this app opts into it today (proxy.ts runs on
++ * Node in Next 16), so this exists so a future `runtime = 'edge'` segment is
++ * covered rather than silently unmonitored.
++ */
++Sentry.init(buildServerSentryOptions(process.env));
+diff --git a/sentry.server.config.ts b/sentry.server.config.ts
+new file mode 100644
+index 0000000..05f21c5
+--- /dev/null
++++ b/sentry.server.config.ts
+@@ -0,0 +1,17 @@
++import * as Sentry from '@sentry/nextjs';
++import { buildServerSentryOptions } from './src/config/sentry-options';
++
++/**
++ * Node runtime (RSC, Server Actions, route handlers, proxy). Every option
++ * that decides what leaves the deployment lives in `sentry-options.ts`;
++ * this file only adds the Node-only integration.
++ *
++ * pinoIntegration listens on pino's diagnostics channel, so the per-request
++ * `PinoLoggerAdapter` instances are captured without any change to them:
++ * every level becomes a Sentry log, and `logger.error` lines — which the
++ * use cases reserve for delivery failures — also become handled issues.
++ */
++Sentry.init({
++  ...buildServerSentryOptions(process.env),
++  integrations: [Sentry.pinoIntegration({ error: { levels: ['error'] } })],
++});
+diff --git a/src/adapters/logging/pino-logger.adapter.ts b/src/adapters/logging/pino-logger.adapter.ts
+index e2aab61..beecdc9 100644
+--- a/src/adapters/logging/pino-logger.adapter.ts
++++ b/src/adapters/logging/pino-logger.adapter.ts
+@@ -1,40 +1,16 @@
+ import pino from 'pino';
+-import type { EarlyAccessLogFields, Logger } from '../../core/ports/logger.port';
+-
+-const ALLOWED_FIELDS = [
+-  'signupId',
+-  'operation',
+-  'status',
+-  'errorCode',
+-  'attemptCount',
+-  'aggregateCount',
+-  'durationMs',
+-] as const satisfies readonly (keyof EarlyAccessLogFields)[];
++import {
++  allowlistLogFields,
++  type EarlyAccessLogFields,
++  type Logger,
++} from '../../core/ports/logger.port';
+ 
+ /**
+  * Strips anything outside the port's allowlist at runtime — a caller
+  * building `fields` dynamically (a spread, a cast) bypasses the type
+- * system, so this is the actual enforcement, not the interface.
++ * system, so `allowlistLogFields` is the actual enforcement, not the
++ * interface. The same allowlist feeds the Sentry reporter adapter.
+  */
+-/**
+- * Only string/number survive, even in an allowed key's slot — a caller
+- * passing an object where a scalar belongs (e.g. a whole Error as
+- * `errorCode`) must not smuggle its nested fields into the log line.
+- */
+-function toSafeValue(value: unknown): string | number | undefined {
+-  return typeof value === 'string' || typeof value === 'number' ? value : undefined;
+-}
+-
+-function allowlist(fields: EarlyAccessLogFields): Record<string, unknown> {
+-  const asRecord = fields as unknown as Record<string, unknown>;
+-  const safe: Record<string, unknown> = {};
+-  for (const key of ALLOWED_FIELDS) {
+-    const value = toSafeValue(asRecord[key]);
+-    if (value !== undefined) safe[key] = value;
+-  }
+-  return safe;
+-}
+-
+ export class PinoLoggerAdapter implements Logger {
+   private readonly logger: pino.Logger;
+ 
+@@ -43,14 +19,14 @@ export class PinoLoggerAdapter implements Logger {
+   }
+ 
+   info(message: string, fields: EarlyAccessLogFields): void {
+-    this.logger.info(allowlist(fields), message);
++    this.logger.info(allowlistLogFields(fields), message);
+   }
+ 
+   warn(message: string, fields: EarlyAccessLogFields): void {
+-    this.logger.warn(allowlist(fields), message);
++    this.logger.warn(allowlistLogFields(fields), message);
+   }
+ 
+   error(message: string, fields: EarlyAccessLogFields): void {
+-    this.logger.error(allowlist(fields), message);
++    this.logger.error(allowlistLogFields(fields), message);
+   }
+ }
+diff --git a/src/adapters/observability/noop-error-reporter.adapter.ts b/src/adapters/observability/noop-error-reporter.adapter.ts
+new file mode 100644
+index 0000000..16ddb4a
+--- /dev/null
++++ b/src/adapters/observability/noop-error-reporter.adapter.ts
+@@ -0,0 +1,11 @@
++import type { ErrorReporter } from '../../core/ports/error-reporter.port';
++import type { EarlyAccessLogFields } from '../../core/ports/logger.port';
++
++/**
++ * Selected wherever nothing may leave the process: pipeline runs, and any
++ * environment without a DSN. Deliberately a class, not a literal, so the
++ * capability provider's choice is visible in a test by instance.
++ */
++export class NoopErrorReporterAdapter implements ErrorReporter {
++  captureException(_error: unknown, _fields: EarlyAccessLogFields): void {}
++}
+diff --git a/src/adapters/observability/sentry-error-reporter.adapter.test.ts b/src/adapters/observability/sentry-error-reporter.adapter.test.ts
+new file mode 100644
+index 0000000..bdbcb35
+--- /dev/null
++++ b/src/adapters/observability/sentry-error-reporter.adapter.test.ts
+@@ -0,0 +1,70 @@
++import { describe, expect, it } from 'vitest';
++import type { EarlyAccessLogFields } from '../../core/ports/logger.port';
++import { NoopErrorReporterAdapter } from './noop-error-reporter.adapter';
++import { type SentryCapture, SentryErrorReporterAdapter } from './sentry-error-reporter.adapter';
++
++function recordingCapture() {
++  const calls: Parameters<SentryCapture>[] = [];
++  const capture: SentryCapture = (error, context) => {
++    calls.push([error, context]);
++  };
++  return { calls, capture };
++}
++
++describe('SentryErrorReporterAdapter', () => {
++  it('forwards the error with allowlisted scalar tags as a handled event', () => {
++    const { calls, capture } = recordingCapture();
++    const error = new Error('database unavailable');
++
++    new SentryErrorReporterAdapter(capture).captureException(error, {
++      operation: 'join_early_access',
++      signupId: 'uuid-1',
++      attemptCount: 2,
++    });
++
++    expect(calls).toEqual([
++      [
++        error,
++        {
++          mechanism: { handled: true, type: 'early-access-boundary' },
++          captureContext: {
++            tags: { operation: 'join_early_access', signupId: 'uuid-1', attemptCount: 2 },
++          },
++        },
++      ],
++    ]);
++  });
++
++  it('drops fields outside the allowlist and non-scalars inside it, even past the types', () => {
++    const { calls, capture } = recordingCapture();
++    const smuggled = JSON.parse(
++      JSON.stringify({
++        operation: 'unsubscribe',
++        email: 'person@example.com',
++        rawToken: 'raw-token',
++        errorCode: { nested: 'person@example.com' },
++      }),
++    ) as EarlyAccessLogFields;
++
++    new SentryErrorReporterAdapter(capture).captureException(new Error('x'), smuggled);
++
++    expect(calls[0]?.[1].captureContext.tags).toEqual({ operation: 'unsubscribe' });
++    expect(JSON.stringify(calls)).not.toContain('person@example.com');
++    expect(JSON.stringify(calls)).not.toContain('raw-token');
++  });
++
++  it('never lets a failing SDK call escape into the request', () => {
++    const adapter = new SentryErrorReporterAdapter(() => {
++      throw new Error('transport down');
++    });
++    expect(() => adapter.captureException(new Error('x'), { operation: 'op' })).not.toThrow();
++  });
++});
++
++describe('NoopErrorReporterAdapter', () => {
++  it('accepts anything and does nothing', () => {
++    expect(() =>
++      new NoopErrorReporterAdapter().captureException(new Error('x'), { operation: 'op' }),
++    ).not.toThrow();
++  });
++});
+diff --git a/src/adapters/observability/sentry-error-reporter.adapter.ts b/src/adapters/observability/sentry-error-reporter.adapter.ts
+new file mode 100644
+index 0000000..d6a62cd
+--- /dev/null
++++ b/src/adapters/observability/sentry-error-reporter.adapter.ts
+@@ -0,0 +1,32 @@
++import { captureException } from '@sentry/nextjs';
++import type { ErrorReporter } from '../../core/ports/error-reporter.port';
++import { allowlistLogFields, type EarlyAccessLogFields } from '../../core/ports/logger.port';
++
++/** The one SDK call this adapter needs — injectable so tests never touch a client. */
++export type SentryCapture = (error: unknown, hint: SentryCaptureHint) => unknown;
++
++export interface SentryCaptureHint {
++  mechanism: { handled: boolean; type: string };
++  captureContext: { tags: Record<string, string | number> };
++}
++
++/**
++ * Forwards a boundary-caught exception to Sentry with the port's scalar
++ * allowlist as tags and nothing else. The SDK-level scrubbers in
++ * `sentry-options.ts` still run on the resulting event, so an email inside
++ * the error message is redacted even though this adapter never inspects it.
++ */
++export class SentryErrorReporterAdapter implements ErrorReporter {
++  constructor(private readonly capture: SentryCapture = captureException) {}
++
++  captureException(error: unknown, fields: EarlyAccessLogFields): void {
++    try {
++      this.capture(error, {
++        mechanism: { handled: true, type: 'early-access-boundary' },
++        captureContext: { tags: allowlistLogFields(fields) },
++      });
++    } catch {
++      // Reporting must never fail the request it describes.
++    }
++  }
++}
+diff --git a/src/composition/capabilities/notifications.ts b/src/composition/capabilities/notifications.ts
+index 78678dd..5e298bc 100644
+--- a/src/composition/capabilities/notifications.ts
++++ b/src/composition/capabilities/notifications.ts
+@@ -4,6 +4,7 @@ import {
+   type ResendEmailClient,
+   ResendEmailSenderAdapter,
+ } from '../../adapters/email/resend-email-sender.adapter';
++import { isPipelineRun } from '../../config/runtime-environment';
+ import type { ServerConfig } from '../../config/server-env';
+ import type { EmailSender } from '../../core/ports/email-sender.port';
+ import type { Logger } from '../../core/ports/logger.port';
+@@ -46,16 +47,11 @@ export const provideProductionNotifications = (
+  * The pipeline must never send. It is excluded by explicit signal rather than by
+  * absent credentials: compose bind-mounts the repo (`.:/work`) and
+  * playwright.config.ts calls `loadEnvConfig`, so `.env.local` — real key
+- * included — is readable inside the E2E container. Any one signal is enough.
+- *
+- *   CI                      compose's e2e service sets it, as does GitHub Actions
+- *   NODE_ENV === 'test'     Vitest
+- *   E2E_NEON_HTTP_ENDPOINT  a run pointed at the ephemeral E2E database
++ * included — is readable inside the E2E container. Any one signal is enough;
++ * the signals themselves live in `runtime-environment.ts`, shared with the
++ * observability capability for the same reason.
+  */
+-const inPipeline = (): boolean =>
+-  process.env.CI !== undefined ||
+-  process.env.NODE_ENV === 'test' ||
+-  process.env.E2E_NEON_HTTP_ENDPOINT !== undefined;
++const inPipeline = (): boolean => isPipelineRun(process.env);
+ 
+ /**
+  * Local, Preview and Production each send from their own Resend domain using
+diff --git a/src/composition/capabilities/observability.test.ts b/src/composition/capabilities/observability.test.ts
+new file mode 100644
+index 0000000..4009f96
+--- /dev/null
++++ b/src/composition/capabilities/observability.test.ts
+@@ -0,0 +1,57 @@
++import { afterEach, describe, expect, it } from 'vitest';
++import { NoopErrorReporterAdapter } from '../../adapters/observability/noop-error-reporter.adapter';
++import { SentryErrorReporterAdapter } from '../../adapters/observability/sentry-error-reporter.adapter';
++import { provideObservability } from './observability';
++
++const ORIGINAL = { ...process.env };
++
++afterEach(() => {
++  process.env = { ...ORIGINAL };
++});
++
++/** See notifications.test.ts: Vitest sets NODE_ENV=test and Actions sets CI. */
++const developerMachine = {
++  ...ORIGINAL,
++  NODE_ENV: 'development' as const,
++  CI: undefined,
++  E2E_NEON_HTTP_ENDPOINT: undefined,
++  VERCEL_ENV: undefined,
++};
++
++const DSN = 'https://public@o1.ingest.sentry.io/1';
++
++describe('provideObservability', () => {
++  describe('never reports from the pipeline, even with a DSN', () => {
++    it.each([
++      ['CI', { CI: 'true' }],
++      ['NODE_ENV=test', { NODE_ENV: 'test' as const }],
++      ['E2E_NEON_HTTP_ENDPOINT', { E2E_NEON_HTTP_ENDPOINT: 'http://proxy:4444/sql' }],
++    ])('selects the no-op reporter when %s is set', (_label, env) => {
++      process.env = { ...developerMachine, ...env, NEXT_PUBLIC_SENTRY_DSN: DSN };
++
++      expect(provideObservability().errorReporter).toBeInstanceOf(NoopErrorReporterAdapter);
++    });
++  });
++
++  it.each([
++    ['unset', undefined],
++    ['blank', ''],
++    ['the Vercel sensitive placeholder', '[SENSITIVE]'],
++  ])('selects the no-op reporter when the DSN is %s', (_label, dsn) => {
++    process.env = { ...developerMachine, NEXT_PUBLIC_SENTRY_DSN: dsn };
++
++    expect(provideObservability().errorReporter).toBeInstanceOf(NoopErrorReporterAdapter);
++  });
++
++  it('selects the Sentry reporter on a deployment with a DSN', () => {
++    process.env = { ...developerMachine, VERCEL_ENV: 'production', NEXT_PUBLIC_SENTRY_DSN: DSN };
++
++    expect(provideObservability().errorReporter).toBeInstanceOf(SentryErrorReporterAdapter);
++  });
++
++  it('never throws, so a boundary can always obtain a reporter before wiring', () => {
++    process.env = { ...developerMachine, DATABASE_URL: undefined };
++
++    expect(() => provideObservability()).not.toThrow();
++  });
++});
+diff --git a/src/composition/capabilities/observability.ts b/src/composition/capabilities/observability.ts
+new file mode 100644
+index 0000000..9424b6e
+--- /dev/null
++++ b/src/composition/capabilities/observability.ts
+@@ -0,0 +1,29 @@
++import { NoopErrorReporterAdapter } from '../../adapters/observability/noop-error-reporter.adapter';
++import { SentryErrorReporterAdapter } from '../../adapters/observability/sentry-error-reporter.adapter';
++import { isPipelineRun } from '../../config/runtime-environment';
++import { readSetting } from '../../config/sentry-options';
++import type { ErrorReporter } from '../../core/ports/error-reporter.port';
++
++/**
++ * Adapters for the observability capability are constructed here, and nowhere else — see
++ * construction.adapters-only-in-capabilities.
++ */
++export interface ObservabilityDeps {
++  errorReporter: ErrorReporter;
++}
++
++/**
++ * Mirrors the Sentry SDK's own `enabled` rule (`buildServerSentryOptions`)
++ * so a boundary never hands an exception to an SDK that will drop it, and a
++ * pipeline run never constructs the real adapter at all. Reads `process.env`
++ * directly rather than `ServerConfig`: this must be callable before — and
++ * regardless of whether — server configuration validates, because a config
++ * failure is exactly the kind of error a boundary wants reported.
++ */
++export const provideObservability = (): ObservabilityDeps => {
++  const dsn = readSetting(process.env.NEXT_PUBLIC_SENTRY_DSN);
++  const enabled = dsn !== undefined && !isPipelineRun(process.env);
++  return {
++    errorReporter: enabled ? new SentryErrorReporterAdapter() : new NoopErrorReporterAdapter(),
++  };
++};
+diff --git a/src/composition/root.ts b/src/composition/root.ts
+index de8df84..2f62d84 100644
+--- a/src/composition/root.ts
++++ b/src/composition/root.ts
+@@ -1,6 +1,7 @@
+ import { provideConfigSecrets } from './capabilities/config-secrets';
+ import { provideExternalApi } from './capabilities/external-api';
+ import { provideNotifications } from './capabilities/notifications';
++import { provideObservability } from './capabilities/observability';
+ import { providePersistence } from './capabilities/persistence';
+ 
+ export const buildContext = () => {
+@@ -10,6 +11,7 @@ export const buildContext = () => {
+     ...providePersistence(configSecrets.serverConfig),
+     ...provideExternalApi(configSecrets.serverConfig),
+     ...provideNotifications(configSecrets.serverConfig, configSecrets.logger),
++    ...provideObservability(),
+   };
+ };
+ 
+diff --git a/src/composition/server/early-access.ts b/src/composition/server/early-access.ts
+index 90af0a1..984069e 100644
+--- a/src/composition/server/early-access.ts
++++ b/src/composition/server/early-access.ts
+@@ -2,6 +2,7 @@ import type { ServerConfig } from '../../config/server-env';
+ import type { CaptchaVerifier } from '../../core/ports/captcha-verifier.port';
+ import type { Clock } from '../../core/ports/clock.port';
+ import type { EmailSender } from '../../core/ports/email-sender.port';
++import type { ErrorReporter } from '../../core/ports/error-reporter.port';
+ import type { Logger } from '../../core/ports/logger.port';
+ import type { TokenGenerator } from '../../core/ports/token-generator.port';
+ import type { TokenHasher } from '../../core/ports/token-hasher.port';
+@@ -18,6 +19,7 @@ export interface EarlyAccessDeps {
+   serverConfig: ServerConfig;
+   captchaVerifier: CaptchaVerifier;
+   emailSender: EmailSender;
++  errorReporter: ErrorReporter;
+ }
+ 
+ /**
+@@ -37,5 +39,6 @@ export function wireEarlyAccess(ctx: AppContext): EarlyAccessDeps {
+     serverConfig: ctx.serverConfig,
+     captchaVerifier: ctx.captchaVerifier,
+     emailSender: ctx.emailSender,
++    errorReporter: ctx.errorReporter,
+   };
+ }
+diff --git a/src/config/maintenance-schedule.ts b/src/config/maintenance-schedule.ts
+new file mode 100644
+index 0000000..0fda775
+--- /dev/null
++++ b/src/config/maintenance-schedule.ts
+@@ -0,0 +1,23 @@
++/**
++ * The Vercel Cron schedule for `/api/cron/maintenance` (spec §10.3), mirrored
++ * here so the Sentry cron monitor is upserted with the same expectation the
++ * platform actually runs. `tests/unit/maintenance-monitor-config.test.ts`
++ * asserts this matches `vercel.json`; change both or neither.
++ */
++export const MAINTENANCE_CRON_SCHEDULE = '0 5 * * *';
++
++/** Sentry monitor slug — stable, since renaming it orphans the monitor's history. */
++export const MAINTENANCE_MONITOR_SLUG = 'early-access-maintenance';
++
++/**
++ * Vercel Cron triggers are best-effort to the minute; ten minutes of margin
++ * avoids a "missed" alert for platform jitter. A run holds one batch of 100
++ * retries plus an anonymization sweep, so fifteen minutes in progress is a
++ * hang, not a slow run.
++ */
++export const MAINTENANCE_MONITOR_CONFIG = {
++  schedule: { type: 'crontab', value: MAINTENANCE_CRON_SCHEDULE },
++  checkinMargin: 10,
++  maxRuntime: 15,
++  timezone: 'UTC',
++} as const;
+diff --git a/src/config/runtime-environment.ts b/src/config/runtime-environment.ts
+new file mode 100644
+index 0000000..e4de46b
+--- /dev/null
++++ b/src/config/runtime-environment.ts
+@@ -0,0 +1,21 @@
++/**
++ * Pipeline detection shared by every capability that must never reach a real
++ * third party from CI, Vitest, or the E2E container (spec §34: excluded "by
++ * explicit pipeline signal rather than by absent configuration").
++ *
++ *   CI                      compose's e2e service sets it, as does GitHub Actions
++ *   NODE_ENV === 'test'     Vitest
++ *   E2E_NEON_HTTP_ENDPOINT  a run pointed at the ephemeral E2E database
++ *
++ * The signal has to be explicit because the E2E runtime bind-mounts the
++ * repository and loads `.env.local`, so real credentials are readable inside
++ * the container even though nothing there may use them.
++ */
++export interface PipelineSignals {
++  CI?: string;
++  NODE_ENV?: string;
++  E2E_NEON_HTTP_ENDPOINT?: string;
++}
++
++export const isPipelineRun = (env: PipelineSignals): boolean =>
++  env.CI !== undefined || env.NODE_ENV === 'test' || env.E2E_NEON_HTTP_ENDPOINT !== undefined;
+diff --git a/src/config/sentry-client.ts b/src/config/sentry-client.ts
+new file mode 100644
+index 0000000..5d477fa
+--- /dev/null
++++ b/src/config/sentry-client.ts
+@@ -0,0 +1,24 @@
++import {
++  captureException,
++  captureRouterTransitionStart,
++  consoleLoggingIntegration,
++  init,
++} from '@sentry/nextjs';
++import type { buildClientSentryOptions } from './sentry-options';
++
++/**
++ * The browser SDK's entry, in its own module so `instrumentation-client.ts`
++ * and the error boundaries can `import()` it lazily. Named imports matter:
++ * a dynamic `import('@sentry/nextjs')` keeps the whole namespace — Session
++ * Replay and the feedback widget included — because nothing can tree-shake
++ * an object whose properties are read at runtime. Measured: 161 KB gzipped
++ * that way, 46 KB this way.
++ */
++export function startSentryClient(options: ReturnType<typeof buildClientSentryOptions>): void {
++  init({
++    ...options,
++    integrations: [consoleLoggingIntegration({ levels: ['warn', 'error'] })],
++  });
++}
++
++export { captureException, captureRouterTransitionStart };
+diff --git a/src/config/sentry-options.test.ts b/src/config/sentry-options.test.ts
+new file mode 100644
+index 0000000..c1e181a
+--- /dev/null
++++ b/src/config/sentry-options.test.ts
+@@ -0,0 +1,319 @@
++import { describe, expect, it } from 'vitest';
++import {
++  buildClientSentryOptions,
++  buildSentryBuildOptions,
++  buildServerSentryOptions,
++  redactText,
++  resolveTracesSampleRate,
++  scrubEvent,
++  scrubLog,
++} from './sentry-options';
++
++/**
++ * The same never-log list `pino-logger.adapter.test.ts` enforces (spec §24),
++ * pushed through every Sentry hook that could carry it. Values are shaped like
++ * the real thing so a regex that only matched the key name would not pass.
++ */
++const FORBIDDEN = {
++  email: 'person@example.com',
++  normalizedEmail: 'person@example.com',
++  rawToken: 'raw-management-token-0123456789',
++  manageTokenHash: 'sha256-hash-of-the-token',
++  captchaToken: 'captcha-token-value',
++  captchaScore: 0.3,
++  providerResponseBody: '{"id":"resend-response-body"}',
++  databaseUrl: 'postgres://user:pass@host/db',
++  secret: 'super-secret-value',
++  formData: { email: 'person@example.com' },
++};
++
++const forbiddenStrings = [
++  'person@example.com',
++  'raw-management-token-0123456789',
++  'sha256-hash-of-the-token',
++  'captcha-token-value',
++  '0.3',
++  'resend-response-body',
++  'postgres://user:pass@host/db',
++  'super-secret-value',
++];
++
++function expectClean(value: unknown): void {
++  const serialized = JSON.stringify(value);
++  for (const forbidden of forbiddenStrings) expect(serialized).not.toContain(forbidden);
++}
++
++describe('redactText', () => {
++  it('replaces email addresses and credential query parameters inside free text', () => {
++    expect(redactText('Failed for Person.Name+tag@Example.co.uk today')).toBe(
++      'Failed for [email] today',
++    );
++    expect(redactText('https://recaptchaenterprise.googleapis.com/v1/assess?key=AIza123&x=1')).toBe(
++      'https://recaptchaenterprise.googleapis.com/v1/assess?key=[redacted]&x=1',
++    );
++    expect(redactText('https://site/manage?token=abc#frag')).toBe(
++      'https://site/manage?token=[redacted]#frag',
++    );
++    expect(redactText('connect ECONNREFUSED postgres://corpus:s3cret@ep-x.neon.tech/db')).toBe(
++      'connect ECONNREFUSED postgres://[credentials]@ep-x.neon.tech/db',
++    );
++  });
++});
++
++describe('scrubEvent', () => {
++  it('drops request bodies, cookies, headers and user identity entirely', () => {
++    const scrubbed = scrubEvent({
++      request: {
++        url: 'https://corpus.example/',
++        method: 'POST',
++        data: FORBIDDEN.formData,
++        cookies: { session: FORBIDDEN.secret },
++        headers: { authorization: `Bearer ${FORBIDDEN.secret}`, cookie: FORBIDDEN.secret },
++      },
++      user: { ip_address: '203.0.113.7', email: FORBIDDEN.email },
++    });
++
++    expect(scrubbed.request).toEqual({ url: 'https://corpus.example/', method: 'POST' });
++    expect(scrubbed).not.toHaveProperty('user');
++    expectClean(scrubbed);
++  });
++
++  it('redacts forbidden values wherever they appear, at any depth', () => {
++    const scrubbed = scrubEvent({
++      message: `Signup failed for ${FORBIDDEN.email}`,
++      exception: {
++        values: [{ type: 'Error', value: `insert into signups (${FORBIDDEN.email}) failed` }],
++      },
++      breadcrumbs: [
++        {
++          category: 'fetch',
++          message: `POST ${FORBIDDEN.databaseUrl}`,
++          data: { url: `https://google.example/assess?key=${FORBIDDEN.secret}` },
++        },
++      ],
++      spans: [
++        {
++          span_id: '1',
++          trace_id: '2',
++          start_timestamp: 0,
++          description: `GET https://resend.example/emails?token=${FORBIDDEN.rawToken}`,
++          data: { 'http.url': `https://x/?email=${FORBIDDEN.email}` },
++        },
++      ],
++      extra: { ...FORBIDDEN },
++      tags: { operation: 'join_early_access', signupId: 'uuid-1' },
++    });
++
++    expectClean(scrubbed);
++    expect(scrubbed.tags).toEqual({ operation: 'join_early_access', signupId: 'uuid-1' });
++    expect(scrubbed.exception?.values?.[0]?.value).toBe('insert into signups ([email]) failed');
++  });
++
++  it('re-applies the logger allowlist to what the Pino integration attached', () => {
++    const scrubbed = scrubEvent({
++      contexts: {
++        pino: {
++          operation: 'send_confirmation',
++          signupId: 'uuid-1',
++          attemptCount: 2,
++          email: FORBIDDEN.email,
++          rawToken: FORBIDDEN.rawToken,
++          providerResponseBody: FORBIDDEN.providerResponseBody,
++        },
++        trace: { trace_id: 'abc', span_id: 'def' },
++      },
++    });
++
++    expect(scrubbed.contexts?.pino).toEqual({
++      operation: 'send_confirmation',
++      signupId: 'uuid-1',
++      attemptCount: 2,
++    });
++    expect(scrubbed.contexts?.trace).toEqual({ trace_id: 'abc', span_id: 'def' });
++  });
++});
++
++describe('scrubLog', () => {
++  it('redacts the message and drops forbidden attributes from pino and console logs', () => {
++    const scrubbed = scrubLog({
++      level: 'error',
++      message: `Email provider rejected ${FORBIDDEN.email}`,
++      attributes: { ...FORBIDDEN, operation: 'send_confirmation', 'sentry.origin': 'auto.pino' },
++    });
++
++    expectClean(scrubbed);
++    expect(scrubbed.message).toBe('Email provider rejected [email]');
++    expect(scrubbed.attributes).toEqual({
++      operation: 'send_confirmation',
++      'sentry.origin': 'auto.pino',
++    });
++  });
++});
++
++describe('resolveTracesSampleRate', () => {
++  it.each([
++    ['unset in production', undefined, 'production', 0.1],
++    ['unset in preview', undefined, 'preview', 1],
++    ['unset locally', undefined, undefined, 1],
++    ['blank', '', 'production', 0.1],
++    ['the Vercel sensitive placeholder', '[SENSITIVE]', 'production', 0.1],
++    ['a valid override', '0.25', 'production', 0.25],
++    ['zero', '0', 'preview', 0],
++    ['out of range', '7', 'production', 0.1],
++    ['not a number', 'lots', 'production', 0.1],
++  ])('handles %s', (_label, raw, environment, expected) => {
++    expect(resolveTracesSampleRate(raw, environment)).toBe(expected);
++  });
++});
++
++describe('buildServerSentryOptions', () => {
++  const dsn = 'https://public@o1.ingest.sentry.io/1';
++  const developerMachine = {
++    NODE_ENV: 'development',
++    CI: undefined,
++    E2E_NEON_HTTP_ENDPOINT: undefined,
++  };
++
++  it.each([
++    ['CI', { CI: 'true' }],
++    ['NODE_ENV=test', { NODE_ENV: 'test' }],
++    ['E2E_NEON_HTTP_ENDPOINT', { E2E_NEON_HTTP_ENDPOINT: 'http://proxy:4444/sql' }],
++  ])('stays disabled in the pipeline (%s) even with a DSN', (_label, env) => {
++    const options = buildServerSentryOptions({
++      ...developerMachine,
++      ...env,
++      NEXT_PUBLIC_SENTRY_DSN: dsn,
++    });
++    expect(options.enabled).toBe(false);
++  });
++
++  it('is disabled without a DSN and enabled with one outside the pipeline', () => {
++    expect(buildServerSentryOptions({ ...developerMachine }).enabled).toBe(false);
++    expect(
++      buildServerSentryOptions({ ...developerMachine, NEXT_PUBLIC_SENTRY_DSN: '' }).enabled,
++    ).toBe(false);
++    expect(
++      buildServerSentryOptions({ ...developerMachine, NEXT_PUBLIC_SENTRY_DSN: dsn }).enabled,
++    ).toBe(true);
++  });
++
++  it('collects nothing the SDK would otherwise gather on its own', () => {
++    const options = buildServerSentryOptions({ ...developerMachine, NEXT_PUBLIC_SENTRY_DSN: dsn });
++    expect(options.dataCollection).toEqual({
++      userInfo: false,
++      cookies: false,
++      httpHeaders: false,
++      httpBodies: [],
++      urlQueryParams: false,
++      databaseQueryData: false,
++      stackFrameVariables: false,
++    });
++    expect(options.enableLogs).toBe(true);
++    expect(options.initialScope.tags).toEqual({
++      release_stage: 'early-access',
++      vercel_env: 'local',
++    });
++  });
++
++  it('tags the deployment and release stage', () => {
++    const options = buildServerSentryOptions({
++      ...developerMachine,
++      NEXT_PUBLIC_SENTRY_DSN: dsn,
++      VERCEL_ENV: 'production',
++      CORPUS_RELEASE_STAGE: 'launched',
++    });
++    expect(options.initialScope.tags).toEqual({
++      release_stage: 'launched',
++      vercel_env: 'production',
++    });
++    expect(options.tracesSampleRate).toBe(0.1);
++  });
++});
++
++describe('buildClientSentryOptions', () => {
++  const dsn = 'https://public@o1.ingest.sentry.io/1';
++
++  it('is switched by the inlined DSN alone and never sends client reports', () => {
++    expect(buildClientSentryOptions({}).enabled).toBe(false);
++    expect(buildClientSentryOptions({ NEXT_PUBLIC_SENTRY_DSN: '' }).enabled).toBe(false);
++    const enabled = buildClientSentryOptions({ NEXT_PUBLIC_SENTRY_DSN: dsn });
++    expect(enabled.enabled).toBe(true);
++    expect(enabled.sendClientReports).toBe(false);
++  });
++
++  // The Lighthouse gate: browser tracing is the one piece that costs
++  // performance points, so it is off until a deployment asks for it.
++  it('leaves browser tracing off unless a valid rate is set explicitly', () => {
++    expect(
++      buildClientSentryOptions({ NEXT_PUBLIC_SENTRY_DSN: dsn }).tracesSampleRate,
++    ).toBeUndefined();
++    expect(
++      buildClientSentryOptions({
++        NEXT_PUBLIC_SENTRY_DSN: dsn,
++        NEXT_PUBLIC_SENTRY_BROWSER_TRACES_SAMPLE_RATE: 'lots',
++      }).tracesSampleRate,
++    ).toBeUndefined();
++    expect(
++      buildClientSentryOptions({
++        NEXT_PUBLIC_SENTRY_DSN: dsn,
++        NEXT_PUBLIC_SENTRY_BROWSER_TRACES_SAMPLE_RATE: '0.2',
++      }).tracesSampleRate,
++    ).toBe(0.2);
++  });
++});
++
++describe('buildSentryBuildOptions', () => {
++  it('uploads source maps and creates releases only from a Vercel build with a real token', () => {
++    const vercel = buildSentryBuildOptions({
++      SENTRY_ORG: 'corpus',
++      SENTRY_PROJECT: 'landing',
++      SENTRY_AUTH_TOKEN: 'sntrys_real',
++      VERCEL_ENV: 'production',
++      CI: 'true',
++    });
++    expect(vercel).toMatchObject({
++      org: 'corpus',
++      project: 'landing',
++      authToken: 'sntrys_real',
++      sourcemaps: { disable: false, deleteSourcemapsAfterUpload: true },
++      release: { create: true, finalize: true },
++      tunnelRoute: '/monitoring',
++      telemetry: false,
++      silent: false,
++    });
++  });
++
++  it.each([
++    ['no VERCEL_ENV (E2E container, laptop)', { SENTRY_AUTH_TOKEN: 'sntrys_real' }],
++    ['no token', { VERCEL_ENV: 'preview' }],
++    ['a blank token', { VERCEL_ENV: 'preview', SENTRY_AUTH_TOKEN: '' }],
++    [
++      'the Vercel sensitive placeholder',
++      { VERCEL_ENV: 'preview', SENTRY_AUTH_TOKEN: '[SENSITIVE]' },
++    ],
++  ])('disables upload and release creation with %s', (_label, env) => {
++    const options = buildSentryBuildOptions(env);
++    expect(options.authToken).toBeUndefined();
++    expect(options.sourcemaps).toEqual({ disable: true, deleteSourcemapsAfterUpload: true });
++    expect(options.release).toEqual({ create: false, finalize: false });
++    expect(options.silent).toBe(true);
++  });
++
++  it('turns an upload failure into a warning rather than a failed build', () => {
++    const warnings: string[] = [];
++    const original = console.warn;
++    console.warn = (message: string) => {
++      warnings.push(message);
++    };
++    try {
++      expect(() =>
++        buildSentryBuildOptions({}).errorHandler?.(new Error('sentry.io unreachable')),
++      ).not.toThrow();
++    } finally {
++      console.warn = original;
++    }
++    expect(warnings).toEqual([
++      'Sentry build step failed; continuing without it: sentry.io unreachable',
++    ]);
++  });
++});
+diff --git a/src/config/sentry-options.ts b/src/config/sentry-options.ts
+new file mode 100644
+index 0000000..0688a76
+--- /dev/null
++++ b/src/config/sentry-options.ts
+@@ -0,0 +1,260 @@
++import type { ErrorEvent, Event, Log, SentryBuildOptions } from '@sentry/nextjs';
++import { EARLY_ACCESS_LOG_FIELDS } from '../core/ports/logger.port';
++import { isPipelineRun, type PipelineSignals } from './runtime-environment';
++
++/**
++ * Pure builders for every `Sentry.init` and `withSentryConfig` call in the
++ * repository. Framework-facing files (`instrumentation*.ts`,
++ * `sentry.*.config.ts`, `next.config.ts`) stay thin so this module carries
++ * the decisions — and the tests — about what leaves the deployment.
++ *
++ * No `server-only` import: `instrumentation-client.ts` shares the scrubbers.
++ * Inputs are typed to the exact variables each builder reads, because the
++ * client can only see `NEXT_PUBLIC_*` values that are referenced literally at
++ * the call site (Next.js inlines the member expression, not `process.env`).
++ */
++
++/** Vercel Preview builds pull "Sensitive" variables as this literal, never a value. */
++const VERCEL_SENSITIVE_PLACEHOLDER = '[SENSITIVE]';
++
++/** Blank, unset, and the Sensitive placeholder all mean "not configured". */
++export const readSetting = (value: string | undefined): string | undefined =>
++  value === undefined || value.length === 0 || value === VERCEL_SENSITIVE_PLACEHOLDER
++    ? undefined
++    : value;
++
++/** The one public-facing tunnel path; `proxy.ts` excludes it from negotiation. */
++export const SENTRY_TUNNEL_ROUTE = '/monitoring';
++
++const PRODUCTION_TRACES_SAMPLE_RATE = 0.1;
++const NON_PRODUCTION_TRACES_SAMPLE_RATE = 1;
++
++/** A number in [0, 1], or undefined for anything else (blank, NaN, out of range). */
++export function parseSampleRate(raw: string | undefined): number | undefined {
++  const setting = readSetting(raw);
++  if (setting === undefined) return undefined;
++  const parsed = Number(setting);
++  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : undefined;
++}
++
++/**
++ * Server tracing is always on: an invalid override falls back to the
++ * per-environment default rather than silently disabling tracing
++ * (`Number('')` is 0) or sampling everything.
++ */
++export function resolveTracesSampleRate(
++  raw: string | undefined,
++  deploymentEnvironment: string | undefined,
++): number {
++  const fallback =
++    deploymentEnvironment === 'production'
++      ? PRODUCTION_TRACES_SAMPLE_RATE
++      : NON_PRODUCTION_TRACES_SAMPLE_RATE;
++  return parseSampleRate(raw) ?? fallback;
++}
++
++/**
++ * Spec §24's never-log list, as key names. Any key matching this is removed
++ * wherever it appears in an outgoing event or log, at any depth. Broad by
++ * design: a false positive drops a harmless field; a false negative ships a
++ * subscriber's address.
++ */
++const DENIED_KEY_PATTERN =
++  /email|token|secret|password|passwd|cookie|authorization|captcha|form.?data|database.?url|connection.?string|response.?body|api.?key/i;
++
++/**
++ * Email addresses, `user:pass@` URL credentials (a Neon connection string
++ * inside a driver error), and credential-bearing query parameters inside
++ * free text. URL credentials go first so the address-shaped `pass@host`
++ * remainder is not mistaken for an email.
++ */
++const URL_CREDENTIALS_PATTERN = /(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi;
++const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
++const SENSITIVE_QUERY_PATTERN =
++  /([?&](?:key|token|secret|api_key|apikey|access_token|password|email)=)[^&\s#'"]*/gi;
++
++const MAX_DEPTH = 12;
++
++export function redactText(value: string): string {
++  return value
++    .replace(URL_CREDENTIALS_PATTERN, '$1[credentials]@')
++    .replace(EMAIL_PATTERN, '[email]')
++    .replace(SENSITIVE_QUERY_PATTERN, '$1[redacted]');
++}
++
++/**
++ * Walks any JSON-shaped value: denied keys are dropped, strings are redacted,
++ * everything else passes through. Cycles and very deep values stop at
++ * MAX_DEPTH — the SDK normalises events to a fixed depth anyway.
++ */
++export function scrubValue<T>(value: T, depth = 0): T {
++  if (typeof value === 'string') return redactText(value) as T;
++  if (value === null || typeof value !== 'object' || depth >= MAX_DEPTH) return value;
++  if (Array.isArray(value)) return value.map((item) => scrubValue(item, depth + 1)) as T;
++  const out: Record<string, unknown> = {};
++  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
++    if (DENIED_KEY_PATTERN.test(key)) continue;
++    out[key] = scrubValue(entry, depth + 1);
++  }
++  return out as T;
++}
++
++const PINO_ALLOWED = new Set<string>(EARLY_ACCESS_LOG_FIELDS);
++
++/**
++ * Structural drops first — request bodies, cookies, headers, user identity —
++ * then the generic walk. `contexts.pino` is what the Pino integration attaches
++ * from a log line's fields; the adapter already allowlisted them, but the
++ * integration also sees any other pino logger in the process, so the
++ * allowlist is re-applied here rather than trusted.
++ */
++export function scrubEvent<E extends Event>(event: E): E {
++  const { request, user: _user, ...rest } = event;
++  const safeRequest = request
++    ? { url: request.url, method: request.method, query_string: request.query_string }
++    : undefined;
++  const contexts = rest.contexts ? { ...rest.contexts } : undefined;
++  if (contexts?.pino && typeof contexts.pino === 'object') {
++    contexts.pino = Object.fromEntries(
++      Object.entries(contexts.pino).filter(([key]) => PINO_ALLOWED.has(key)),
++    );
++  }
++  return scrubValue({
++    ...rest,
++    ...(contexts ? { contexts } : {}),
++    ...(safeRequest ? { request: safeRequest } : {}),
++  } as E);
++}
++
++export function scrubLog(log: Log): Log {
++  return {
++    ...log,
++    message: typeof log.message === 'string' ? redactText(log.message) : log.message,
++    ...(log.attributes ? { attributes: scrubValue(log.attributes) } : {}),
++  };
++}
++
++/**
++ * Framework control flow and browser noise that carry no signal. NEXT_*
++ * digests are how the App Router implements redirect()/notFound(); the SDK
++ * filters most of them already, listing them here is belt and braces.
++ */
++const IGNORED_ERRORS: Array<string | RegExp> = [
++  /^NEXT_REDIRECT/,
++  /^NEXT_NOT_FOUND/,
++  /^NEXT_HTTP_ERROR_FALLBACK/,
++  /ResizeObserver loop/,
++  /^AbortError/,
++  'The operation was aborted',
++];
++
++/** Everything the SDK would otherwise collect on its own, switched off. */
++const DATA_COLLECTION = {
++  userInfo: false,
++  cookies: false,
++  httpHeaders: false,
++  httpBodies: [] as never[],
++  urlQueryParams: false,
++  databaseQueryData: false,
++  stackFrameVariables: false,
++};
++
++export interface ClientSentryInput {
++  NEXT_PUBLIC_SENTRY_DSN?: string;
++  /** Browser tracing is opt-in (see buildClientSentryOptions); unset means off. */
++  NEXT_PUBLIC_SENTRY_BROWSER_TRACES_SAMPLE_RATE?: string;
++}
++
++export interface ServerSentryInput extends PipelineSignals {
++  NEXT_PUBLIC_SENTRY_DSN?: string;
++  SENTRY_TRACES_SAMPLE_RATE?: string;
++  VERCEL_ENV?: string;
++  CORPUS_RELEASE_STAGE?: string;
++}
++
++function sharedOptions(dsn: string | undefined, tracesSampleRate: number | undefined) {
++  return {
++    dsn,
++    tracesSampleRate,
++    enableLogs: true,
++    dataCollection: DATA_COLLECTION,
++    ignoreErrors: IGNORED_ERRORS,
++    beforeSend: (event: ErrorEvent) => scrubEvent(event),
++    beforeSendTransaction: <E extends Event>(event: E) => scrubEvent(event),
++    beforeSendLog: (log: Log) => scrubLog(log),
++  };
++}
++
++/**
++ * The browser cannot tell a pipeline build from a deployment, so the DSN is
++ * the only switch: it is inlined at build time and every non-Vercel build
++ * (compose, Playwright, Lighthouse) blanks it explicitly.
++ *
++ * Browser tracing is opt-in. Measured on the landing page with the SDK
++ * deferred past `load` (Lighthouse mobile, median of 3, baseline 0.93):
++ * errors + logs alone score 0.91–0.92; with page-load/navigation tracing
++ * 0.88–0.90 against a 0.9 gate. Server-side tracing covers Server Actions,
++ * RSC and the cron regardless; set the variable to trade the points for
++ * browser spans.
++ */
++export function buildClientSentryOptions(env: ClientSentryInput) {
++  const dsn = readSetting(env.NEXT_PUBLIC_SENTRY_DSN);
++  return {
++    ...sharedOptions(dsn, parseSampleRate(env.NEXT_PUBLIC_SENTRY_BROWSER_TRACES_SAMPLE_RATE)),
++    enabled: dsn !== undefined,
++    sendClientReports: false,
++  };
++}
++
++/**
++ * Same on/off rule as `provideNotifications`: a pipeline run never reports,
++ * however fully configured, because the E2E container can read a real DSN.
++ * `release` and `environment` are left to the build plugin, which derives
++ * them from the same commit it uploaded source maps for.
++ */
++export function buildServerSentryOptions(env: ServerSentryInput) {
++  const dsn = readSetting(env.NEXT_PUBLIC_SENTRY_DSN);
++  return {
++    ...sharedOptions(dsn, resolveTracesSampleRate(env.SENTRY_TRACES_SAMPLE_RATE, env.VERCEL_ENV)),
++    enabled: dsn !== undefined && !isPipelineRun(env),
++    initialScope: {
++      tags: {
++        release_stage: env.CORPUS_RELEASE_STAGE || 'early-access',
++        vercel_env: env.VERCEL_ENV || 'local',
++      },
++    },
++  };
++}
++
++export interface SentryBuildInput {
++  SENTRY_ORG?: string;
++  SENTRY_PROJECT?: string;
++  SENTRY_AUTH_TOKEN?: string;
++  VERCEL_ENV?: string;
++  CI?: string;
++}
++
++/**
++ * Source maps and releases are uploaded only from a Vercel build (the CLI
++ * `vercel build` in the workflows sets VERCEL_ENV too) that carries a real
++ * token — never from the E2E container or a laptop, which would create
++ * releases for builds nothing deploys. Upload failures warn: a Sentry outage
++ * must not block a production release.
++ */
++export function buildSentryBuildOptions(env: SentryBuildInput): SentryBuildOptions {
++  const authToken = readSetting(env.SENTRY_AUTH_TOKEN);
++  const uploads = env.VERCEL_ENV !== undefined && authToken !== undefined;
++  return {
++    org: readSetting(env.SENTRY_ORG),
++    project: readSetting(env.SENTRY_PROJECT),
++    authToken: uploads ? authToken : undefined,
++    sourcemaps: { disable: !uploads, deleteSourcemapsAfterUpload: true },
++    release: { create: uploads, finalize: uploads },
++    tunnelRoute: SENTRY_TUNNEL_ROUTE,
++    telemetry: false,
++    silent: env.CI === undefined,
++    errorHandler: (error: Error) => {
++      console.warn(`Sentry build step failed; continuing without it: ${error.message}`);
++    },
++  };
++}
+diff --git a/src/core/ports/error-reporter.port.ts b/src/core/ports/error-reporter.port.ts
+new file mode 100644
+index 0000000..72523eb
+--- /dev/null
++++ b/src/core/ports/error-reporter.port.ts
+@@ -0,0 +1,16 @@
++import type { EarlyAccessLogFields } from './logger.port';
++
++/**
++ * Reports an exception a boundary caught and is about to collapse into a
++ * generic public state. Context is the same scalar allowlist the Logger port
++ * carries (spec §24: operation names, signup UUIDs, states, counts — never an
++ * email, a token, or request data), so an adapter can forward it as tags
++ * without inspecting it. Adapters must re-apply the allowlist at runtime for
++ * the same reason the Pino adapter does.
++ *
++ * Fire-and-forget by contract: reporting must never fail the request it
++ * describes, so implementations swallow their own errors.
++ */
++export interface ErrorReporter {
++  captureException(error: unknown, fields: EarlyAccessLogFields): void;
++}
+diff --git a/src/core/ports/logger.port.ts b/src/core/ports/logger.port.ts
+index 1188fe2..aa1baac 100644
+--- a/src/core/ports/logger.port.ts
++++ b/src/core/ports/logger.port.ts
+@@ -15,6 +15,35 @@ export interface EarlyAccessLogFields {
+   durationMs?: number;
+ }
+ 
++/**
++ * The allowlist as data, so every adapter that must enforce it at runtime
++ * (Pino, Sentry) reads one definition instead of restating the interface.
++ */
++export const EARLY_ACCESS_LOG_FIELDS = [
++  'signupId',
++  'operation',
++  'status',
++  'errorCode',
++  'attemptCount',
++  'aggregateCount',
++  'durationMs',
++] as const satisfies readonly (keyof EarlyAccessLogFields)[];
++
++/**
++ * Only string/number survive, even in an allowed key's slot — a caller
++ * passing an object where a scalar belongs (e.g. a whole Error as
++ * `errorCode`) must not smuggle its nested fields past the boundary.
++ */
++export function allowlistLogFields(fields: EarlyAccessLogFields): Record<string, string | number> {
++  const asRecord = fields as unknown as Record<string, unknown>;
++  const safe: Record<string, string | number> = {};
++  for (const key of EARLY_ACCESS_LOG_FIELDS) {
++    const value = asRecord[key];
++    if (typeof value === 'string' || typeof value === 'number') safe[key] = value;
++  }
++  return safe;
++}
++
+ export interface Logger {
+   info(message: string, fields: EarlyAccessLogFields): void;
+   warn(message: string, fields: EarlyAccessLogFields): void;
+diff --git a/src/core/testing/recording-error-reporter.adapter.ts b/src/core/testing/recording-error-reporter.adapter.ts
+new file mode 100644
+index 0000000..f2ce53f
+--- /dev/null
++++ b/src/core/testing/recording-error-reporter.adapter.ts
+@@ -0,0 +1,11 @@
++import type { ErrorReporter } from '../ports/error-reporter.port';
++import type { EarlyAccessLogFields } from '../ports/logger.port';
++
++/** Test double: records what a boundary reported so a test can prove capture-before-discard. */
++export class RecordingErrorReporterAdapter implements ErrorReporter {
++  readonly reports: Array<{ error: unknown; fields: EarlyAccessLogFields }> = [];
++
++  captureException(error: unknown, fields: EarlyAccessLogFields): void {
++    this.reports.push({ error, fields });
++  }
++}
+diff --git a/src/features/early-access/actions/join-early-access.action.test.ts b/src/features/early-access/actions/join-early-access.action.test.ts
+index 7b5ecee..b13a4bc 100644
+--- a/src/features/early-access/actions/join-early-access.action.test.ts
++++ b/src/features/early-access/actions/join-early-access.action.test.ts
+@@ -1,16 +1,23 @@
+ import { beforeEach, describe, expect, it, vi } from 'vitest';
+ import { CaptchaRejectedError, SignupClosedError } from '../../../core/errors/early-access-errors';
++import { RecordingErrorReporterAdapter } from '../../../core/testing/recording-error-reporter.adapter';
+ import { joinEarlyAccessAction } from './join-early-access.action';
+ import { handleJoinEarlyAccess } from './join-early-access.handler';
+ 
++const wiringReporter = new RecordingErrorReporterAdapter();
++
+ vi.mock('../early-access.wiring', () => ({
+   getEarlyAccessBackend: () => {
+     throw new Error('DATABASE_URL is not configured');
+   },
++  getErrorReporter: () => wiringReporter,
+ }));
+ 
++vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
++
+ let joinCalls = 0;
+ let joinBehavior: () => Promise<void>;
++let reporter: RecordingErrorReporterAdapter;
+ const backend = {
+   join: async () => {
+     joinCalls += 1;
+@@ -29,10 +36,13 @@ describe('joinEarlyAccessAction mapping', () => {
+   beforeEach(() => {
+     joinCalls = 0;
+     joinBehavior = async () => undefined;
++    reporter = new RecordingErrorReporterAdapter();
+   });
+ 
+   it('returns the exact public success copy for a valid signup', async () => {
+-    await expect(handleJoinEarlyAccess(backend, form('Person@Example.com'))).resolves.toEqual({
++    await expect(
++      handleJoinEarlyAccess(backend, form('Person@Example.com'), reporter),
++    ).resolves.toEqual({
+       status: 'success',
+       message:
+         "You're on the list. Check your inbox for confirmation — we'll write again when Corpus is ready.",
+@@ -40,14 +50,14 @@ describe('joinEarlyAccessAction mapping', () => {
+   });
+ 
+   it('returns the same success for a duplicate', async () => {
+-    const first = await handleJoinEarlyAccess(backend, form('person@example.com'));
+-    const duplicate = await handleJoinEarlyAccess(backend, form('PERSON@example.com'));
++    const first = await handleJoinEarlyAccess(backend, form('person@example.com'), reporter);
++    const duplicate = await handleJoinEarlyAccess(backend, form('PERSON@example.com'), reporter);
+ 
+     expect(duplicate).toEqual(first);
+   });
+ 
+   it('returns explicit invalid-email copy before calling the backend', async () => {
+-    await expect(handleJoinEarlyAccess(backend, form('invalid'))).resolves.toEqual({
++    await expect(handleJoinEarlyAccess(backend, form('invalid'), reporter)).resolves.toEqual({
+       status: 'invalid-email',
+       message: 'That address looks incomplete. Check it and try again.',
+     });
+@@ -55,45 +65,78 @@ describe('joinEarlyAccessAction mapping', () => {
+   });
+ 
+   it('maps a missing CAPTCHA token to generic retry rather than an email error', async () => {
+-    await expect(handleJoinEarlyAccess(backend, form('person@example.com', ''))).resolves.toEqual({
++    await expect(
++      handleJoinEarlyAccess(backend, form('person@example.com', ''), reporter),
++    ).resolves.toEqual({
+       status: 'retry',
+       message: "We couldn't complete that signup. Please try again.",
+     });
+     expect(joinCalls).toBe(0);
+   });
+ 
++  // The public state is identical on purpose (§24): a bot and an outage must
++  // look the same to the caller. Whether the failure is *reported* is what
++  // differs — a rejected CAPTCHA is the verifier working, an outage is not.
+   it.each([
+-    ['CAPTCHA rejection', () => new CaptchaRejectedError()],
+-    ['persistence failure', () => new Error('database unavailable')],
+-  ])('maps %s to the same generic retry state', async (_name, makeError) => {
++    ['CAPTCHA rejection', () => new CaptchaRejectedError(), 0],
++    ['persistence failure', () => new Error('database unavailable'), 1],
++  ])('maps %s to the same generic retry state', async (_name, makeError, reported) => {
+     joinBehavior = async () => {
+       throw makeError();
+     };
+ 
+-    await expect(handleJoinEarlyAccess(backend, form('person@example.com'))).resolves.toEqual({
++    await expect(
++      handleJoinEarlyAccess(backend, form('person@example.com'), reporter),
++    ).resolves.toEqual({
+       status: 'retry',
+       message: "We couldn't complete that signup. Please try again.",
+     });
++    expect(reporter.reports).toHaveLength(reported);
+   });
+ 
+-  it('maps launched mode to the closed state', async () => {
++  it('reports the failure before discarding it, with the operation and nothing from the form', async () => {
++    const failure = new Error('database unavailable');
++    joinBehavior = async () => {
++      throw failure;
++    };
++
++    await handleJoinEarlyAccess(backend, form('person@example.com'), reporter);
++
++    expect(reporter.reports).toEqual([
++      { error: failure, fields: { operation: 'join_early_access' } },
++    ]);
++    expect(JSON.stringify(reporter.reports[0]?.fields)).not.toContain('person@example.com');
++  });
++
++  it('maps launched mode to the closed state without reporting', async () => {
+     joinBehavior = async () => {
+       throw new SignupClosedError();
+     };
+ 
+-    await expect(handleJoinEarlyAccess(backend, form('person@example.com'))).resolves.toEqual({
++    await expect(
++      handleJoinEarlyAccess(backend, form('person@example.com'), reporter),
++    ).resolves.toEqual({
+       status: 'closed',
+     });
++    expect(reporter.reports).toEqual([]);
+   });
+ });
+ 
+ describe('joinEarlyAccessAction composition boundary', () => {
+-  it('returns the generic retry state when credentials are not configured', async () => {
++  it('returns the generic retry state when credentials are not configured, and reports it', async () => {
++    wiringReporter.reports.length = 0;
++
+     await expect(
+       joinEarlyAccessAction({ status: 'idle' }, form('person@example.com')),
+     ).resolves.toEqual({
+       status: 'retry',
+       message: "We couldn't complete that signup. Please try again.",
+     });
++    expect(wiringReporter.reports).toEqual([
++      {
++        error: expect.objectContaining({ message: 'DATABASE_URL is not configured' }),
++        fields: { operation: 'join_early_access', status: 'wiring' },
++      },
++    ]);
+   });
+ });
+diff --git a/src/features/early-access/actions/join-early-access.action.ts b/src/features/early-access/actions/join-early-access.action.ts
+index f2fb3a9..39aa507 100644
+--- a/src/features/early-access/actions/join-early-access.action.ts
++++ b/src/features/early-access/actions/join-early-access.action.ts
+@@ -1,6 +1,8 @@
+ 'use server';
+ 
+-import { getEarlyAccessBackend } from '../early-access.wiring';
++import * as Sentry from '@sentry/nextjs';
++import { headers } from 'next/headers';
++import { getEarlyAccessBackend, getErrorReporter } from '../early-access.wiring';
+ import { handleJoinEarlyAccess } from './join-early-access.handler';
+ 
+ export type SignupActionState =
+@@ -10,13 +12,27 @@ export type SignupActionState =
+   | { status: 'retry'; message: string }
+   | { status: 'closed' };
+ 
++/**
++ * Turbopack builds carry no automatic Server Action instrumentation, so the
++ * span is opened here. Only the request headers are handed over (for trace
++ * continuation) — never `formData`, which holds the address and CAPTCHA
++ * token, and never the response (§24).
++ */
+ export async function joinEarlyAccessAction(
+   _previousState: SignupActionState,
+   formData: FormData,
+ ): Promise<SignupActionState> {
+-  try {
+-    return await handleJoinEarlyAccess(getEarlyAccessBackend(), formData);
+-  } catch {
+-    return { status: 'retry', message: "We couldn't complete that signup. Please try again." };
+-  }
++  const reporter = getErrorReporter();
++  return Sentry.withServerActionInstrumentation(
++    'joinEarlyAccess',
++    { headers: await headers(), recordResponse: false },
++    async (): Promise<SignupActionState> => {
++      try {
++        return await handleJoinEarlyAccess(getEarlyAccessBackend(), formData, reporter);
++      } catch (error) {
++        reporter.captureException(error, { operation: 'join_early_access', status: 'wiring' });
++        return { status: 'retry', message: "We couldn't complete that signup. Please try again." };
++      }
++    },
++  );
+ }
+diff --git a/src/features/early-access/actions/join-early-access.handler.ts b/src/features/early-access/actions/join-early-access.handler.ts
+index 3379489..2446341 100644
+--- a/src/features/early-access/actions/join-early-access.handler.ts
++++ b/src/features/early-access/actions/join-early-access.handler.ts
+@@ -1,11 +1,18 @@
+-import { SignupClosedError } from '../../../core/errors/early-access-errors';
++import { CaptchaRejectedError, SignupClosedError } from '../../../core/errors/early-access-errors';
++import type { ErrorReporter } from '../../../core/ports/error-reporter.port';
+ import type { EarlyAccessBackend } from '../backend/early-access-backend';
+ import { signupSchema } from '../schemas/signup.schema';
+ import type { SignupActionState } from './join-early-access.action';
+ 
++const RETRY: SignupActionState = {
++  status: 'retry',
++  message: "We couldn't complete that signup. Please try again.",
++};
++
+ export async function handleJoinEarlyAccess(
+   backend: EarlyAccessBackend,
+   formData: FormData,
++  reporter: ErrorReporter,
+ ): Promise<SignupActionState> {
+   const parsed = signupSchema.safeParse({
+     email: formData.get('email'),
+@@ -13,9 +20,7 @@ export async function handleJoinEarlyAccess(
+   });
+   if (!parsed.success) {
+     const emailInvalid = parsed.error.issues.some((issue) => issue.path[0] === 'email');
+-    if (!emailInvalid) {
+-      return { status: 'retry', message: "We couldn't complete that signup. Please try again." };
+-    }
++    if (!emailInvalid) return RETRY;
+     return {
+       status: 'invalid-email',
+       message: 'That address looks incomplete. Check it and try again.',
+@@ -31,6 +36,13 @@ export async function handleJoinEarlyAccess(
+     };
+   } catch (error) {
+     if (error instanceof SignupClosedError) return { status: 'closed' };
+-    return { status: 'retry', message: "We couldn't complete that signup. Please try again." };
++    // A rejected CAPTCHA is the verifier doing its job, not a fault. Everything
++    // else that reaches here — a database outage, a provider timeout — is
++    // collapsed into the same public state on purpose (§24), so this is the
++    // only place it can still be seen.
++    if (!(error instanceof CaptchaRejectedError)) {
++      reporter.captureException(error, { operation: 'join_early_access' });
++    }
++    return RETRY;
+   }
+ }
+diff --git a/src/features/early-access/actions/management.actions.test.ts b/src/features/early-access/actions/management.actions.test.ts
+index 3df7e82..5f67e76 100644
+--- a/src/features/early-access/actions/management.actions.test.ts
++++ b/src/features/early-access/actions/management.actions.test.ts
+@@ -1,15 +1,22 @@
+-import { describe, expect, it, vi } from 'vitest';
++import { beforeEach, describe, expect, it, vi } from 'vitest';
++import { RecordingErrorReporterAdapter } from '../../../core/testing/recording-error-reporter.adapter';
+ import type { EarlyAccessManagementState } from '../../../core/use-cases/resolve-early-access-management.use-case';
+ import { handleResolveManagement, handleUnsubscribe } from './management.handlers';
+ 
++let reporter: RecordingErrorReporterAdapter;
++
+ describe('management action mapping', () => {
++  beforeEach(() => {
++    reporter = new RecordingErrorReporterAdapter();
++  });
++
+   it('returns active and already-unsubscribed states without changing their public shape', async () => {
+     const active: EarlyAccessManagementState = {
+       status: 'active',
+       maskedEmail: 'g***@example.com',
+     };
+     await expect(
+-      handleResolveManagement({ execute: vi.fn(async () => active) }, 'token'),
++      handleResolveManagement({ execute: vi.fn(async () => active) }, 'token', reporter),
+     ).resolves.toEqual(active);
+ 
+     const unsubscribed: EarlyAccessManagementState = {
+@@ -17,7 +24,7 @@ describe('management action mapping', () => {
+       maskedEmail: 'g***@example.com',
+     };
+     await expect(
+-      handleResolveManagement({ execute: vi.fn(async () => unsubscribed) }, 'token'),
++      handleResolveManagement({ execute: vi.fn(async () => unsubscribed) }, 'token', reporter),
+     ).resolves.toEqual(unsubscribed);
+   });
+ 
+@@ -26,6 +33,7 @@ describe('management action mapping', () => {
+       handleResolveManagement(
+         { execute: vi.fn(async () => ({ status: 'invalid' as const })) },
+         'bad',
++        reporter,
+       ),
+     ).resolves.toEqual({ status: 'invalid' });
+     await expect(
+@@ -36,13 +44,21 @@ describe('management action mapping', () => {
+           }),
+         },
+         'token',
++        reporter,
+       ),
+     ).resolves.toEqual({ status: 'retry' });
++    expect(reporter.reports).toEqual([
++      {
++        error: expect.objectContaining({ message: 'database body with sensitive details' }),
++        fields: { operation: 'resolve_management' },
++      },
++    ]);
++    expect(JSON.stringify(reporter.reports[0]?.fields)).not.toContain('token');
+   });
+ 
+   it('only invokes unsubscribe through its explicit action and maps failures generically', async () => {
+     const execute = vi.fn(async () => ({ status: 'unsubscribed' as const }));
+-    await expect(handleUnsubscribe({ execute }, 'token')).resolves.toEqual({
++    await expect(handleUnsubscribe({ execute }, 'token', reporter)).resolves.toEqual({
+       status: 'unsubscribed',
+     });
+     expect(execute).toHaveBeenCalledWith('token');
+@@ -55,7 +71,9 @@ describe('management action mapping', () => {
+           }),
+         },
+         'token',
++        reporter,
+       ),
+     ).resolves.toEqual({ status: 'retry' });
++    expect(reporter.reports.map((report) => report.fields)).toEqual([{ operation: 'unsubscribe' }]);
+   });
+ });
+diff --git a/src/features/early-access/actions/management.handlers.ts b/src/features/early-access/actions/management.handlers.ts
+index 324243b..4544ddd 100644
+--- a/src/features/early-access/actions/management.handlers.ts
++++ b/src/features/early-access/actions/management.handlers.ts
+@@ -1,16 +1,24 @@
++import type { ErrorReporter } from '../../../core/ports/error-reporter.port';
+ import type { EarlyAccessManagementState } from '../../../core/use-cases/resolve-early-access-management.use-case';
+ import type { UnsubscribeEarlyAccessResult } from '../../../core/use-cases/unsubscribe-early-access.use-case';
+ 
+ export type ManagementActionState = EarlyAccessManagementState | { status: 'retry' };
+ export type UnsubscribeActionState = UnsubscribeEarlyAccessResult | { status: 'retry' };
+ 
++/**
++ * Both handlers collapse every failure to `retry` (§7: a management URL must
++ * never learn why it failed). The reporter sees the error first, with the
++ * operation name and nothing derived from the token.
++ */
+ export async function handleResolveManagement(
+   useCase: { execute(rawToken: string): Promise<EarlyAccessManagementState> },
+   rawToken: string,
++  reporter: ErrorReporter,
+ ): Promise<ManagementActionState> {
+   try {
+     return await useCase.execute(rawToken);
+-  } catch {
++  } catch (error) {
++    reporter.captureException(error, { operation: 'resolve_management' });
+     return { status: 'retry' };
+   }
+ }
+@@ -18,10 +26,12 @@ export async function handleResolveManagement(
+ export async function handleUnsubscribe(
+   useCase: { execute(rawToken: string): Promise<UnsubscribeEarlyAccessResult> },
+   rawToken: string,
++  reporter: ErrorReporter,
+ ): Promise<UnsubscribeActionState> {
+   try {
+     return await useCase.execute(rawToken);
+-  } catch {
++  } catch (error) {
++    reporter.captureException(error, { operation: 'unsubscribe' });
+     return { status: 'retry' };
+   }
+ }
+diff --git a/src/features/early-access/actions/resolve-management.action.ts b/src/features/early-access/actions/resolve-management.action.ts
+index 4c00ccf..4f633b1 100644
+--- a/src/features/early-access/actions/resolve-management.action.ts
++++ b/src/features/early-access/actions/resolve-management.action.ts
+@@ -1,8 +1,22 @@
+ 'use server';
+ 
+-import { getManagementUseCases } from '../early-access.wiring';
++import * as Sentry from '@sentry/nextjs';
++import { headers } from 'next/headers';
++import { getErrorReporter, getManagementUseCases } from '../early-access.wiring';
+ import { handleResolveManagement, type ManagementActionState } from './management.handlers';
+ 
+ export async function resolveManagementAction(rawToken: string): Promise<ManagementActionState> {
+-  return handleResolveManagement(getManagementUseCases().resolve, rawToken);
++  const reporter = getErrorReporter();
++  return Sentry.withServerActionInstrumentation(
++    'resolveManagement',
++    { headers: await headers(), recordResponse: false },
++    async (): Promise<ManagementActionState> => {
++      try {
++        return await handleResolveManagement(getManagementUseCases().resolve, rawToken, reporter);
++      } catch (error) {
++        reporter.captureException(error, { operation: 'resolve_management', status: 'wiring' });
++        return { status: 'retry' };
++      }
++    },
++  );
+ }
+diff --git a/src/features/early-access/actions/unsubscribe.action.ts b/src/features/early-access/actions/unsubscribe.action.ts
+index 323fca2..14abdf5 100644
+--- a/src/features/early-access/actions/unsubscribe.action.ts
++++ b/src/features/early-access/actions/unsubscribe.action.ts
+@@ -1,8 +1,22 @@
+ 'use server';
+ 
+-import { getManagementUseCases } from '../early-access.wiring';
++import * as Sentry from '@sentry/nextjs';
++import { headers } from 'next/headers';
++import { getErrorReporter, getManagementUseCases } from '../early-access.wiring';
+ import { handleUnsubscribe, type UnsubscribeActionState } from './management.handlers';
+ 
+ export async function unsubscribeAction(rawToken: string): Promise<UnsubscribeActionState> {
+-  return handleUnsubscribe(getManagementUseCases().unsubscribe, rawToken);
++  const reporter = getErrorReporter();
++  return Sentry.withServerActionInstrumentation(
++    'unsubscribe',
++    { headers: await headers(), recordResponse: false },
++    async (): Promise<UnsubscribeActionState> => {
++      try {
++        return await handleUnsubscribe(getManagementUseCases().unsubscribe, rawToken, reporter);
++      } catch (error) {
++        reporter.captureException(error, { operation: 'unsubscribe', status: 'wiring' });
++        return { status: 'retry' };
++      }
++    },
++  );
+ }
+diff --git a/src/features/early-access/early-access.wiring.ts b/src/features/early-access/early-access.wiring.ts
+index 4ad11ff..2500826 100644
+--- a/src/features/early-access/early-access.wiring.ts
++++ b/src/features/early-access/early-access.wiring.ts
+@@ -1,5 +1,7 @@
++import { provideObservability } from '../../composition/capabilities/observability';
+ import { buildContext } from '../../composition/root';
+ import { wireEarlyAccess } from '../../composition/server/early-access';
++import type { ErrorReporter } from '../../core/ports/error-reporter.port';
+ import { JoinEarlyAccessUseCase } from '../../core/use-cases/join-early-access.use-case';
+ import { ResolveEarlyAccessManagementUseCase } from '../../core/use-cases/resolve-early-access-management.use-case';
+ import { ResubscribeEarlyAccessUseCase } from '../../core/use-cases/resubscribe-early-access.use-case';
+@@ -8,6 +10,16 @@ import { UnsubscribeEarlyAccessUseCase } from '../../core/use-cases/unsubscribe-
+ import type { EarlyAccessBackend } from './backend/early-access-backend';
+ import { LocalEarlyAccessBackend } from './backend/local-early-access-backend';
+ 
++/**
++ * Resolved before the rest of the context on purpose: it never throws, and a
++ * Server Action needs somewhere to report that `buildContext()` itself failed
++ * (a missing credential, an invalid release stage) — the one failure the
++ * full context cannot report about itself.
++ */
++export function getErrorReporter(): ErrorReporter {
++  return provideObservability().errorReporter;
++}
++
+ export function getEarlyAccessBackend(): EarlyAccessBackend {
+   const context = buildContext();
+   const deps = wireEarlyAccess(context);
+diff --git a/src/features/legal/content.ts b/src/features/legal/content.ts
+index 8e021f7..a1b10de 100644
+--- a/src/features/legal/content.ts
++++ b/src/features/legal/content.ts
+@@ -18,7 +18,8 @@ export const privacySections: readonly LegalSection[] = [
+   {
+     heading: 'Service providers',
+     paragraphs: [
+-      'We use Neon to store the early-access record, Resend to deliver transactional email, Google reCAPTCHA to help protect the signup form, and Vercel to host Corpus, including Vercel Web Analytics and Speed Insights.',
++      'We use Neon to store the early-access record, Resend to deliver transactional email, Google reCAPTCHA to help protect the signup form, Vercel to host Corpus, including Vercel Web Analytics and Speed Insights, and Sentry to collect application errors and performance data.',
++      'Error and performance reports sent to Sentry never include your email address, management links or tokens, or the contents of a form. We do not use session replay.',
+       'We do not sell your information or use it for unrelated marketing. We do not use email open or click tracking.',
+     ],
+   },
+diff --git a/tests/unit/e2e-runtime-config.test.ts b/tests/unit/e2e-runtime-config.test.ts
+index bd5cd12..d79e100 100644
+--- a/tests/unit/e2e-runtime-config.test.ts
++++ b/tests/unit/e2e-runtime-config.test.ts
+@@ -41,4 +41,15 @@ describe('E2E runtime configuration', () => {
+   it('publishes Postgres only to loopback', () => {
+     expect(read('compose.yaml')).toContain("'127.0.0.1:55432:5432'");
+   });
++
++  // Both runtimes bind-mount or load the developer's .env.local. A DSN there
++  // would be inlined into the E2E client bundle and an auth token would upload
++  // a release nothing deploys; an explicit blank wins over the env file.
++  it('blanks the Sentry DSN and auth token in every local production build', () => {
++    for (const file of ['compose.yaml', 'playwright.config.ts']) {
++      const source = read(file);
++      expect(source, file).toMatch(/NEXT_PUBLIC_SENTRY_DSN: ''/);
++      expect(source, file).toMatch(/SENTRY_AUTH_TOKEN: ''/);
++    }
++  });
+ });
