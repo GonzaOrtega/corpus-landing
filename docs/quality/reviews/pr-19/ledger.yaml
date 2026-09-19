@@ -1254,7 +1254,22 @@ findings:
       []
     issue: 20
 evidence:
-  []
+  - done: check
+    sha: 401fed27f0486b93cb3dd205e842a9368e5273f3
+    result: pass
+    note: "typecheck + biome lint + stack conformance, exit 0"
+  - done: unit
+    sha: 401fed27f0486b93cb3dd205e842a9368e5273f3
+    result: pass
+    note: "vitest 400 passed, 1 skipped, 0 failed"
+  - done: e2e
+    sha: 401fed27f0486b93cb3dd205e842a9368e5273f3
+    result: pass
+    note: "containerized playwright, 67 passed, 0 failed"
+  - done: lighthouse
+    sha: 401fed27f0486b93cb3dd205e842a9368e5273f3
+    result: pass
+    note: "LHCI vs Vercel Preview in CI job 105913331497, 3 runs, all category assertions passed"
 waivers:
   []
 eli5:
