@@ -15,6 +15,25 @@ vi.mock('../early-access.wiring', () => ({
 
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
 
+// Records the exact arguments the action passes to the Sentry SDK, so a
+// regression that starts recording the response or forwarding formData (both
+// forbidden by §24, decision 2.3 of the Sentry observability spec) turns red
+// here instead of silently shipping personal data on spans.
+const sentry = vi.hoisted(() => ({
+  calls: [] as Array<{ name: string; options: Record<string, unknown> }>,
+}));
+
+vi.mock('@sentry/nextjs', () => ({
+  withServerActionInstrumentation: async (
+    name: string,
+    options: Record<string, unknown>,
+    callback: () => unknown,
+  ) => {
+    sentry.calls.push({ name, options });
+    return callback();
+  },
+}));
+
 let joinCalls = 0;
 let joinBehavior: () => Promise<void>;
 let reporter: RecordingErrorReporterAdapter;
@@ -138,5 +157,26 @@ describe('joinEarlyAccessAction composition boundary', () => {
         fields: { operation: 'join_early_access', status: 'wiring' },
       },
     ]);
+  });
+});
+
+describe('joinEarlyAccessAction Sentry instrumentation (§24 never-log enforcement layer 3)', () => {
+  it('wraps the action with the exact action name, no formData, and recordResponse: false', async () => {
+    sentry.calls.length = 0;
+
+    await joinEarlyAccessAction(
+      { status: 'idle' },
+      form('person@example.com', 'secret-captcha-token'),
+    );
+
+    expect(sentry.calls).toHaveLength(1);
+    const [call] = sentry.calls;
+    expect(call.name).toBe('joinEarlyAccess');
+    // Exact equality (not partial) so an added `formData` key — which would
+    // carry the visitor's email and CAPTCHA token onto the span — fails this
+    // assertion, not just a `recordResponse` typo.
+    expect(call.options).toEqual({ headers: expect.any(Headers), recordResponse: false });
+    expect(JSON.stringify(call.options)).not.toContain('secret-captcha-token');
+    expect(JSON.stringify(call.options)).not.toContain('person@example.com');
   });
 });
