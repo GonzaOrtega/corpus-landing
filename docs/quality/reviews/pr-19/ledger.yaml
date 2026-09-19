@@ -1,6 +1,6 @@
 version: 1
 pr: 19
-status: fixing
+status: awaiting-triage
 rounds:
   - "n": 1
     head: 7f3e5917f6a88711d9f9c6e8b61e41b6476dabef
@@ -37,6 +37,35 @@ rounds:
       - R-24
       - R-25
       - R-26
+  - "n": 2
+    head: f7481f389075939604ab8285e8b4bf93a623dfb2
+    scope: fix-diff
+    reviewers:
+      - pr-review-toolkit:code-reviewer
+      - pr-review-toolkit:silent-failure-hunter
+      - pr-review-toolkit:pr-test-analyzer
+      - security
+    findings:
+      - R-27
+      - R-28
+      - R-29
+      - R-30
+      - R-31
+      - R-32
+      - R-33
+      - R-34
+      - R-35
+      - R-36
+      - R-37
+      - R-38
+      - R-39
+      - R-40
+      - R-41
+      - R-42
+      - R-43
+      - R-44
+      - R-45
+      - R-46
 findings:
   - id: R-01
     round: 1
@@ -722,6 +751,508 @@ findings:
     fix_commits:
       []
     issue: null
+  - id: R-27
+    round: 2
+    fingerprint: 815685a09bf5da85
+    file: lighthouserc.cjs
+    line: 15
+    category: docs
+    severity: minor
+    summary: "A comment in the performance-test config promises that a local run sends nothing to the real error-tracking account, but only the server half of the run is actually silenced — the browser half can still send, as the runbook edited in the very same change admits."
+    requires:
+      - "a local (non-preview) `bun run lighthouse` against a build produced while a real Sentry DSN was configured"
+    repro: none
+    scope: out
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: "Outside the gate's scope"
+    fix_commits:
+      []
+    issue: null
+  - id: R-28
+    round: 2
+    fingerprint: 3cfa4575bd95b205
+    file: docs/operations/sentry.md
+    line: 53
+    category: docs
+    severity: minor
+    summary: "The runbook tells maintainers that the unit-test command is kept away from the real error tracker by blanking configuration values, but that command runs no build and blanks nothing — a different safeguard is what actually protects it."
+    requires:
+      - someone relying on this runbook while changing how test runs are shielded from the real error tracker
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-29
+    round: 2
+    fingerprint: a917168e691687d1
+    file: app/monitoring/monitoring-route.handler.ts
+    line: 63
+    category: correctness
+    severity: important
+    summary: "If the new relay that carries browser error reports to Sentry ever fails, nobody is told: the failure is thrown away and the site simply looks like it is having a very quiet week."
+    requires:
+      - "Sentry ingest unreachable, throttling, or rejecting this deployment's envelopes"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-30
+    round: 2
+    fingerprint: 62116cd83408fdd9
+    file: src/config/sentry-options.ts
+    line: 320
+    category: correctness
+    severity: minor
+    summary: "A mistyped or unsupported Sentry address quietly turns all browser error reporting off instead of complaining, so a configuration mistake looks exactly like Sentry never having been set up."
+    requires:
+      - "NEXT_PUBLIC_SENTRY_DSN set to a value that is not a Sentry SaaS ingest address (typo, self-hosted, or a future host shape)"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-31
+    round: 2
+    fingerprint: bf211365bfdc26be
+    file: src/config/sentry-client.ts
+    line: 42
+    category: correctness
+    severity: minor
+    summary: "The one-shot flag that stops the error reporter starting twice is raised before the start-up actually succeeds, so a failed start-up permanently disables reporting while every later attempt reports success."
+    requires:
+      - "the Sentry start-up call throws (integration setup failure, patched or frozen browser globals, hostile extension environment)"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-32
+    round: 2
+    fingerprint: f24afe65761265ff
+    file: src/config/sentry-options.ts
+    line: 160
+    category: other
+    severity: minor
+    summary: "The new rule that strips the secret part of management links also blanks the name of whichever button or field a visitor last touched, removing the main clue for diagnosing a broken page."
+    requires:
+      - "a click or input on an element carrying an id, which is normal for label-associated form controls"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-33
+    round: 2
+    fingerprint: 53bbe6a044ec20c3
+    file: src/config/sentry-client.test.ts
+    line: 56
+    category: test-gap
+    severity: important
+    summary: "The browser start-up test only counts that Sentry was started, never what settings it was started with, so stripping the privacy filters out of that call (or adding the session-recording feature the design forbids) would leave every test passing."
+    requires:
+      - a future edit to the browser start-up call in src/config/sentry-client.ts
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-34
+    round: 2
+    fingerprint: 7a0543f557461f45
+    file: app/monitoring/monitoring-route.handler.test.ts
+    line: 30
+    category: test-gap
+    severity: important
+    summary: "No test proves the reporting tunnel ignores the destination named inside the uploaded payload itself, so a future edit that trusted that destination would pass every tunnel test and turn the public site into a forwarder for someone else's account."
+    requires:
+      - a future edit to the forwarding destination logic
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-35
+    round: 2
+    fingerprint: 682e53f4c8a10de7
+    file: tests/unit/e2e-runtime-config.test.ts
+    line: 51
+    category: test-gap
+    severity: important
+    summary: "The newly added Lighthouse row only searches the config file's text for the two blanking lines, so an edit that keeps the words but stops them taking effect would still pass, even though a sibling test already loads that same config file for real and could check the effect directly."
+    requires:
+      - a future edit to the conditional block in lighthouserc.cjs
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-36
+    round: 2
+    fingerprint: 6c38fdca2393f605
+    file: app/error.test.tsx
+    line: 9
+    category: test-gap
+    severity: minor
+    summary: "The two new error-page tests cover the reporting helper but never the page that is supposed to call it, so deleting the single line that fires the report when the error page appears would silently end all browser error reporting with the tests still green."
+    requires:
+      - a future edit to the error page components
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-37
+    round: 2
+    fingerprint: dd8cd679aa45f926
+    file: app/monitoring/monitoring-route.handler.test.ts
+    line: 61
+    category: test-gap
+    severity: minor
+    summary: "A size-limit test is named for a request that understates how big it is, but the request it builds declares no size at all, so the case a reader would assume is pinned is not the case that runs."
+    requires:
+      []
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-38
+    round: 2
+    fingerprint: 07de28d0ad615592
+    file: src/core/testing/never-log-fixture.ts
+    line: 25
+    category: test-gap
+    severity: minor
+    summary: "The shared list of forbidden sample values is maintained by hand next to the object it is derived from, so adding a new forbidden field to the object without also adding it to the list would quietly shrink what both test suites check."
+    requires:
+      - a future never-log field being added to the fixture
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-39
+    round: 2
+    fingerprint: 9d632f344a7af8ac
+    file: tests/unit/e2e-runtime-config.test.ts
+    line: 53
+    category: test-gap
+    severity: minor
+    summary: "The pipeline marker that keeps a local Lighthouse run from behaving like a real deployment was added to the config but is asserted nowhere, so removing it would go unnoticed."
+    requires:
+      - a future edit to lighthouserc.cjs
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-40
+    round: 2
+    fingerprint: 19a965ee0209b839
+    file: app/monitoring/monitoring-route.handler.ts
+    line: 29
+    category: security
+    severity: important
+    summary: "Anyone on the internet can make the site forward messages to its error-tracking provider as many times as they like, at the site's expense, because the endpoint has no rate limit and the only 'password' it checks is a pair of numbers that is published in the site's own JavaScript."
+    requires:
+      - a deployment with an error-tracking DSN configured
+      - "knowledge of the org/project id pair, which ships in the public browser bundle and in every tunnelled envelope"
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-41
+    round: 2
+    fingerprint: 64d688ccdc008127
+    file: src/config/sentry-options.ts
+    line: 164
+    category: performance
+    severity: minor
+    summary: "One of the four text-cleaning rules gets dramatically slower the longer a piece of text is, so an unusually long line inside an error report can freeze the request that is trying to send it."
+    requires:
+      - "an outgoing report containing a single unbroken run of ~100k+ letters/digits/dots with no @ sign (a base64 blob, a minified source line, a large driver payload)"
+      - "Pre-existing: EMAIL_PATTERN is unchanged by this PR. Not reachable today because the SDK truncates messages and exception values to 250 characters before beforeSend runs. Reachable only if a long unbroken string reaches redactText by some other carrier."
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-42
+    round: 2
+    fingerprint: 65c7562c0a708ca4
+    file: src/config/sentry-options.ts
+    line: 160
+    category: correctness
+    severity: minor
+    summary: "The new rule that blanks out anything after a '#' is much broader than the comment admits: it also destroys the element identifiers in click history, framework error numbers and ordinary text, which is exactly the detail an engineer needs when reading a report."
+    requires:
+      []
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-43
+    round: 2
+    fingerprint: 29ea1fc723263889
+    file: src/config/sentry-options.ts
+    line: 202
+    category: docs
+    severity: minor
+    summary: "A comment states that the page address field is the only place the subscriber's secret link can travel, which is not true — two other fields carry it as well, and those are protected only by the new text rule, not by the structural fix."
+    requires:
+      - browser tracing enabled (opt-in but supported)
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-44
+    round: 2
+    fingerprint: e59b957858a215aa
+    file: src/config/sentry-options.test.ts
+    line: 81
+    category: test-gap
+    severity: minor
+    summary: "The tests prove the secret link is stripped from the page-address field, but never prove it is stripped from the two other fields that carry it, which are the ones relying on a pattern that a future edit could weaken."
+    requires:
+      []
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-45
+    round: 2
+    fingerprint: 7e0e35d151a18c6c
+    file: src/config/sentry-options.ts
+    line: 50
+    category: correctness
+    severity: minor
+    summary: "The check that recognises the error-tracking address only accepts a two-letter region code, so a legitimate address with a longer region name would silently switch off all browser error reporting with no warning anywhere."
+    requires:
+      - a provider-issued DSN whose ingest host uses a region label that is not exactly two lowercase letters
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-46
+    round: 2
+    fingerprint: 1dc790916bcb8c85
+    file: app/monitoring/monitoring-route.handler.ts
+    line: 43
+    category: security
+    severity: minor
+    summary: "When a caller does not declare how big the upload is, the whole upload is pulled into memory before the size limit is applied, so the limit bounds what gets forwarded but not what gets held."
+    requires:
+      - a request with no Content-Length header (chunked or streamed body)
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
 evidence:
   []
 waivers:
@@ -729,4 +1260,6 @@ waivers:
 eli5:
   - round: 1
     text: "Four reviewers read this change on their own, without seeing each other's notes. Between them they raised twenty-six things. Sixteen are small and have already been parked for later automatically. Ten are waiting on you.\n\nThe one that matters most: when someone wants to change or cancel their early-access signup, we email them a link with a secret key in it, and that key is the only thing standing between a stranger and that person's record — there are no passwords here, the link *is* the password. The key sits in the tail end of the web address, after the \"#\". This change starts sending crash reports to an outside company, and those reports include the full web address of the page the person was on, tail end included. The code written to wipe secrets out of those reports knows how to spot several shapes of secret, but not that one. So if the manage page breaks in someone's browser before it has had the half-second it needs to tidy the address, their key gets posted to a third party. Two reviewers found this separately. The privacy notice this very change adds to the site currently promises the opposite.\n\nThe second one: this change adds a \"something went wrong\" screen, and that screen asks the crash reporter to write the error down. But the crash reporter is deliberately started late, after the page has finished loading, so that it doesn't slow the site down. A crash during loading therefore happens while the reporter is still asleep, and the note goes nowhere. The screen exists to catch exactly those crashes. Two reviewers found this one too.\n\nOne thing I owe you straight: a third reviewer reported something serious-sounding — that the switches turning off data collection were misspelled and silently doing nothing. It was wrong. It had checked against an older version of the library than this project actually installs. I pulled the real version and read it myself: the switches are correct and they do work. That is R-06 in the list, and my recommendation is that you drop it rather than fix it. I have written the proof into the record so nobody re-raises it next round.\n\nWhat you need to decide: for each of the ten, whether it gets fixed before this merges or pushed to later. You can accept the whole list, or name the ones you want changed. Nothing gets touched until you answer.\n"
+  - round: 2
+    text: "The same four reviewers read the nine fixes. The good news first: the two things that actually mattered are genuinely fixed, and they checked properly rather than taking anyone's word.\n\nThe secret key can no longer get out. One reviewer built a fake crash report and hid the key in every pocket it could think of — the page address, the \"where did you come from\" field, the trail of what the visitor clicked, the error text itself, the timing records. It ran the real cleaning code over all of it. The key came back blanked out every single time. A second reviewer went at it from the other side, checking the key's own alphabet to make sure it could never contain a character that would let it slip through the net. It can't.\n\nThe \"something went wrong\" screen now reports properly, and — the thing I was most worried about — it does not drag the error tracker in early and slow the page down. Both reviewers confirmed the tracker is still only fetched once something has actually gone wrong.\n\nThe new private mailbox we built to replace the vendor's wide-open one also held up. Two reviewers tried to trick it into forwarding somewhere else using lookalike addresses and malformed input. It refused every time, because it never reads the destination from the request at all — it only ever uses its own.\n\nNow the five things still open, and they are all of the same family: the fixes work, but not enough is watching them.\n\nNobody is told if the new mailbox breaks. If it starts turning messages away, every browser error report stops arriving, and that looks exactly like a quiet week with no problems. That is the one I would not ship without.\n\nAnyone on the internet can post to that mailbox as often as they like, and each post costs us a little hosting money. It is much better than what it replaced, and the provider caps the damage at the far end, but nothing stops the flood at our door.\n\nAnd three tests that look like they are guarding something but are not quite: one checks that the error tracker was switched on but never checks it was switched on with the privacy filters attached; one never proves the mailbox ignores a destination written inside the message itself; and one checks that the speed-test config still contains the right words rather than that it still does the right thing.\n\nTwo smaller notes I have to own up to: two comments in the code and the handbook now contradict each other about whether a local speed test can leak, and the handbook is the one that is right. I told you earlier that one fix had accidentally solved that problem. I was wrong, I checked, and it has not.\n\nWhat you need to decide: this is the last round. Whatever you say fix gets fixed and the gate closes. Whatever you leave becomes a ticket instead of a blocker.\n"
 comment_id: null
