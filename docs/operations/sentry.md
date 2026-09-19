@@ -34,9 +34,14 @@ are in the GitHub Actions job log.
      pulls as the literal `[SENSITIVE]`, which the build treats as unset.
 3. GitHub repository:
    - Actions **secret** `SENTRY_AUTH_TOKEN` — an organisation auth token with
-     `project:releases` and `org:read` scopes, used only by the `vercel build`
-     steps of `preview.yml` and `deploy-production.yml`.
+     `project:releases` and `org:read` scopes.
    - Actions **variables** `SENTRY_ORG` and `SENTRY_PROJECT`.
+   - The `vercel build` steps of `preview.yml` and `deploy-production.yml`
+     must pass all three as step `env` (the production step also sets
+     `SENTRY_RELEASE: ${{ inputs.sha }}`). Workflow files can only be changed
+     by a credential with the `workflow` scope, so this is a separate,
+     human-applied change; until it lands, deployed builds simply skip the
+     upload and stack traces stay minified.
 4. In Sentry, create alert rules (none are defined in code):
    - New issue in environment `vercel-production` → notify.
    - Cron monitor `early-access-maintenance` missed or failed → notify. The
