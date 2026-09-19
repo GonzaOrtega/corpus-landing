@@ -1,4 +1,6 @@
+import type { ErrorEvent, Event, Log } from '@sentry/nextjs';
 import { describe, expect, it } from 'vitest';
+import { NEVER_LOG_FIXTURE, NEVER_LOG_FIXTURE_STRINGS } from '../core/testing/never-log-fixture';
 import {
   buildClientSentryOptions,
   buildSentryBuildOptions,
@@ -13,30 +15,11 @@ import {
  * The same never-log list `pino-logger.adapter.test.ts` enforces (spec §24),
  * pushed through every Sentry hook that could carry it. Values are shaped like
  * the real thing so a regex that only matched the key name would not pass.
+ * Sourced from the shared fixture (spec decision 2) so the two suites cannot
+ * drift apart again.
  */
-const FORBIDDEN = {
-  email: 'person@example.com',
-  normalizedEmail: 'person@example.com',
-  rawToken: 'raw-management-token-0123456789',
-  manageTokenHash: 'sha256-hash-of-the-token',
-  captchaToken: 'captcha-token-value',
-  captchaScore: 0.3,
-  providerResponseBody: '{"id":"resend-response-body"}',
-  databaseUrl: 'postgres://user:pass@host/db',
-  secret: 'super-secret-value',
-  formData: { email: 'person@example.com' },
-};
-
-const forbiddenStrings = [
-  'person@example.com',
-  'raw-management-token-0123456789',
-  'sha256-hash-of-the-token',
-  'captcha-token-value',
-  '0.3',
-  'resend-response-body',
-  'postgres://user:pass@host/db',
-  'super-secret-value',
-];
+const FORBIDDEN = NEVER_LOG_FIXTURE;
+const forbiddenStrings = NEVER_LOG_FIXTURE_STRINGS;
 
 function expectClean(value: unknown): void {
   const serialized = JSON.stringify(value);
@@ -51,12 +34,26 @@ describe('redactText', () => {
     expect(redactText('https://recaptchaenterprise.googleapis.com/v1/assess?key=AIza123&x=1')).toBe(
       'https://recaptchaenterprise.googleapis.com/v1/assess?key=[redacted]&x=1',
     );
+    // R-01/R-14: a URL fragment must never survive redaction — it is the
+    // *only* place this product's credential travels (`managementUrl.hash`
+    // in send-confirmation-email.use-case.ts and launch-production.ts), and
+    // none of the other patterns here ever match a `#`-anchored tail.
     expect(redactText('https://site/manage?token=abc#frag')).toBe(
-      'https://site/manage?token=[redacted]#frag',
+      'https://site/manage?token=[redacted]#[redacted]',
     );
     expect(redactText('connect ECONNREFUSED postgres://corpus:s3cret@ep-x.neon.tech/db')).toBe(
       'connect ECONNREFUSED postgres://[credentials]@ep-x.neon.tech/db',
     );
+  });
+
+  it('redacts a realistic management-link fragment carrying the raw token', () => {
+    expect(redactText(`https://corpus.example/early-access/manage#${FORBIDDEN.rawToken}`)).toBe(
+      'https://corpus.example/early-access/manage#[redacted]',
+    );
+  });
+
+  it('redacts the first parameter of a bare query string with no leading "?" or "&" (how the SDK populates request.query_string)', () => {
+    expect(redactText(`token=${FORBIDDEN.rawToken}&x=1`)).toBe('token=[redacted]&x=1');
   });
 });
 
@@ -130,6 +127,40 @@ describe('scrubEvent', () => {
       attemptCount: 2,
     });
     expect(scrubbed.contexts?.trace).toEqual({ trace_id: 'abc', span_id: 'def' });
+  });
+
+  it('reduces request.url to origin+pathname, dropping the query and fragment (R-01/R-14: the fragment is where the management token travels)', () => {
+    // The browser SDK's HttpContext integration fills `request.url` from
+    // `document.location.href` — fragment included. A failed render of
+    // `ManageTokenBridge` (manage-token-bridge.tsx) never reaches the client
+    // effect that strips the hash, so the raw token can still be sitting in
+    // the URL when this event is built. Reducing to origin+pathname removes
+    // it structurally, rather than relying on a regex to catch every shape.
+    const scrubbed = scrubEvent({
+      request: {
+        url: `https://corpus.example/early-access/manage?ref=confirmation-email#${FORBIDDEN.rawToken}`,
+        method: 'GET',
+      },
+    });
+
+    expect(scrubbed.request).toEqual({
+      url: 'https://corpus.example/early-access/manage',
+      method: 'GET',
+    });
+    expectClean(scrubbed);
+  });
+
+  it('redacts the first parameter of a bare request.query_string (R-14: the SDK populates it via URL.search.slice(1), with no leading "?")', () => {
+    const scrubbed = scrubEvent({
+      request: {
+        url: 'https://corpus.example/early-access/manage',
+        method: 'GET',
+        query_string: `token=${FORBIDDEN.rawToken}&x=1`,
+      },
+    });
+
+    expect(scrubbed.request?.query_string).toBe('token=[redacted]&x=1');
+    expectClean(scrubbed);
   });
 });
 
@@ -259,6 +290,71 @@ describe('buildClientSentryOptions', () => {
         NEXT_PUBLIC_SENTRY_BROWSER_TRACES_SAMPLE_RATE: '0.2',
       }).tracesSampleRate,
     ).toBe(0.2);
+  });
+});
+
+/**
+ * R-12: every scrubber test above calls `scrubEvent`/`scrubLog`/`redactText`
+ * as free functions, so deleting a wiring line in `sharedOptions` (the
+ * `beforeSend`/`beforeSendTransaction`/`beforeSendLog` hooks Sentry.init
+ * actually receives) would ship every event unscrubbed with the rest of this
+ * suite fully green. These assert on the *built* options objects instead —
+ * the same objects `sentry.server.config.ts`, `sentry.edge.config.ts` (both
+ * call `buildServerSentryOptions`) and `instrumentation-client.ts` (via
+ * `buildClientSentryOptions`) pass to `Sentry.init`.
+ */
+describe('sharedOptions wiring on the built options', () => {
+  const dsn = 'https://public@o1.ingest.sentry.io/1';
+
+  function expectHooksAreWiredAndScrub(options: {
+    beforeSend: (event: ErrorEvent) => Event;
+    beforeSendTransaction: <E extends Event>(event: E) => E;
+    beforeSendLog: (log: Log) => Log;
+    ignoreErrors: ReadonlyArray<string | RegExp>;
+  }): void {
+    expect(options.beforeSend).toBeTypeOf('function');
+    expect(options.beforeSendTransaction).toBeTypeOf('function');
+    expect(options.beforeSendLog).toBeTypeOf('function');
+
+    const sentEvent = options.beforeSend({
+      type: undefined,
+      user: { email: FORBIDDEN.email },
+      request: { url: 'https://corpus.example/', method: 'POST', data: FORBIDDEN.formData },
+      extra: { ...FORBIDDEN },
+    });
+    expect(sentEvent).not.toHaveProperty('user');
+    expectClean(sentEvent);
+
+    const sentTransaction = options.beforeSendTransaction({
+      transaction: 'GET /',
+      extra: { ...FORBIDDEN },
+    });
+    expectClean(sentTransaction);
+
+    const sentLog = options.beforeSendLog({
+      level: 'error',
+      message: `Email provider rejected ${FORBIDDEN.email}`,
+      attributes: { ...FORBIDDEN },
+    });
+    expect(sentLog.message).toBe('Email provider rejected [email]');
+    expectClean(sentLog);
+
+    expect(options.ignoreErrors).toContain('The operation was aborted');
+  }
+
+  it('wires beforeSend, beforeSendTransaction and beforeSendLog that actually scrub (server — sentry.edge.config.ts shares this same builder)', () => {
+    const options = buildServerSentryOptions({
+      NODE_ENV: 'development',
+      CI: undefined,
+      E2E_NEON_HTTP_ENDPOINT: undefined,
+      NEXT_PUBLIC_SENTRY_DSN: dsn,
+    });
+    expectHooksAreWiredAndScrub(options);
+  });
+
+  it('wires beforeSend, beforeSendTransaction and beforeSendLog that actually scrub (client)', () => {
+    const options = buildClientSentryOptions({ NEXT_PUBLIC_SENTRY_DSN: dsn });
+    expectHooksAreWiredAndScrub(options);
   });
 });
 

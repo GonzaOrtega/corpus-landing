@@ -67,11 +67,26 @@ const DENIED_KEY_PATTERN =
  * inside a driver error), and credential-bearing query parameters inside
  * free text. URL credentials go first so the address-shaped `pass@host`
  * remainder is not mistaken for an email.
+ *
+ * The query pattern is anchored on `^` as well as `[?&]`: the Sentry SDK
+ * populates `request.query_string` as `URL.search.slice(1)` — no leading
+ * `?` — so a bare string like `token=abc&x=1` needs the same first-pair
+ * match a `?`-prefixed query would get (R-14).
  */
 const URL_CREDENTIALS_PATTERN = /(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi;
 const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const SENSITIVE_QUERY_PATTERN =
-  /([?&](?:key|token|secret|api_key|apikey|access_token|password|email)=)[^&\s#'"]*/gi;
+  /((?:^|[?&])(?:key|token|secret|api_key|apikey|access_token|password|email)=)[^&\s#'"]*/gi;
+/**
+ * URL fragments: this product's *only* credential — the raw management
+ * token — travels in one (`managementUrl.hash` in
+ * `send-confirmation-email.use-case.ts` and `launch-production.ts`), and a
+ * leaked token is full access to that subscriber's record, since there are
+ * no accounts or passwords (R-01). Broad by design, same as the key
+ * denylist above: a false positive drops an inert `#anchor`, a false
+ * negative ships a token.
+ */
+const URL_FRAGMENT_PATTERN = /#[^\s'"]+/g;
 
 const MAX_DEPTH = 12;
 
@@ -79,7 +94,8 @@ export function redactText(value: string): string {
   return value
     .replace(URL_CREDENTIALS_PATTERN, '$1[credentials]@')
     .replace(EMAIL_PATTERN, '[email]')
-    .replace(SENSITIVE_QUERY_PATTERN, '$1[redacted]');
+    .replace(SENSITIVE_QUERY_PATTERN, '$1[redacted]')
+    .replace(URL_FRAGMENT_PATTERN, '#[redacted]');
 }
 
 /**
@@ -102,6 +118,27 @@ export function scrubValue<T>(value: T, depth = 0): T {
 const PINO_ALLOWED = new Set<string>(EARLY_ACCESS_LOG_FIELDS);
 
 /**
+ * Reduces a request URL to origin + pathname before it ever reaches
+ * `scrubValue` (R-01/R-14). The browser SDK's HttpContext integration fills
+ * `event.request.url` from `document.location.href` — fragment included —
+ * and that fragment is the one place this product's raw management token
+ * ever travels. Structurally dropping the query and fragment here is
+ * stronger than trusting a regex to catch every shape one might take, and
+ * neither carries diagnostic value for this site. Falls back to `redactText`
+ * for a value `URL` cannot parse (a relative path, say) rather than letting
+ * it through untouched.
+ */
+function reduceRequestUrl(url: string | undefined): string | undefined {
+  if (url === undefined) return undefined;
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return redactText(url);
+  }
+}
+
+/**
  * Structural drops first — request bodies, cookies, headers, user identity —
  * then the generic walk. `contexts.pino` is what the Pino integration attaches
  * from a log line's fields; the adapter already allowlisted them, but the
@@ -111,7 +148,11 @@ const PINO_ALLOWED = new Set<string>(EARLY_ACCESS_LOG_FIELDS);
 export function scrubEvent<E extends Event>(event: E): E {
   const { request, user: _user, ...rest } = event;
   const safeRequest = request
-    ? { url: request.url, method: request.method, query_string: request.query_string }
+    ? {
+        url: reduceRequestUrl(request.url),
+        method: request.method,
+        query_string: request.query_string,
+      }
     : undefined;
   const contexts = rest.contexts ? { ...rest.contexts } : undefined;
   if (contexts?.pino && typeof contexts.pino === 'object') {
