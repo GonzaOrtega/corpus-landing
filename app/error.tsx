@@ -4,6 +4,25 @@ import Link from 'next/link';
 import { useEffect } from 'react';
 
 /**
+ * Exported for tests. Dynamic import on purpose: a static one would put the
+ * SDK in the root client chunk of every page; see instrumentation-client.ts.
+ * Goes through `captureBoundaryError` rather than `captureException` because
+ * a hydration or first-paint error — exactly what this boundary exists to
+ * catch — fires before instrumentation-client.ts's deferred `load` start-up
+ * has run, and Sentry drops a report silently with no client bound to the
+ * scope; `captureBoundaryError` starts one on demand. A failed chunk fetch
+ * (a likely companion to the very error being reported, right after a
+ * redeploy) is logged here instead of becoming an unhandled rejection.
+ */
+export function reportClientRenderError(error: Error): void {
+  void import('@/src/config/sentry-client')
+    .then((sentry) => sentry.captureBoundaryError(error))
+    .catch((cause: unknown) => {
+      console.error('Failed to report a client render error to Sentry', cause);
+    });
+}
+
+/**
  * Route-segment error boundary: keeps the root layout (fonts, styles) and
  * reuses the not-found page's styling so no new visual design is introduced.
  * Server-side render errors are already reported through `onRequestError`;
@@ -18,9 +37,7 @@ export default function ErrorPage({
   retry: () => void;
 }) {
   useEffect(() => {
-    // Dynamic on purpose: a static import would put the SDK in the root
-    // client chunk of every page; see instrumentation-client.ts.
-    void import('@/src/config/sentry-client').then((sentry) => sentry.captureException(error));
+    reportClientRenderError(error);
   }, [error]);
 
   return (

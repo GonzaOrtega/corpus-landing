@@ -27,17 +27,34 @@ const options = buildClientSentryOptions({
 
 let client: Promise<SentryClient> | undefined;
 
+/**
+ * `ensureSentryStarted` (not `init` directly) so this deferred path and an
+ * error boundary's on-demand path — see `captureBoundaryError` in
+ * `sentry-client.ts` — can't both start the client: whichever runs first
+ * wins, the other is a no-op against the same module-level flag.
+ *
+ * A rejected import (a failed chunk fetch) is not cached: `client` is reset
+ * so a later call — a router transition, or another error — gets a fresh
+ * attempt instead of a permanently poisoned promise.
+ */
 function loadSentry(): Promise<SentryClient> {
-  client ??= import('./src/config/sentry-client').then((sentry) => {
-    sentry.startSentryClient(options);
-    return sentry;
-  });
+  client ??= import('./src/config/sentry-client')
+    .then((sentry) => {
+      sentry.ensureSentryStarted();
+      return sentry;
+    })
+    .catch((error: unknown) => {
+      client = undefined;
+      throw error;
+    });
   return client;
 }
 
 function afterLoad(task: () => void): void {
   const idle = (): void => {
-    if ('requestIdleCallback' in window) window.requestIdleCallback(task);
+    // A timeout so a backgrounded tab (which never goes idle) still starts
+    // the SDK eventually instead of never.
+    if ('requestIdleCallback' in window) window.requestIdleCallback(task, { timeout: 4000 });
     else setTimeout(task, 0);
   };
   if (document.readyState === 'complete') idle();
@@ -46,7 +63,9 @@ function afterLoad(task: () => void): void {
 
 if (options.enabled) {
   afterLoad(() => {
-    void loadSentry();
+    void loadSentry().catch((error: unknown) => {
+      console.error('Sentry failed to start after page load', error);
+    });
   });
 }
 
@@ -55,5 +74,9 @@ export function onRouterTransitionStart(
   navigationType: 'push' | 'replace' | 'traverse',
 ): void {
   if (!options.enabled) return;
-  void loadSentry().then((sentry) => sentry.captureRouterTransitionStart(url, navigationType));
+  void loadSentry()
+    .then((sentry) => sentry.captureRouterTransitionStart(url, navigationType))
+    .catch((error: unknown) => {
+      console.error('Sentry failed to record a router transition', error);
+    });
 }
