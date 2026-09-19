@@ -18,9 +18,7 @@
     "category": "test-gap",
     "severity": "important",
     "summary": "The approved design says the Sentry tests must check against the same banned-values list the logger tests use, but the two lists are separate copies that have already drifted apart.",
-    "requires": [
-      "a new never-log field is added to one test file and not the other"
-    ],
+    "requires": ["a new never-log field is added to one test file and not the other"],
     "repro": "test",
     "evidence": "sentry-options.test.ts declares its own FORBIDDEN object and forbiddenStrings array; pino-logger.adapter.test.ts declares an independent JSON literal with different sample values and a different key spelling for the normalised-address field. Neither imports a shared fixture, so nothing keeps them in step. Design spec decision 2 states the Sentry test asserts against the same forbidden values the Pino test uses."
   },
@@ -67,9 +65,7 @@
     "category": "test-gap",
     "severity": "minor",
     "summary": "The two screens that catch failures happening inside the visitor's browser, and the loader that starts the browser reporter after the page settles, have no tests at all.",
-    "requires": [
-      "a future edit breaks the lazy import path, the capture call, or the deferral"
-    ],
+    "requires": ["a future edit breaks the lazy import path, the capture call, or the deferral"],
     "repro": "test",
     "evidence": "app/error.tsx, app/global-error.tsx and instrumentation-client.ts are new and no test file imports any of them. Untested behaviour includes: the effect that lazily imports the client module and captures the error; the guard that skips loading entirely without a DSN; the after-load/idle deferral that the design measured as worth two to three performance points; and the router-transition hook's early return. The prop names destructured by the boundaries do match Next 16, which exposes both reset and retry."
   },
@@ -79,9 +75,7 @@
     "category": "test-gap",
     "severity": "minor",
     "summary": "The address the browser sends its reports to is written out by hand in two places, and unlike the cron schedule this PR does pin, nothing checks the two stay the same.",
-    "requires": [
-      "the tunnel path is renamed in one place and not the other"
-    ],
+    "requires": ["the tunnel path is renamed in one place and not the other"],
     "repro": "test",
     "evidence": "sentry-options.ts exports SENTRY_TUNNEL_ROUTE and the build options test asserts its literal value; proxy.ts hard-codes the bare word inside two matcher patterns. If they diverge, envelope requests re-enter content negotiation and browser reporting fails silently. There is no test file for proxy.ts at all. Compare the cron test, which does read vercel.json and assert it equals the shared constant."
   },

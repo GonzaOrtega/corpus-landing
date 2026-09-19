@@ -18,9 +18,7 @@
     "category": "security",
     "severity": "important",
     "summary": "The block meant to switch off everything the reporting library collects by itself uses two setting names the library does not recognise, and merely supplying the block makes the library start from \"collect everything\", so request headers and URL query parameters end up switched on rather than off.",
-    "requires": [
-      "reporting enabled on a deployment (DSN set, not a pipeline run)"
-    ],
+    "requires": ["reporting enabled on a deployment (DSN set, not a pipeline run)"],
     "repro": "test",
     "evidence": "The SDK resolves this option by taking the all-on defaults as the base whenever the option is present at all, then applying only the keys it knows: userInfo, cookies, httpHeaders as {request, response}, httpBodies, queryParams, genAI, stackFrameVariables, frameContextLines. Here httpHeaders is a boolean, so the lookup for request/response yields undefined and both fall back to the all-on default; urlQueryParams and databaseQueryData are not keys at all, so query-parameter collection also falls back to all-on. All-on means collected with an empty denylist, which is weaker than leaving the option out entirely (the no-PII default applies a sensitive-header denylist). The structural drop in beforeSend still removes event.request, so the worst of it is neutralised for error events, but span attributes carrying header values and the retained request.query_string are only covered by the key regex and by a query redaction pattern that requires a leading ? or &, so a bare query string is not redacted. sentry-options.test.ts asserts the literal object against itself and therefore cannot detect any of this. Verified against @sentry/core 10.63 typings and resolver (the lockfile pins 10.75); on those typings the boolean httpHeaders is also a type error, so either the option shape needs fixing or the typecheck gate is not seeing this file."
   },
@@ -43,9 +41,7 @@
     "category": "correctness",
     "severity": "minor",
     "summary": "The new tracing wrapper, and the request-header lookup it needs, sit outside the signup action's own safety net, so a failure inside the monitoring code now breaks the form instead of showing the visitor the polite \"please try again\" message.",
-    "requires": [
-      "headers() or the tracing wrapper throwing or rejecting inside a Server Action"
-    ],
+    "requires": ["headers() or the tracing wrapper throwing or rejecting inside a Server Action"],
     "repro": "test",
     "evidence": "`await headers()` is evaluated as an argument expression before withServerActionInstrumentation is entered, and the wrapper call itself is outside the try/catch that produces the retry state; the same pattern is in resolve-management.action.ts and unsubscribe.action.ts. The SDK wraps its own `await options.headers` in a try/catch precisely so a header failure only costs the trace, but awaiting at the call site moves that failure outside its protection. Before this change joinEarlyAccessAction could not reject; now a fault in the observability layer changes the visitor-facing contract. Wrapping the whole body - header lookup and wrapper call included - in the existing try/catch restores it."
   },
@@ -55,9 +51,7 @@
     "category": "correctness",
     "severity": "minor",
     "summary": "Wherever no reporting address is configured - every developer machine, and any preview not yet set up - the failure is handed to an empty function, so it still vanishes with no log line anywhere.",
-    "requires": [
-      "NEXT_PUBLIC_SENTRY_DSN unset or blank, or a pipeline run"
-    ],
+    "requires": ["NEXT_PUBLIC_SENTRY_DSN unset or blank, or a pipeline run"],
     "repro": "none",
     "evidence": "provideObservability selects NoopErrorReporterAdapter whenever the DSN is absent or the run is a pipeline run, and the adapter's captureException has an empty body. The boundary handlers report only through this port - they do not also write a line through the Logger port - so the exact scenario the change set out to fix (a signup failing for an unknown reason, on a laptop) still produces no output at all. Having the no-op write the error through the existing logger, or console.error outside production, would keep local debugging honest without sending anything anywhere."
   },
