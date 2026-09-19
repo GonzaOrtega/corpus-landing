@@ -52,5 +52,5 @@ done:                        # evidence the ledger must carry on a fresh SHA bef
     how: "bun run test:e2e  (containerized Playwright via docker compose; asserts the pipeline no-report signal)"
   - id: "lighthouse"
     how: "bun run lighthouse  (LHCI; landing page mobile performance >= 0.90, median of three runs, per spec 31 and observability decision 7)"
-mirror: pr-comment           # pr-comment | none
+mirror: none               # set at round 1: public repo, unfixed credential-leak finding; revisit after R-01/R-14 land
 threat_model: docs/quality/reviews/threat-model.md
