@@ -106,9 +106,11 @@ const nextConfig: NextConfig = {
 
 /**
  * Sentry's build plugin: source-map upload and release creation from Vercel
- * builds only, a same-origin tunnel route so the CSP above stays at
- * `connect-src 'self'`, and never a failed build over a Sentry outage. The
- * decisions are in `buildSentryBuildOptions`, with its tests.
+ * builds only, and never a failed build over a Sentry outage. Deliberately
+ * does not use the plugin's own `tunnelRoute` option — that installs an
+ * unauthenticated rewrite (R-04). `app/monitoring/route.ts` is the
+ * same-origin tunnel instead, so the CSP above stays at `connect-src 'self'`.
+ * The decisions are in `buildSentryBuildOptions`, with its tests.
  */
 export default withSentryConfig(
   nextConfig,

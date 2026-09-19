@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { NEVER_LOG_FIXTURE, NEVER_LOG_FIXTURE_STRINGS } from '../core/testing/never-log-fixture';
 import {
   buildClientSentryOptions,
+  buildIngestUrl,
   buildSentryBuildOptions,
   buildServerSentryOptions,
+  buildTunnelPath,
+  parseSentryDsn,
   redactText,
   resolveTracesSampleRate,
   scrubEvent,
@@ -261,6 +264,65 @@ describe('buildServerSentryOptions', () => {
   });
 });
 
+describe('parseSentryDsn', () => {
+  it('extracts org id, project id and ingest host from a Sentry SaaS DSN', () => {
+    expect(parseSentryDsn('https://public@o123456.ingest.us.sentry.io/7891011')).toEqual({
+      orgId: '123456',
+      projectId: '7891011',
+      region: 'us',
+      ingestHost: 'o123456.ingest.us.sentry.io',
+    });
+  });
+
+  it('handles a DSN with no region', () => {
+    expect(parseSentryDsn('https://public@o1.ingest.sentry.io/1')).toEqual({
+      orgId: '1',
+      projectId: '1',
+      region: undefined,
+      ingestHost: 'o1.ingest.sentry.io',
+    });
+  });
+
+  it.each([
+    ['unset', undefined],
+    ['blank', ''],
+    ['the Vercel sensitive placeholder', '[SENSITIVE]'],
+    ['not a URL at all', 'not-a-dsn'],
+    [
+      'a self-hosted, non-SaaS host (R-04: treated as unconfigured, not tunnelled to a third party)',
+      'https://public@sentry.internal.example/1',
+    ],
+    ['a non-numeric project id', 'https://public@o1.ingest.sentry.io/not-a-project'],
+    ['no project id at all', 'https://public@o1.ingest.sentry.io/'],
+  ])('returns undefined for %s', (_label, raw) => {
+    expect(parseSentryDsn(raw)).toBeUndefined();
+  });
+});
+
+describe('buildTunnelPath', () => {
+  it("carries o, p and, when present, r — the same shape the SDK's own tunnelRoute option would have produced", () => {
+    expect(
+      buildTunnelPath({ orgId: '123456', projectId: '7891011', region: 'us', ingestHost: 'x' }),
+    ).toBe('/monitoring?o=123456&p=7891011&r=us');
+    expect(buildTunnelPath({ orgId: '1', projectId: '1', ingestHost: 'x' })).toBe(
+      '/monitoring?o=1&p=1',
+    );
+  });
+});
+
+describe('buildIngestUrl', () => {
+  it('builds the envelope endpoint from the parsed DSN alone', () => {
+    expect(
+      buildIngestUrl({
+        orgId: '123456',
+        projectId: '7891011',
+        region: 'us',
+        ingestHost: 'o123456.ingest.us.sentry.io',
+      }),
+    ).toBe('https://o123456.ingest.us.sentry.io/api/7891011/envelope/');
+  });
+});
+
 describe('buildClientSentryOptions', () => {
   const dsn = 'https://public@o1.ingest.sentry.io/1';
 
@@ -270,6 +332,19 @@ describe('buildClientSentryOptions', () => {
     const enabled = buildClientSentryOptions({ NEXT_PUBLIC_SENTRY_DSN: dsn });
     expect(enabled.enabled).toBe(true);
     expect(enabled.sendClientReports).toBe(false);
+  });
+
+  it("sets the tunnel to this deployment's own /monitoring path, never the SDK default", () => {
+    const options = buildClientSentryOptions({ NEXT_PUBLIC_SENTRY_DSN: dsn });
+    expect(options.tunnel).toBe('/monitoring?o=1&p=1');
+  });
+
+  it('is disabled, with no tunnel, when the DSN is not a recognised Sentry SaaS DSN (R-04)', () => {
+    const options = buildClientSentryOptions({
+      NEXT_PUBLIC_SENTRY_DSN: 'https://public@sentry.internal.example/1',
+    });
+    expect(options.enabled).toBe(false);
+    expect(options.tunnel).toBeUndefined();
   });
 
   // The Lighthouse gate: browser tracing is the one piece that costs
@@ -373,10 +448,20 @@ describe('buildSentryBuildOptions', () => {
       authToken: 'sntrys_real',
       sourcemaps: { disable: false, deleteSourcemapsAfterUpload: true },
       release: { create: true, finalize: true },
-      tunnelRoute: '/monitoring',
       telemetry: false,
       silent: false,
     });
+  });
+
+  it("never sets tunnelRoute (R-04: that option installs the build plugin's own unauthenticated rewrite; app/monitoring/route.ts is the tunnel instead)", () => {
+    const vercel = buildSentryBuildOptions({
+      SENTRY_ORG: 'corpus',
+      SENTRY_PROJECT: 'landing',
+      SENTRY_AUTH_TOKEN: 'sntrys_real',
+      VERCEL_ENV: 'production',
+      CI: 'true',
+    });
+    expect(vercel.tunnelRoute).toBeUndefined();
   });
 
   it.each([

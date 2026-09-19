@@ -23,8 +23,79 @@ export const readSetting = (value: string | undefined): string | undefined =>
     ? undefined
     : value;
 
-/** The one public-facing tunnel path; `proxy.ts` excludes it from negotiation. */
+/**
+ * The one public-facing tunnel path; `proxy.ts` excludes it from negotiation.
+ *
+ * This project does **not** use the Sentry build plugin's `tunnelRoute`
+ * option (R-04): that option makes the plugin install an unauthenticated
+ * Next.js rewrite, on every build whether or not a DSN is configured, that
+ * forwards to whichever org/project id the *caller* names in `?o=&p=` — a
+ * free, unrate-limited forwarder on this domain. Instead, `app/monitoring
+ * /route.ts` is a route handler this project owns: it validates `o`/`p`
+ * against the org and project parsed from this deployment's own DSN
+ * (`parseSentryDsn`) and forwards only to the ingest host derived from that
+ * DSN. `buildClientSentryOptions` sets the browser SDK's `tunnel` option to
+ * this same path directly, so nothing here depends on the build plugin's
+ * value-injection step.
+ */
 export const SENTRY_TUNNEL_ROUTE = '/monitoring';
+
+/**
+ * Sentry SaaS ingest hosts only: `o<orgId>.ingest[.<region>].sentry.io`. This
+ * deployment only ever uses Sentry SaaS (spec decision 5's same-origin
+ * tunnel assumes it) — a DSN that doesn't match is treated as unconfigured,
+ * the same as no DSN, rather than falling back to posting directly to a
+ * third-party origin the CSP's `connect-src 'self'` does not allow (spec §22).
+ */
+const SENTRY_INGEST_HOST_PATTERN = /^o(\d+)\.ingest(?:\.([a-z]{2}))?\.sentry\.io$/;
+
+export interface ParsedSentryDsn {
+  readonly orgId: string;
+  readonly projectId: string;
+  readonly region?: string;
+  readonly ingestHost: string;
+}
+
+/**
+ * The one place `NEXT_PUBLIC_SENTRY_DSN` is parsed into the values the
+ * `/monitoring` tunnel needs on both ends (R-04): the browser to address its
+ * envelopes (`buildTunnelPath`), `app/monitoring/route.ts` to validate a
+ * request and pick a forwarding destination (`buildIngestUrl`). Always reads
+ * this deployment's own configured DSN — never anything caller-supplied.
+ */
+export function parseSentryDsn(rawDsn: string | undefined): ParsedSentryDsn | undefined {
+  const dsn = readSetting(rawDsn);
+  if (dsn === undefined) return undefined;
+  let url: URL;
+  try {
+    url = new URL(dsn);
+  } catch {
+    return undefined;
+  }
+  const hostMatch = SENTRY_INGEST_HOST_PATTERN.exec(url.hostname);
+  const projectId = url.pathname.replace(/^\/+/, '').replace(/\/+$/, '');
+  if (!hostMatch || projectId === '' || !/^\d+$/.test(projectId)) return undefined;
+  const [, orgId, region] = hostMatch;
+  return { orgId, projectId, region, ingestHost: url.hostname };
+}
+
+/**
+ * `/monitoring?o=<orgId>&p=<projectId>[&r=<region>]` — the same query shape
+ * the Sentry build plugin's own `tunnelRoute` option would have produced,
+ * computed here instead from this deployment's own parsed DSN so the browser
+ * and `app/monitoring/route.ts` (which checks the same two values) stay in
+ * agreement without either trusting the other.
+ */
+export function buildTunnelPath(dsn: ParsedSentryDsn): string {
+  const params = new URLSearchParams({ o: dsn.orgId, p: dsn.projectId });
+  if (dsn.region) params.set('r', dsn.region);
+  return `${SENTRY_TUNNEL_ROUTE}?${params.toString()}`;
+}
+
+/** The only forwarding destination `app/monitoring/route.ts` ever uses — built from this deployment's own parsed DSN, never from a request's query string. */
+export function buildIngestUrl(dsn: ParsedSentryDsn): string {
+  return `https://${dsn.ingestHost}/api/${dsn.projectId}/envelope/`;
+}
 
 const PRODUCTION_TRACES_SAMPLE_RATE = 0.1;
 const NON_PRODUCTION_TRACES_SAMPLE_RATE = 1;
@@ -240,10 +311,15 @@ function sharedOptions(dsn: string | undefined, tracesSampleRate: number | undef
  */
 export function buildClientSentryOptions(env: ClientSentryInput) {
   const dsn = readSetting(env.NEXT_PUBLIC_SENTRY_DSN);
+  const parsedDsn = parseSentryDsn(dsn);
   return {
     ...sharedOptions(dsn, parseSampleRate(env.NEXT_PUBLIC_SENTRY_BROWSER_TRACES_SAMPLE_RATE)),
-    enabled: dsn !== undefined,
+    // A DSN that doesn't parse as Sentry SaaS (R-04) is treated as
+    // unconfigured: without a tunnel path there is nothing for the SDK to
+    // post envelopes to that the CSP's `connect-src 'self'` allows.
+    enabled: parsedDsn !== undefined,
     sendClientReports: false,
+    ...(parsedDsn ? { tunnel: buildTunnelPath(parsedDsn) } : {}),
   };
 }
 
@@ -281,6 +357,13 @@ export interface SentryBuildInput {
  * token — never from the E2E container or a laptop, which would create
  * releases for builds nothing deploys. Upload failures warn: a Sentry outage
  * must not block a production release.
+ *
+ * Deliberately does **not** set `tunnelRoute` (R-04): that option makes the
+ * plugin install its own unauthenticated Next.js rewrite for `/monitoring`
+ * on every build, whether or not a DSN is even configured, forwarding to
+ * whatever org/project id a caller names in the query string. The tunnel is
+ * instead `app/monitoring/route.ts`, a route handler this project owns —
+ * see `SENTRY_TUNNEL_ROUTE`'s comment.
  */
 export function buildSentryBuildOptions(env: SentryBuildInput): SentryBuildOptions {
   const authToken = readSetting(env.SENTRY_AUTH_TOKEN);
@@ -291,7 +374,6 @@ export function buildSentryBuildOptions(env: SentryBuildInput): SentryBuildOptio
     authToken: uploads ? authToken : undefined,
     sourcemaps: { disable: !uploads, deleteSourcemapsAfterUpload: true },
     release: { create: uploads, finalize: uploads },
-    tunnelRoute: SENTRY_TUNNEL_ROUTE,
     telemetry: false,
     silent: env.CI === undefined,
     errorHandler: (error: Error) => {

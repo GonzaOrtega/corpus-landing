@@ -130,8 +130,8 @@ export const config = {
   // and must not pay the Proxy hop. Raw HTTP clients still enter Proxy so
   // Accept negotiation, 406s and Markdown 404 recovery remain request-aware.
   // Explicit Markdown aliases are always handled, including browser navigation.
-  // `monitoring` is the Sentry tunnel (next.config.ts): SDK envelopes, never
-  // a page, so negotiation has nothing to decide there.
+  // `monitoring` is the Sentry tunnel (app/monitoring/route.ts): SDK
+  // envelopes, never a page, so negotiation has nothing to decide there.
   matcher: [
     '/index.md',
     '/about.md',
