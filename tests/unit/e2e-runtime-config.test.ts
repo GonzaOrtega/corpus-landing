@@ -42,11 +42,13 @@ describe('E2E runtime configuration', () => {
     expect(read('compose.yaml')).toContain("'127.0.0.1:55432:5432'");
   });
 
-  // Both runtimes bind-mount or load the developer's .env.local. A DSN there
-  // would be inlined into the E2E client bundle and an auth token would upload
-  // a release nothing deploys; an explicit blank wins over the env file.
+  // All three runtimes bind-mount, load, or otherwise inherit the developer's
+  // .env.local. A DSN there would be inlined into a local client bundle (or,
+  // for lighthouserc.cjs's already-built server, read by the server SDK at
+  // request time) and an auth token would upload a release nothing deploys;
+  // an explicit blank wins over the env file.
   it('blanks the Sentry DSN and auth token in every local production build', () => {
-    for (const file of ['compose.yaml', 'playwright.config.ts']) {
+    for (const file of ['compose.yaml', 'playwright.config.ts', 'lighthouserc.cjs']) {
       const source = read(file);
       expect(source, file).toMatch(/NEXT_PUBLIC_SENTRY_DSN: ''/);
       expect(source, file).toMatch(/SENTRY_AUTH_TOKEN: ''/);

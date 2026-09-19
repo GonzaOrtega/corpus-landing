@@ -49,8 +49,16 @@ are in the GitHub Actions job log.
      a 10-minute check-in margin and a 15-minute maximum runtime.
 
 Local development: put `NEXT_PUBLIC_SENTRY_DSN` in `.env.local` only if you
-want local events in Sentry (environment `development`). `bun run test`,
-`bun run test:e2e` and `bun run lighthouse` never report regardless.
+want local events in Sentry (environment `development`). `bun run test` and
+`bun run test:e2e` never report regardless — both blank the DSN and auth
+token in the build they run. `bun run lighthouse`'s local (non-preview) run
+blanks them too and forces the same pipeline signal for the server it
+starts, so the SERVER SDK stays off — but it never rebuilds. If `.env.local`
+had a real DSN the last time you ran `bun run build`, that DSN is already
+inlined into the client bundle it starts, and the browser SDK's error/console
+capture is not pipeline-gated (it has no way to see `CI`). Run `bun run
+build` with `NEXT_PUBLIC_SENTRY_DSN` unset before `bun run lighthouse` if you
+need a clean run end to end.
 
 ## Verifying a deployment
 
