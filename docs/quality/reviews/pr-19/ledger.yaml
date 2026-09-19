@@ -1,6 +1,6 @@
 version: 1
 pr: 19
-status: fixing
+status: frozen
 rounds:
   - "n": 1
     head: 7f3e5917f6a88711d9f9c6e8b61e41b6476dabef
@@ -824,7 +824,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
-      []
+      - 7440dafb774db4a3c95b163c1259b8196c86cb04
     issue: null
   - id: R-30
     round: 2
@@ -924,7 +924,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
-      []
+      - 6502cb7cdf380116b41368990b5192b4f462101f
     issue: null
   - id: R-34
     round: 2
@@ -949,7 +949,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
-      []
+      - 7440dafb774db4a3c95b163c1259b8196c86cb04
     issue: null
   - id: R-35
     round: 2
@@ -974,7 +974,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
-      []
+      - 4108f0a9d1b30f2fa81fc76c50c92f99a197e103
     issue: null
   - id: R-36
     round: 2
@@ -1100,7 +1100,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
-      []
+      - 7440dafb774db4a3c95b163c1259b8196c86cb04
     issue: null
   - id: R-41
     round: 2
