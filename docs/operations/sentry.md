@@ -14,6 +14,7 @@ This runbook is the procedure; the spec is the why.
 | Maintenance cron check-ins and span | `withMonitor` + `startSpan` + `flush` | `app/api/cron/maintenance/route.ts` |
 | Client render errors | error boundaries | `app/error.tsx`, `app/global-error.tsx` |
 | Browser errors and console warn/error logs; page-load/navigation tracing when opted in | browser SDK, loaded after `load` | `instrumentation-client.ts`, `src/config/sentry-client.ts` |
+| Monitoring tunnel rejections and forward faults | `Logger` port (`warn` for rejections, `error` for faults) | `app/monitoring/monitoring-route.handler.ts` |
 
 Not instrumented: the Bun launch CLI (`scripts/launch-email.ts`). Its errors
 are in the GitHub Actions job log.
@@ -90,6 +91,67 @@ variable on Preview first, let the `lighthouse` PR check run against that
 preview, and promote the setting to Production only if it stays green.
 Server-side tracing (Server Actions, RSC renders, the cron, outgoing calls to
 Neon, Resend and reCAPTCHA) is on regardless.
+
+## Monitoring tunnel: observability and abuse protection
+
+`/monitoring` (`app/monitoring/route.ts`, `monitoring-route.handler.ts`) is
+public and unauthenticated by necessity — it's what the browser SDK posts
+envelopes to. Two things follow from that.
+
+**Rejections and faults are logged, successes are not.** Every 404 (DSN
+configured but unusable — not a blank/unset DSN, which is routine), 403
+(org/project mismatch or cross-site `Origin`) and 413 (oversized envelope)
+logs a `warn` through the Logger port; a forward failure or a fault while
+assembling the response to an already-successful forward each logs a
+distinct `error`. Fields are the same spec §24 allowlist as everywhere else
+(`operation`, `status`, `errorCode`) — never the envelope body, headers, or
+DSN. `error`-level lines become Sentry issues via the Pino integration, so a
+sustained run of forward failures pages the same way any other issue does; a
+tunnel that starts silently rejecting is no longer indistinguishable from a
+quiet week. A successful forward stays silent by design: logging the
+high-volume path would recreate the exact per-event cost this design exists
+to avoid.
+
+**Residual risk: no rate limit in code, and the mitigation is partial.** A
+serverless function has no shared memory for a correct in-process limiter,
+and a database-backed one would put write load on Neon for exactly the flood
+it is trying to absorb — both worse than the problem. The handler instead
+rejects a POST whose `Origin` header names a different site, verified against
+the vendored `@sentry/browser` fetch transport: it never sets `mode:
+'no-cors'` and never touches `Origin`, so a legitimate same-origin post
+always carries a matching one, and a page's own script cannot spoof or
+suppress the header the browser attaches for a cross-site POST. This stops a
+hostile *webpage* from turning visitors' browsers into an amplifier. It does
+**not** stop a direct scripted flood (curl, a bot) that omits the `Origin`
+header — allowed, by design, to avoid rejecting legitimate traffic that
+omits it for any innocuous reason — or that simply sets `Origin` to this
+site's own origin, which no server-side header check can tell apart from the
+real thing. The `o`/`p` pair the tunnel also checks is not a secret: it ships
+in the public bundle and in every envelope. Sentry's own project quotas cap
+the worst case regardless.
+
+The authoritative mitigation for volume is a Vercel Firewall rule, the same
+mechanism `docs/operations/abuse-protection.md` already uses for the
+early-access Server Actions — a blocked request there "does not reach the
+application," which caps both forwarding cost and the log volume above.
+
+| Setting | Value |
+| --- | --- |
+| Production host | this deployment's production host (see `abuse-protection.md`) |
+| Methods | `POST` |
+| Paths | `/monitoring` |
+| Counter key | IP |
+| Algorithm | Fixed window |
+| Limit | start high (e.g. 60 requests per 60 seconds per region) and tighten from observed traffic — error/log bursts are legitimate after a bad deploy, unlike signup traffic |
+| Follow-up | `Log` first, same rollout procedure as `abuse-protection.md` (§"Rollout and verification"), before switching to a `429` response |
+
+**On Vercel Hobby, rate limiting allows only one rule per project.** If
+`early-access-server-actions` already holds that slot, either add `/monitoring`
+to its path list (methods and counter key already match; only the limit may
+need to differ per path, which a single Hobby rule cannot express) or upgrade
+before adding a second rule. This is an operator decision, not one this
+change makes for you — record whichever way it goes in
+`docs/operations/abuse-protection.md`.
 
 ## What is never sent
 
