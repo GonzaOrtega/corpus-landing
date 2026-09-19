@@ -69,7 +69,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, critical"
     fix_commits:
-      []
+      - dd07f71f790d4bad90cdcad193025c9bb7962f49
     issue: null
   - id: R-02
     round: 1
@@ -102,7 +102,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
-      []
+      - 8b9784e811220450466349ddcc29126eb7538e65
     issue: null
   - id: R-03
     round: 1
@@ -158,7 +158,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
-      []
+      - 3b6dc21d280a95c342b9c926187418c8a20b2a4e
     issue: null
   - id: R-05
     round: 1
@@ -368,7 +368,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, critical"
     fix_commits:
-      []
+      - dd07f71f790d4bad90cdcad193025c9bb7962f49
     issue: null
   - id: R-13
     round: 1
@@ -393,7 +393,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
-      []
+      - dd07f71f790d4bad90cdcad193025c9bb7962f49
     issue: null
   - id: R-14
     round: 1
@@ -419,7 +419,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
-      []
+      - dd07f71f790d4bad90cdcad193025c9bb7962f49
     issue: null
   - id: R-15
     round: 1
@@ -444,7 +444,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
-      []
+      - 3975a526d1b6057cc75598432f14483f12209e7c
     issue: null
   - id: R-16
     round: 1
@@ -469,7 +469,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
-      []
+      - afd2a154356c6bb38cfe4eca794ed9c542dd36bc
     issue: null
   - id: R-17
     round: 1
@@ -645,7 +645,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
-      []
+      - afd2a154356c6bb38cfe4eca794ed9c542dd36bc
     issue: null
   - id: R-24
     round: 1
