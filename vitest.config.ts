@@ -74,6 +74,29 @@ export default defineConfig({
       ],
       reportsDirectory: './coverage',
       reportOnFailure: true,
+      // Per-glob hard gates, evaluated on `bun run test:coverage`. Each value is
+      // max(agreed target, measured floor) and only ever moves up — see
+      // docs/quality/testing.md ("Ratchet rule"). Never enable `autoUpdate`.
+      // Targets: core 100 · adapters/composition/config/ops 90 · features,
+      // components, app and proxy 80. The adapters floor already accounts for
+      // the Drizzle repository CI measures on top of the local run.
+      thresholds: {
+        // Catch-all for any file the globs below do not claim, so a new
+        // directory can never ship unmeasured.
+        lines: 80,
+        branches: 80,
+        functions: 80,
+        statements: 80,
+        'src/core/**': { lines: 100, branches: 100, functions: 100, statements: 100 },
+        'src/adapters/**': { lines: 100, branches: 92, functions: 100, statements: 99 },
+        'src/composition/**': { lines: 98, branches: 100, functions: 93, statements: 98 },
+        'src/config/**': { lines: 100, branches: 100, functions: 100, statements: 100 },
+        'src/ops/**': { lines: 95, branches: 90, functions: 100, statements: 95 },
+        'src/features/**': { lines: 88, branches: 89, functions: 87, statements: 87 },
+        'src/components/**': { lines: 100, branches: 100, functions: 100, statements: 100 },
+        'app/**': { lines: 100, branches: 100, functions: 100, statements: 100 },
+        'proxy.ts': { lines: 100, branches: 97, functions: 100, statements: 100 },
+      },
     },
   },
 });

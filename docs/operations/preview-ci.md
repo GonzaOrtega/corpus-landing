@@ -109,9 +109,13 @@ excludes them by explicit signal (`CI`, `NODE_ENV=test`, or
 ## Database lifecycle and isolation
 
 `test` creates `ci-<run-id>-<attempt>` from Neon `development`, applies
-migrations using the direct `db_url`, runs Vitest with the pooled URL, and
-deletes the branch in an `always()` cleanup step. A one-day expiration is an
-independent fallback if a runner is terminated before cleanup.
+migrations using the direct `db_url`, runs Vitest with coverage using the pooled
+URL (`bun run test:coverage`, which fails the job below the per-layer thresholds
+in `vitest.config.ts`), publishes the coverage report as the `coverage-<run>`
+workflow artifact, and deletes the branch in an `always()` cleanup step. The
+artifact holds source paths and hit counts only — never a database URL or any
+other environment value. A one-day expiration is an independent fallback if a
+runner is terminated before cleanup.
 
 `preview` creates or reuses `pr-<number>` from `development`, then explicitly
 refreshes that branch's expiration to seven days from the current workflow run

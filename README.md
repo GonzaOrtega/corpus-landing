@@ -129,9 +129,10 @@ settings, or protected GitHub Environments.
 ## Testing
 
 ```bash
-bun run test       # Vitest unit, component, and integration suites
-bun run test:e2e   # Containerized Playwright browser flows
-bun run test:all   # Static checks, Vitest, then containerized Playwright
+bun run test            # Vitest unit, component, and integration suites
+bun run test:coverage   # The same suites with per-layer coverage gates (what CI's `test` job runs)
+bun run test:e2e        # Containerized Playwright browser flows
+bun run test:all        # Static checks, Vitest with coverage, then containerized Playwright
 ```
 
 Pull requests expose six stable checks: `check`, `test`, `preview`, `e2e`,
@@ -141,6 +142,11 @@ the Git model are `check`, `test`, `preview`, `e2e`, and `lighthouse`;
 use disposable Neon branches; E2E uses ephemeral local Postgres through a Neon
 HTTP proxy. Email and CAPTCHA remain fake. See
 [Preview CI operations](docs/operations/preview-ci.md).
+
+The `test` check also enforces per-layer coverage thresholds (core 100%,
+adapters and composition 90%+, delivery layers 80%+) and publishes the
+lcov/HTML report as a workflow artifact. The thresholds, the exclusion list and
+the rule for raising them are in [Testing](docs/quality/testing.md).
 
 ## Database schema and migrations
 

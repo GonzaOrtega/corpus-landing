@@ -96,10 +96,15 @@ Setup, prerequisites, and the environment-variable contract are in the
 Before you open a PR:
 
 ```bash
-bun run check   # typecheck + lint + stack conformance
-bun run test    # Vitest
-bun run test:e2e   # Playwright, in Docker
+bun run check           # typecheck + lint + stack conformance
+bun run test:coverage   # Vitest with the per-layer coverage gates CI enforces
+bun run test:e2e        # Playwright, in Docker
 ```
+
+A change that lowers a layer below its coverage threshold fails `test:coverage`
+locally exactly as it fails the `test` check. Cover the new branch; do not lower
+the number. See [Testing](docs/quality/testing.md) for the thresholds and the
+rule for raising them.
 
 `bun` only — never `npm`, `yarn`, or `pnpm`. The lockfile is committed and CI
 installs with `--frozen-lockfile`.
