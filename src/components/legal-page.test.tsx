@@ -37,4 +37,29 @@ describe('LegalPage content', () => {
     expect(html).toContain('platform and distribution requirements');
     expect(html).toContain('must not abuse');
   });
+
+  it('publishes whichever contact detail is configured, and no Contact section when neither is', () => {
+    const base = {
+      description: 'Terms for using Corpus.',
+      sections: termsSections,
+      title: 'Terms',
+    };
+
+    const emailOnly = renderToStaticMarkup(
+      <LegalPage {...base} contactEmail="hello@corpus.example" />,
+    );
+    expect(emailOnly).toContain('<h2>Contact</h2>');
+    expect(emailOnly).toContain('<p>hello@corpus.example</p>');
+
+    const postalOnly = renderToStaticMarkup(
+      <LegalPage {...base} postalAddress="123 Example Street" />,
+    );
+    expect(postalOnly).toContain('<h2>Contact</h2>');
+    expect(postalOnly).toContain('<p>123 Example Street</p>');
+    expect(postalOnly).not.toContain('hello@corpus.example');
+
+    expect(
+      renderToStaticMarkup(<LegalPage {...base} contactEmail={null} postalAddress={null} />),
+    ).not.toContain('<h2>Contact</h2>');
+  });
 });
