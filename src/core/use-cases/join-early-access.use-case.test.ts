@@ -114,4 +114,58 @@ describe('JoinEarlyAccessUseCase', () => {
       managementToken: null,
     });
   });
+
+  it('resubscribes an unsubscribed row in place with a fresh token and confirmation', async () => {
+    const repository = new InMemoryEarlyAccessSignupRepository();
+    const existing = await repository.create({
+      ...INPUT,
+      consentedAt: new Date('2026-08-01T00:00:00.000Z'),
+      manageTokenHash: 'old-hash',
+    });
+    await repository.save(
+      EarlyAccessSignup.fromProps({
+        ...existing.toProps(),
+        unsubscribedAt: new Date('2026-08-15T00:00:00.000Z'),
+      }),
+    );
+    const useCase = buildUseCase(repository);
+
+    const result = await useCase.execute(INPUT);
+
+    expect(result).toEqual({
+      signupId: existing.id,
+      shouldSendConfirmation: true,
+      managementToken: 'test-token-1',
+    });
+    expect((await repository.findById(existing.id))?.toProps()).toMatchObject({
+      unsubscribedAt: null,
+      manageTokenHash: 'hash:test-token-1',
+      consentedAt: NOW,
+    });
+    expect(await repository.countLaunchEligible()).toBe(1);
+  });
+
+  it('rethrows a conflict whose canonical row cannot be re-read', async () => {
+    const conflict = new PersistenceConflictError();
+    const repository = Object.assign(new InMemoryEarlyAccessSignupRepository(), {
+      findCurrentByNormalizedEmail: async () => null,
+      create: async () => {
+        throw conflict;
+      },
+    });
+
+    await expect(buildUseCase(repository).execute(INPUT)).rejects.toBe(conflict);
+  });
+
+  it('rethrows non-conflict persistence failures untouched', async () => {
+    const failure = new Error('connection reset');
+    const repository = Object.assign(new InMemoryEarlyAccessSignupRepository(), {
+      findCurrentByNormalizedEmail: async () => null,
+      create: async () => {
+        throw failure;
+      },
+    });
+
+    await expect(buildUseCase(repository).execute(INPUT)).rejects.toBe(failure);
+  });
 });

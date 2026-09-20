@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { EarlyAccessSignup } from '../entities/early-access-signup';
 import type { EmailDeliveryOutcome, EmailMessage, EmailSender } from '../ports/email-sender.port';
 import type { EarlyAccessLogFields, Logger } from '../ports/logger.port';
 import { FixedClockAdapter } from '../testing/fixed-clock.adapter';
@@ -116,4 +117,60 @@ describe('SendConfirmationEmailUseCase', () => {
       ]);
     },
   );
+
+  it('does nothing for an unknown signup', async () => {
+    const { sender, logger, useCase } = await setup('accepted');
+
+    await useCase.execute({ signupId: 'missing', managementToken: 'raw-token' });
+
+    expect(sender.messages).toHaveLength(0);
+    expect(logger.errors).toHaveLength(0);
+  });
+
+  it.each([
+    ['has no email address', { emailOriginal: null }],
+    ['is anonymized', { anonymizedAt: NOW }],
+  ] as const)('does not send when the signup %s', async (_label, overrides) => {
+    const { repository, signup, sender, useCase } = await setup('accepted');
+    const stored = EarlyAccessSignup.fromProps({ ...signup.toProps(), ...overrides });
+    await repository.save(stored);
+
+    await useCase.execute({ signupId: signup.id, managementToken: 'raw-token' });
+
+    expect(sender.messages).toHaveLength(0);
+    expect((await repository.findById(signup.id))?.toProps()).toEqual(stored.toProps());
+  });
+
+  it('treats a provider that throws as ambiguous and exhausts the row', async () => {
+    const repository = new InMemoryEarlyAccessSignupRepository();
+    const signup = await repository.create({
+      emailOriginal: 'person@example.com',
+      emailNormalized: 'person@example.com',
+      consentVersion: 'v1',
+      consentedAt: NOW,
+      manageTokenHash: 'hash',
+    });
+    const logger = new RecordingLogger();
+    const sender: EmailSender = {
+      send: async () => {
+        throw new Error('provider unreachable');
+      },
+    };
+    const useCase = new SendConfirmationEmailUseCase(
+      repository,
+      sender,
+      new FixedClockAdapter(NOW),
+      logger,
+      { siteUrl: new URL('https://corpus.example') },
+    );
+
+    await useCase.execute({ signupId: signup.id, managementToken: 'raw-token' });
+
+    expect((await repository.findById(signup.id))?.toProps()).toMatchObject({
+      confirmationStatus: 'exhausted',
+      confirmationAttemptCount: 1,
+      confirmationNextAttemptAt: null,
+    });
+    expect(logger.errors[0]).toMatchObject({ errorCode: 'AMBIGUOUS_PROVIDER_OUTCOME' });
+  });
 });

@@ -86,4 +86,18 @@ describe('RetryFailedConfirmationsUseCase', () => {
       confirmationNextAttemptAt: null,
     });
   });
+
+  it('counts a row as processed but not exhausted when it vanishes after the send', async () => {
+    const { repository } = await setup(['known_retryable_failure']);
+    const vanishing = Object.assign(repository, { findById: async () => null });
+    const retry = new RetryFailedConfirmationsUseCase(
+      vanishing,
+      { execute: async () => {} },
+      new FixedClockAdapter(NOW),
+      new DeterministicTokenAdapter(),
+      { hash: (token) => `hash:${token}` },
+    );
+
+    await expect(retry.execute(100)).resolves.toEqual({ processed: 1, exhausted: 0 });
+  });
 });

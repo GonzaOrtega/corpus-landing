@@ -104,6 +104,27 @@ export function runEarlyAccessSignupRepositoryContract(
       expect(await repo.countLaunchEligible()).toBe(1);
     });
 
+    it('pages launch-eligible rows strictly after a cursor in id order', async () => {
+      const repo = await createRepository();
+      const created = await Promise.all(
+        ['a', 'b', 'c'].map((suffix) =>
+          repo.create(
+            buildInput({
+              emailNormalized: `${suffix}@example.com`,
+              manageTokenHash: `hash-${suffix}`,
+            }),
+          ),
+        ),
+      );
+      const ordered = created.map((row) => row.id).sort((left, right) => left.localeCompare(right));
+
+      const firstPage = await repo.findLaunchEligible(2);
+      const secondPage = await repo.findLaunchEligible(2, firstPage[1]?.id);
+
+      expect(firstPage.map((row) => row.id)).toEqual(ordered.slice(0, 2));
+      expect(secondPage.map((row) => row.id)).toEqual(ordered.slice(2));
+    });
+
     it('finds confirmations due for retry, ignoring ones not yet due', async () => {
       const repo = await createRepository();
       const due = await repo.create(buildInput());
