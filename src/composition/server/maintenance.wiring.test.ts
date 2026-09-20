@@ -1,9 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { getMaintenanceOperation } from './maintenance.wiring';
-
-// buildContext transitively imports server-env.ts, which imports 'server-only' —
-// same reason as early-access.test.ts.
-vi.mock('server-only', () => ({}));
 
 const ORIGINAL = { ...process.env };
 
