@@ -76,11 +76,17 @@ them.
 | `scripts/launch-email.ts` | 80 | 86 / 93 / 100 / 88 |
 | anything else | 80 | 80 / 80 / 80 / 80 (a floor under every measured file — see below, it is not what protects a new directory) |
 
-Enforced values are `max(target, floor(measured))` at the time the gate was
-introduced (2026-09-20, 454 tests). The adapters row accounts for the Drizzle
-repository, which only CI measures: its unit suite alone leaves it at 100 / 85 /
-100 / 98, and the aggregate with that lower bound is 100 / 92 / 100 / 99. CI
-adds the integration suite on top, so CI can only measure higher.
+Enforced values are `max(target, floor(measured))`, but not all measured at
+the same time: most were set when the gate was introduced (2026-09-20, 454
+tests). `src/config/**`, `src/features/**` and `app/**` were re-measured
+after merging `main`'s Sentry observability work into this branch
+(2026-09-22, 562 tests) and moved down — a recorded lowering, see the
+ratchet rule below — and `src/features/**` moved again, upward, later in
+that same 2026-09-22 date once `recaptcha-bridge.tsx` became measured
+(R-11). The adapters row accounts for the Drizzle repository, which only CI
+measures: its unit suite alone leaves it at 100 / 85 / 100 / 98, and the
+aggregate with that lower bound is 100 / 92 / 100 / 99. CI adds the
+integration suite on top, so CI can only measure higher.
 
 The bare `lines`/`branches`/`functions`/`statements` keys are **not** scoped
 to files the glob rows above leave unclaimed: Vitest's threshold resolver
@@ -107,6 +113,29 @@ its own row in the table above.
 - `/* v8 ignore */` is not used. An unreachable defensive branch is either
   covered through a structural stub (see the resolve/unsubscribe and purge use
   case tests) or removed with a comment.
+
+**Recorded lowering — 2026-09-22.** This branch forked before `main`'s Sentry
+observability work existed, so merging `main` in was the first time this
+gate ever measured that code. Two files conflicted and four tests failed on
+contact; three globs needed re-measuring afterward and moved down (562 tests,
+up from 454 at introduction on 2026-09-20):
+
+| Glob | Before (2026-09-20) | After (2026-09-22) |
+| --- | --- | --- |
+| `src/config/**` | 100 / 100 / 100 / 100 | 99 / 97 / 100 / 98 |
+| `src/features/**` | 88 / 89 / 87 / 87 | 88 / 89 / 86 / 87 |
+| `app/**` | 100 / 100 / 100 / 100 | 93 / 94 / 80 / 93 |
+
+Every agreed target above is still met; what moved is the surplus the
+ratchet had banked against a codebase without Sentry in it.
+`app/error.tsx` and `app/global-error.tsx` (50% each) are half of the
+`app/**` drop, and are left measured rather than excluded: they render on
+the server but act only in the browser, and the `browserOnly` exclusion list
+in `vitest.config.ts` requires a Playwright spec per entry, but no spec
+exercises the error boundary — an honest lower number beats a quiet
+exclusion. `src/features/**` moved again, upward, later the same day —
+88/89/86/87 → 90/90/86/88 — once `recaptcha-bridge.tsx` became measured
+(R-11); that move is a raise, not a lowering, so it needs no entry here.
 
 ### Exclusions and why
 
