@@ -12,7 +12,7 @@ manual for meeting them.
 | Domain and use cases | `src/core/**/*.test.ts` | Every branch of the seven use cases and the entity, against the port contracts | `InMemoryEarlyAccessSignupRepository`, `FixedClockAdapter`, `DeterministicTokenAdapter`, `buildSignup`/`buildSignupProps` (`src/core/testing/`) |
 | Repository contract | `src/core/testing/early-access-signup-repository.contract.ts` | One suite run unchanged against the in-memory double and the real Drizzle adapter, so both enforce §9.2 identically | — |
 | Adapters | `src/adapters/**/*.test.ts` | Provider outcome mapping, PII-free diagnostics, hashing and token derivation, Drizzle error translation with a chainable stand-in | Recording senders/loggers, structural `Database` stub |
-| Repository integration | `src/adapters/db/*.integration.test.ts` | The SQL, the partial unique index and the driver, against real Postgres | Disposable Neon branch in CI; skipped locally without `DATABASE_URL` |
+| Repository integration | `src/adapters/db/*.integration.test.ts` | The SQL, the partial unique index and the driver, against real Postgres | Disposable Neon branch in CI; skipped locally without `DATABASE_URL_TEST` |
 | Composition and wiring | `src/composition/**/*.test.ts`, `src/features/**/*.wiring.test.ts` | Capability selection by environment, fail-closed production rules, and that each wiring file assembles a working object graph | `vi.stubEnv`; `vi.mock` of `capabilities/persistence` to inject the in-memory repository |
 | Delivery: Server Actions, routes, pages, proxy | `src/features/**/actions/*.test.ts`, `app/**/*.test.ts(x)`, `proxy.test.ts` | Validation, error mapping, response shaping, metadata, and server-rendered markup via `renderToStaticMarkup` | `vi.mock` of wiring modules and Next-only modules (`next/font/*`, `next/og`, `next/script`) |
 | Browser behaviour | `tests/e2e/*.spec.ts` (Playwright) | Motion, the Living Lexicon, signup and management journeys, axe, prototype parity | Local Postgres behind a Neon HTTP proxy, fake CAPTCHA and email |
@@ -90,7 +90,7 @@ adds the integration suite on top, so CI can only measure higher.
 | `**/*.test.{ts,tsx}`, Vitest defaults | Tests are not the thing measured |
 | `src/core/testing/early-access-signup-repository.contract.ts` | A Vitest suite exported as a function, not a module under test |
 | `src/features/landing/motion/**`, `src/features/landing/ui/living-lexicon.client.tsx`, `src/features/early-access/ui/recaptcha-bridge.tsx` | Browser-only: their behaviour lives in effects and GSAP timelines that never run under static markup. Covered by `tests/e2e/landing-motion.spec.ts`, `living-lexicon.spec.ts`, `homepage.spec.ts` and `signup.spec.ts`. Adding a file here requires a Playwright spec for it. |
-| `src/adapters/db/drizzle-early-access-signup.repository.ts` **only when `DATABASE_URL` is unset** | Its integration suite self-skips without a database, which would report the file at ~0% locally for a reason unrelated to the change under test. `bun run test:coverage` prints a one-line notice when this applies. The CI `test` job always has a database and never takes this path; to match it locally see "Measuring the Drizzle repository" below. |
+| `src/adapters/db/drizzle-early-access-signup.repository.ts` **only when `DATABASE_URL_TEST` is unset** | Its integration suite self-skips without a database, which would report the file at ~0% locally for a reason unrelated to the change under test. Gated on `DATABASE_URL_TEST`, never the ordinary `DATABASE_URL` (see "Measuring the Drizzle repository" below for why). `bun run test:coverage` prints a one-line notice when this applies. The CI `test` job always sets `DATABASE_URL_TEST` against its disposable branch and never takes this path. |
 
 Client components that render on the server but act in the browser
 (`signup-form.tsx`, `manage-token-bridge.tsx`, `cloze-demo.tsx`) stay measured:
@@ -109,20 +109,27 @@ breach is read from the log rather than browsed.
 
 ## Measuring the Drizzle repository
 
-A coverage run without `DATABASE_URL` excludes the Drizzle repository, because
-its suite self-skips and would otherwise report ~0% and fail the adapters
-threshold for a reason unrelated to the change under test. That exclusion is
-the one gap between a developer machine and the CI `test` job, which always
-provisions a Neon branch. To close it locally, start the E2E database and point
-the driver at the local proxy, exactly as
-`docs/verification/definition-of-done.md` documents for the integration
-suite:
+A coverage run without `DATABASE_URL_TEST` excludes the Drizzle repository,
+because its suite self-skips and would otherwise report ~0% and fail the
+adapters threshold for a reason unrelated to the change under test. The suite
+reads `DATABASE_URL_TEST` rather than the ordinary `DATABASE_URL` on purpose:
+its `beforeEach` unconditionally deletes every row, and `DATABASE_URL` is what
+the setup guide tells you to point at the shared Neon `development` branch —
+a variable Bun also auto-loads from `.env.local` into every `bun run` script,
+including `check`. Keying the destructive suite off a separate, normally-unset
+name keeps that database out of scope no matter what invokes Vitest. That
+exclusion is the one gap between a developer machine and the CI `test` job,
+which always provisions a Neon branch and sets `DATABASE_URL_TEST` explicitly.
+To close it locally, start the E2E database and point the driver at the local
+proxy, exactly as `docs/verification/definition-of-done.md` documents for the
+integration suite:
 
 ```sh
 docker compose up -d db proxy
 docker compose run --rm --no-deps e2e sh -c "bun tests/e2e/support/migrate.mjs"
 DATABASE_URL='postgres://corpus:corpus@127.0.0.1:55432/corpus_landing' \
   DATABASE_URL_UNPOOLED='postgres://corpus:corpus@127.0.0.1:55432/corpus_landing' \
+  DATABASE_URL_TEST='postgres://corpus:corpus@127.0.0.1:55432/corpus_landing' \
   E2E_NEON_HTTP_ENDPOINT='http://127.0.0.1:4444/sql' \
   NODE_OPTIONS='--import ./tests/e2e/support/neon-local-endpoint.mjs' \
   bun run test:coverage

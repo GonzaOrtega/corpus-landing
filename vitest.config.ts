@@ -4,17 +4,24 @@ import { coverageConfigDefaults, defineConfig } from 'vitest/config';
 
 const root = fileURLToPath(new URL('.', import.meta.url)).replace(/\/$/, '');
 
-// The real-Postgres repository suite self-skips without DATABASE_URL, which
-// would report the Drizzle repository at ~0% on a developer machine and fail
-// the adapters threshold for a reason unrelated to the change under test. The
-// CI `test` job always provisions a Neon branch, so it never takes this path
-// and measures the file for real; docs/quality/testing.md ("Measuring the
-// Drizzle repository") has the recipe for matching that locally.
-const databaseConfigured = Boolean(process.env.DATABASE_URL);
+// The real-Postgres repository suite self-skips without DATABASE_URL_TEST,
+// which would report the Drizzle repository at ~0% on a developer machine and
+// fail the adapters threshold for a reason unrelated to the change under
+// test. Keyed on DATABASE_URL_TEST, not DATABASE_URL: the suite's
+// `beforeEach` unconditionally deletes every row, and DATABASE_URL is what
+// the setup guide tells a developer to point at the shared Neon
+// `development` branch (which Bun also auto-loads from `.env.local` into
+// every `bun run` script). Gating on a separate, normally-unset name keeps
+// that database out of scope by construction. The CI `test` job explicitly
+// provisions DATABASE_URL_TEST against its disposable Neon branch, so it
+// never takes this path and measures the file for real;
+// docs/quality/testing.md ("Measuring the Drizzle repository") has the
+// recipe for matching that locally.
+const testDatabaseConfigured = Boolean(process.env.DATABASE_URL_TEST);
 const drizzleRepositoryPath = 'src/adapters/db/drizzle-early-access-signup.repository.ts';
-if (process.argv.includes('--coverage') && !databaseConfigured) {
+if (process.argv.includes('--coverage') && !testDatabaseConfigured) {
   console.warn(
-    `[coverage] DATABASE_URL is unset: excluding ${drizzleRepositoryPath} (its integration suite is skipped). The CI test job measures it.`,
+    `[coverage] DATABASE_URL_TEST is unset: excluding ${drizzleRepositoryPath} (its integration suite is skipped). The CI test job measures it.`,
   );
 }
 
@@ -64,7 +71,7 @@ export default defineConfig({
         // A Vitest suite exported as a function, not a module under test.
         'src/core/testing/early-access-signup-repository.contract.ts',
         ...browserOnly,
-        ...(databaseConfigured ? [] : [drizzleRepositoryPath]),
+        ...(testDatabaseConfigured ? [] : [drizzleRepositoryPath]),
       ],
       reporter: [
         'text',
