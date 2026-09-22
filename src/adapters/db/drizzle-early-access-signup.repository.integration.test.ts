@@ -6,12 +6,19 @@ import { createNeonDatabase } from './neon-database.adapter';
 import { earlyAccessSignups } from './schema';
 
 /**
- * Runs against a real Neon Postgres branch, never in-memory — proves the
+ * Runs against a real Postgres database, never in-memory — proves the
  * partial unique index (§9.2) and Drizzle mapping actually work, not just
- * the in-memory mirror of them. Skips when no disposable DB is wired (e.g.
- * CI before Task 19 provisions per-run branches) rather than failing.
+ * the in-memory mirror of them.
+ *
+ * It reads DATABASE_URL_TEST, never DATABASE_URL: `beforeEach` truncates the
+ * signup table, `bun run check` runs this suite, `bun run` loads `.env.local`,
+ * and the README points DATABASE_URL at the shared Neon `development` branch.
+ * The CI `test` job supplies its disposable branch under this name; a
+ * developer who wants the suite locally follows docs/quality/testing.md
+ * ("Measuring the Drizzle repository"). Without the variable the suite skips
+ * rather than failing.
  */
-const connectionString = process.env.DATABASE_URL;
+const connectionString = process.env.DATABASE_URL_TEST;
 
 if (connectionString) {
   describe('DrizzleEarlyAccessSignupRepository (integration)', () => {
@@ -49,5 +56,5 @@ if (connectionString) {
     });
   });
 } else {
-  describe.skip('DrizzleEarlyAccessSignupRepository (integration) — no DATABASE_URL configured', () => {});
+  describe.skip('DrizzleEarlyAccessSignupRepository (integration) — no DATABASE_URL_TEST configured', () => {});
 }

@@ -107,7 +107,7 @@ connection strings, account identifiers, subscriber data, or raw tokens.
 | `CORPUS_DOWNLOAD_URL` | Server | HTTPS destination required by the launched stage. |
 | `DATABASE_URL` | Server | Pooled application database connection. |
 | `DATABASE_URL_UNPOOLED` | Server/automation | Direct database connection used by migrations. |
-| `DATABASE_URL_TEST` | Test tooling | Optional isolated integration-test connection. |
+| `DATABASE_URL_TEST` | Test tooling | Isolated database for the repository integration suite, which truncates the signup table on every test. Never a shared branch; leave unset to skip the suite. |
 | `RECAPTCHA_SITE_KEY` | Public configuration | Google Cloud Fraud Defense score-key ID; the only CAPTCHA value allowed to reach the browser in Production. |
 | `RECAPTCHA_API_KEY` | Secret | Server-only Google Cloud API key for `projects.assessments.create`; restrict it to the reCAPTCHA Enterprise API. |
 | `RECAPTCHA_PROJECT_ID` | Server | Google Cloud project ID that owns the reCAPTCHA key and API key. |

@@ -4,29 +4,33 @@ import { coverageConfigDefaults, defineConfig } from 'vitest/config';
 
 const root = fileURLToPath(new URL('.', import.meta.url)).replace(/\/$/, '');
 
-// The real-Postgres repository suite self-skips without DATABASE_URL, which
-// would report the Drizzle repository at ~0% on a developer machine and fail
-// the adapters threshold for a reason unrelated to the change under test. The
-// CI `test` job always provisions a Neon branch, so it never takes this path
-// and measures the file for real; docs/quality/testing.md ("Measuring the
-// Drizzle repository") has the recipe for matching that locally.
-const databaseConfigured = Boolean(process.env.DATABASE_URL);
+// The real-Postgres repository suite runs only against DATABASE_URL_TEST — a
+// throwaway database, never the application's DATABASE_URL, because the suite
+// truncates the signup table and `bun run check` now runs it against whatever
+// `.env.local` holds. Without that variable the suite self-skips, which would
+// report the Drizzle repository at ~0% and fail the adapters threshold for a
+// reason unrelated to the change under test, so the file is excluded here and
+// measured where a database exists: the CI `test` job, and any machine that
+// follows docs/quality/testing.md ("Measuring the Drizzle repository").
+const databaseConfigured = Boolean(process.env.DATABASE_URL_TEST);
 const drizzleRepositoryPath = 'src/adapters/db/drizzle-early-access-signup.repository.ts';
 if (process.argv.includes('--coverage') && !databaseConfigured) {
   console.warn(
-    `[coverage] DATABASE_URL is unset: excluding ${drizzleRepositoryPath} (its integration suite is skipped). The CI test job measures it.`,
+    `[coverage] DATABASE_URL_TEST is unset: excluding ${drizzleRepositoryPath} (its integration suite is skipped). The CI test job measures it.`,
   );
 }
 
 // Browser-only client modules. Their behaviour lives entirely in effects and
 // GSAP timelines that never run under renderToStaticMarkup, and this repo has
 // no jsdom/testing-library layer by decision. They are covered by Playwright:
-// tests/e2e/landing-motion.spec.ts, living-lexicon.spec.ts, homepage.spec.ts,
-// signup.spec.ts (reCAPTCHA bridge). Adding a file here requires an e2e spec.
+// tests/e2e/landing-motion.spec.ts, living-lexicon.spec.ts, homepage.spec.ts.
+// Adding a file here requires an e2e spec that actually runs it — the
+// reCAPTCHA bridge used to sit here on the strength of signup.spec.ts, but
+// every E2E run uses the fake CAPTCHA and never loads the bridge, so it is
+// measured and unit-tested with a stubbed document instead.
 const browserOnly = [
   'src/features/landing/motion/**',
   'src/features/landing/ui/living-lexicon.client.tsx',
-  'src/features/early-access/ui/recaptcha-bridge.tsx',
 ];
 
 export default defineConfig({
@@ -57,7 +61,19 @@ export default defineConfig({
       provider: 'v8',
       // `include` (not the removed `coverage.all`) is what makes files that no
       // test imports appear in the report at 0% instead of vanishing.
-      include: ['src/**/*.{ts,tsx}', 'app/**/*.{ts,tsx}', 'proxy.ts'],
+      include: [
+        'src/**/*.{ts,tsx}',
+        'app/**/*.{ts,tsx}',
+        'proxy.ts',
+        // Root-level production modules: the Next instrumentation hooks and the
+        // Sentry runtime configs are live code, and deleting one would silently
+        // switch off error reporting with nothing turning red if unmeasured.
+        'instrumentation.ts',
+        'instrumentation-client.ts',
+        'sentry.server.config.ts',
+        'sentry.edge.config.ts',
+        'next.config.ts',
+      ],
       exclude: [
         ...coverageConfigDefaults.exclude,
         '**/*.test.{ts,tsx}',
@@ -95,8 +111,11 @@ export default defineConfig({
       // list requires an e2e spec per entry and no spec exercises the error
       // boundary — an honest lower number beats a quiet exclusion.
       thresholds: {
-        // Catch-all for any file the globs below do not claim, so a new
-        // directory can never ship unmeasured.
+        // Aggregate floor over the files no glob below claims. It is an
+        // average, not a per-directory net: a new `src/<dir>/` with no tests
+        // would be diluted by everything else, so every top-level directory
+        // must be claimed by its own glob — tests/unit/coverage-thresholds.test.ts
+        // fails the build when one is missing or set below its layer's target.
         lines: 80,
         branches: 80,
         functions: 80,
@@ -106,10 +125,16 @@ export default defineConfig({
         'src/composition/**': { lines: 98, branches: 100, functions: 93, statements: 98 },
         'src/config/**': { lines: 99, branches: 97, functions: 100, statements: 98 },
         'src/ops/**': { lines: 95, branches: 90, functions: 100, statements: 95 },
-        'src/features/**': { lines: 88, branches: 89, functions: 86, statements: 87 },
+        'src/features/**': { lines: 90, branches: 90, functions: 86, statements: 88 },
         'src/components/**': { lines: 100, branches: 100, functions: 100, statements: 100 },
         'app/**': { lines: 93, branches: 94, functions: 80, statements: 93 },
         'proxy.ts': { lines: 100, branches: 97, functions: 100, statements: 100 },
+        '{instrumentation,instrumentation-client,sentry.*.config,next.config}.ts': {
+          lines: 100,
+          branches: 100,
+          functions: 100,
+          statements: 100,
+        },
       },
     },
   },
