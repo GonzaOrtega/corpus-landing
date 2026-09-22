@@ -59,12 +59,24 @@ export default defineConfig({
       'app/**/*.test.ts',
       'app/**/*.test.tsx',
       'proxy.test.ts',
+      'scripts/launch-email.test.ts',
     ],
     coverage: {
       provider: 'v8',
       // `include` (not the removed `coverage.all`) is what makes files that no
-      // test imports appear in the report at 0% instead of vanishing.
-      include: ['src/**/*.{ts,tsx}', 'app/**/*.{ts,tsx}', 'proxy.ts'],
+      // test imports appear in the report at 0% instead of vanishing. The root
+      // runtime files and the ops script (R-15) join `proxy.ts` here rather
+      // than a broad `scripts/**`: the rest of `scripts/` (stack-conformance)
+      // is a separate, unmeasured tool this finding never named.
+      include: [
+        'src/**/*.{ts,tsx}',
+        'app/**/*.{ts,tsx}',
+        'proxy.ts',
+        'instrumentation.ts',
+        'sentry.server.config.ts',
+        'sentry.edge.config.ts',
+        'scripts/launch-email.ts',
+      ],
       exclude: [
         ...coverageConfigDefaults.exclude,
         '**/*.test.{ts,tsx}',
@@ -85,9 +97,11 @@ export default defineConfig({
       // Per-glob hard gates, evaluated on `bun run test:coverage`. Each value is
       // max(agreed target, measured floor) — see docs/quality/testing.md
       // ("Ratchet rule"). Never enable `autoUpdate`. Targets: core 100 ·
-      // adapters/composition/config/ops 90 · features, components, app and
-      // proxy 80. The adapters floor already accounts for the Drizzle
-      // repository CI measures on top of the local run.
+      // adapters/composition/config/ops 90 · features, components, app,
+      // proxy and the root runtime files (instrumentation.ts, the two Sentry
+      // runtime configs) 80 · scripts/launch-email.ts 80. The adapters floor
+      // already accounts for the Drizzle repository CI measures on top of
+      // the local run.
       //
       // The floor is a measurement, so merging code that this branch never
       // measured can lower it. That happened once already: `src/config/**`,
@@ -117,6 +131,18 @@ export default defineConfig({
         'src/components/**': { lines: 100, branches: 100, functions: 100, statements: 100 },
         'app/**': { lines: 93, branches: 94, functions: 80, statements: 93 },
         'proxy.ts': { lines: 100, branches: 97, functions: 100, statements: 100 },
+        // R-15: instrumentation.ts and the two Sentry runtime configs are
+        // fully exercised (tests/unit/instrumentation.test.ts and the
+        // existing src/config/sentry-runtime-configs.test.ts), so their
+        // target is the same 100 the rest of the runtime bootstrap gets.
+        // scripts/launch-email.ts's only uncovered lines are the
+        // `import.meta.main` entry body — true only for the actual process
+        // entry, so it cannot run under an `import()` from a test; the
+        // floor below is `floor(measured)` for the rest of the file.
+        'instrumentation.ts': { lines: 100, branches: 100, functions: 100, statements: 100 },
+        'sentry.server.config.ts': { lines: 100, branches: 100, functions: 100, statements: 100 },
+        'sentry.edge.config.ts': { lines: 100, branches: 100, functions: 100, statements: 100 },
+        'scripts/launch-email.ts': { lines: 86, branches: 93, functions: 100, statements: 88 },
       },
     },
   },

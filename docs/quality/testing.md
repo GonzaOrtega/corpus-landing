@@ -15,6 +15,8 @@ manual for meeting them.
 | Repository integration | `src/adapters/db/*.integration.test.ts` | The SQL, the partial unique index and the driver, against real Postgres | Disposable Neon branch in CI; skipped locally without `DATABASE_URL_TEST` |
 | Composition and wiring | `src/composition/**/*.test.ts`, `src/features/**/*.wiring.test.ts` | Capability selection by environment, fail-closed production rules, and that each wiring file assembles a working object graph | `vi.stubEnv`; `vi.mock` of `capabilities/persistence` to inject the in-memory repository |
 | Delivery: Server Actions, routes, pages, proxy | `src/features/**/actions/*.test.ts`, `app/**/*.test.ts(x)`, `proxy.test.ts` | Validation, error mapping, response shaping, metadata, and server-rendered markup via `renderToStaticMarkup` | `vi.mock` of wiring modules and Next-only modules (`next/font/*`, `next/og`, `next/script`) |
+| Runtime bootstrap | `tests/unit/instrumentation.test.ts`, `src/config/sentry-runtime-configs.test.ts` | `register()` loads the right Sentry runtime config for `NEXT_RUNTIME`, `onRequestError` is still `Sentry.captureRequestError` (the hook Next calls on every uncaught RSC/route/Server Action failure), and both `sentry.*.config.ts` forward `buildServerSentryOptions`'s output intact | `vi.mock` of `@sentry/nextjs`, `./sentry-options`, and (for the instrumentation test) both `sentry.*.config.ts` modules |
+| Ops script | `scripts/launch-email.test.ts` | Argument parsing and dispatch to `dry-run`/`production`, exhaustively; the `import.meta.main` entry body is 2 lines and untestable in-process (true only for the real process entry) | `vi.mock` of `src/composition/ops/launch.wiring` — `getLaunchOperations` itself is covered by `launch.wiring.test.ts` |
 | Browser behaviour | `tests/e2e/*.spec.ts` (Playwright) | Motion, the Living Lexicon, signup and management journeys, axe, prototype parity | Local Postgres behind a Neon HTTP proxy, fake CAPTCHA and email |
 | Configuration regressions | `tests/unit/*.test.ts` | Workflow, compose, Lighthouse and font-asset invariants | — |
 
@@ -48,8 +50,13 @@ it is the only place the Drizzle repository is measured instead of excluded.
 ## Coverage gate
 
 Provider: `@vitest/coverage-v8` (pinned to the Vitest major). Measured files:
-`src/**`, `app/**`, `proxy.ts`. Thresholds are per glob and evaluated on every
-`test:coverage` run; the build fails below any of them.
+`src/**`, `app/**`, `proxy.ts`, `instrumentation.ts`, `sentry.server.config.ts`,
+`sentry.edge.config.ts`, `scripts/launch-email.ts` — the root runtime files
+Next calls directly, plus the one ops script, each with its own threshold
+entry rather than the catch-all below. The rest of `scripts/` (the
+stack-conformance tool) is not part of the measured set. Thresholds are per
+glob and evaluated on every `test:coverage` run; the build fails below any of
+them.
 
 | Glob | Target | Enforced (lines / branches / functions / statements) |
 | --- | --- | --- |
@@ -62,6 +69,10 @@ Provider: `@vitest/coverage-v8` (pinned to the Vitest major). Measured files:
 | `src/components/**` | 80 | 100 / 100 / 100 / 100 |
 | `app/**` | 80 | 93 / 94 / 80 / 93 |
 | `proxy.ts` | 80 | 100 / 97 / 100 / 100 |
+| `instrumentation.ts` | 80 | 100 / 100 / 100 / 100 |
+| `sentry.server.config.ts` | 80 | 100 / 100 / 100 / 100 |
+| `sentry.edge.config.ts` | 80 | 100 / 100 / 100 / 100 |
+| `scripts/launch-email.ts` | 80 | 86 / 93 / 100 / 88 |
 | anything else | 80 | 80 / 80 / 80 / 80 (catch-all so a new directory is never unmeasured) |
 
 Enforced values are `max(target, floor(measured))` at the time the gate was
