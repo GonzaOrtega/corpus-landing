@@ -1,5 +1,6 @@
 import { Writable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
+import { NEVER_LOG_FIXTURE, NEVER_LOG_FIXTURE_STRINGS } from '../../core/testing/never-log-fixture';
 import { PinoLoggerAdapter } from './pino-logger.adapter';
 
 function captureStream() {
@@ -44,10 +45,10 @@ describe('PinoLoggerAdapter', () => {
     const { stream, lines } = captureStream();
     const logger = new PinoLoggerAdapter(stream);
     // Simulates a caller building fields dynamically (e.g. from a spread) —
-    // the adapter must not trust the type system alone to keep PII out.
-    const fields = JSON.parse(
-      '{"operation":"join","email":"person@example.com","emailNormalized":"person@example.com","rawToken":"secret-token","manageTokenHash":"deadbeef","captchaToken":"synthetic-captcha","captchaScore":0.42,"providerResponseBody":"synthetic-provider-body","databaseUrl":"postgresql://synthetic.invalid/database","secret":"synthetic-secret","formData":{"email":"person@example.com"}}',
-    );
+    // the adapter must not trust the type system alone to keep PII out. The
+    // JSON round-trip stands in for that: the fixture arrives shaped like
+    // untyped, dynamically-built data, not a typed `EarlyAccessLogFields`.
+    const fields = JSON.parse(JSON.stringify({ operation: 'join', ...NEVER_LOG_FIXTURE }));
 
     logger.info('signup created', fields);
 
@@ -56,18 +57,8 @@ describe('PinoLoggerAdapter', () => {
     expect(entry?.email).toBeUndefined();
     expect(entry?.rawToken).toBeUndefined();
     expect(entry?.manageTokenHash).toBeUndefined();
-    expect(JSON.stringify(entry)).not.toContain('person@example.com');
-    expect(JSON.stringify(entry)).not.toContain('secret-token');
-    for (const forbidden of [
-      'deadbeef',
-      'synthetic-captcha',
-      '0.42',
-      'synthetic-provider-body',
-      'postgresql://synthetic.invalid/database',
-      'synthetic-secret',
-    ]) {
-      expect(JSON.stringify(entry)).not.toContain(forbidden);
-    }
+    const serialized = JSON.stringify(entry);
+    for (const forbidden of NEVER_LOG_FIXTURE_STRINGS) expect(serialized).not.toContain(forbidden);
   });
 
   it('drops a non-primitive value even in an allowed field slot, never serializing it', () => {

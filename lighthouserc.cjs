@@ -5,6 +5,26 @@ const isPreview = process.env.LHCI_DEPLOYMENT_ENV === 'preview';
 // Lighthouse would score the login page. Unset for local/default runs.
 const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
 
+// Local/default runs start `bun run start` (no build step here — whatever is
+// already in .next/ stays as-is) against this process's own environment,
+// which — same as compose.yaml's and playwright.config.ts's local production
+// builds — can carry a real DSN or auth token from .env.local. @lhci/cli's
+// node-runner spawns startServerCommand with no env override, so it inherits
+// process.env, and mutating it here reaches that child. The SERVER SDK reads
+// process.env at request time (not build time, unlike the inlined
+// NEXT_PUBLIC_ client bundle), so blanking it stops this run's traffic and
+// errors from reaching a real project. CI mirrors compose.yaml's e2e
+// service: the same pipeline signal (spec decision 6, runtime-environment.ts)
+// also keeps the notifications capability fake, so the run is silent end to
+// end rather than merely DSN-less.
+if (!previewUrl) {
+  Object.assign(process.env, {
+    NEXT_PUBLIC_SENTRY_DSN: '',
+    SENTRY_AUTH_TOKEN: '',
+    CI: 'true',
+  });
+}
+
 module.exports = {
   ci: {
     collect: {

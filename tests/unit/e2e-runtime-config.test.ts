@@ -42,4 +42,27 @@ describe('E2E runtime configuration', () => {
   it('publishes Postgres only to loopback', () => {
     expect(read('compose.yaml')).toContain("'127.0.0.1:55432:5432'");
   });
+
+  // All three runtimes bind-mount, load, or otherwise inherit the developer's
+  // .env.local. A DSN there would be inlined into a local client bundle (or,
+  // for lighthouserc.cjs's already-built server, read by the server SDK at
+  // request time) and an auth token would upload a release nothing deploys;
+  // an explicit blank wins over the env file.
+  //
+  // This is a cheap literal-presence tripwire only: for compose.yaml and
+  // playwright.config.ts it's sound, since both are static config with no
+  // branching. lighthouserc.cjs assigns these inside `if (!previewUrl) {…}`,
+  // so a text search can't tell a live guard from an inverted or neutered
+  // one — the words survive either way. The branch-sensitive assertion for
+  // lighthouserc.cjs lives in tests/unit/lighthouse-config.test.ts, which
+  // evaluates the file in a VM and checks the resulting env, not its source
+  // text. Keeping this row too still catches the cheaper regression (the
+  // assignment being deleted outright) at near-zero cost.
+  it('blanks the Sentry DSN and auth token in every local production build', () => {
+    for (const file of ['compose.yaml', 'playwright.config.ts', 'lighthouserc.cjs']) {
+      const source = read(file);
+      expect(source, file).toMatch(/NEXT_PUBLIC_SENTRY_DSN: ''/);
+      expect(source, file).toMatch(/SENTRY_AUTH_TOKEN: ''/);
+    }
+  });
 });

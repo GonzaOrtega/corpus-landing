@@ -1,0 +1,48 @@
+[
+  {
+    "file": "app/monitoring/monitoring-route.handler.ts",
+    "line": 63,
+    "category": "correctness",
+    "severity": "important",
+    "summary": "If the new relay that carries browser error reports to Sentry ever fails, nobody is told: the failure is thrown away and the site simply looks like it is having a very quiet week.",
+    "requires": ["Sentry ingest unreachable, throttling, or rejecting this deployment's envelopes"],
+    "repro": "test",
+    "evidence": "The handler's only error path is a catch with no binding that discards the cause and answers 502, and the 404/403/413 exits above it are equally wordless. Nothing in the file logs, and nothing calls the project's Sentry server SDK or Pino logger, unlike the cron route which wraps its run in a monitor and span. On the browser side the SDK treats any non-2xx tunnel answer as a dropped event and its warning is compiled out of production bundles (verified in the pinned @sentry/core: the drop path records an outcome, and client reports are switched off by sendClientReports:false). The alert rules the runbook tells operators to create fire on a new issue and on a missed cron check-in, so neither reacts to the absence of browser events. A relay that silently rejects and a week with no errors are indistinguishable from the Sentry UI."
+  },
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 320,
+    "category": "correctness",
+    "severity": "minor",
+    "summary": "A mistyped or unsupported Sentry address quietly turns all browser error reporting off instead of complaining, so a configuration mistake looks exactly like Sentry never having been set up.",
+    "requires": [
+      "NEXT_PUBLIC_SENTRY_DSN set to a value that is not a Sentry SaaS ingest address (typo, self-hosted, or a future host shape)"
+    ],
+    "repro": "test",
+    "evidence": "buildClientSentryOptions now derives enabled from whether the address parses against a fixed SaaS host pattern, and the tunnel route answers 404 for the same case, both without a word anywhere. The pinned @sentry/nextjs does emit a warning for the same rejection in its own tunnel helper, but only in debug builds. The result is that setting the variable wrongly produces the same observable state as not setting it, and the only check is the one-off manual devtools inspection in the runbook's verification section, performed at first preview deploy and never again."
+  },
+  {
+    "file": "src/config/sentry-client.ts",
+    "line": 42,
+    "category": "correctness",
+    "severity": "minor",
+    "summary": "The one-shot flag that stops the error reporter starting twice is raised before the start-up actually succeeds, so a failed start-up permanently disables reporting while every later attempt reports success.",
+    "requires": [
+      "the Sentry start-up call throws (integration setup failure, patched or frozen browser globals, hostile extension environment)"
+    ],
+    "repro": "test",
+    "evidence": "started is set, then init is called with no guard around it; the pinned @sentry/core's initAndBind and setupIntegration have no try/catch either, so a throw propagates. Because init is synchronous the ordering is right for the double-start concern it was written for, but a throw leaves the flag raised with no client bound to the scope, and in that state captureException is a verified silent no-op (the warning behind it is debug-build only). The boundary's new catch prints one console line for the first failure; after that instrumentation-client's retry re-imports the already-evaluated module, the start-up call returns immediately as a no-op, the promise resolves, and neither catch fires again. Setting the flag after a successful init, or clearing it on throw, keeps the dedupe and drops the latch."
+  },
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 160,
+    "category": "other",
+    "severity": "minor",
+    "summary": "The new rule that strips the secret part of management links also blanks the name of whichever button or field a visitor last touched, removing the main clue for diagnosing a broken page.",
+    "requires": [
+      "a click or input on an element carrying an id, which is normal for label-associated form controls"
+    ],
+    "repro": "test",
+    "evidence": "The fragment rule matches a hash followed by any run of non-space characters and is applied by redactText to every string in an event, including breadcrumb messages. The pinned @sentry/core builds click and input breadcrumbs as a selector path that appends the element id and then its classes with no space between them, so a trail segment naming a specific control is reduced to its tag name plus a redaction marker, losing both id and classes. The accompanying comment anticipates only an inert page anchor. Narrowing the rule to the fragment of a value that already looks like a URL, or applying it to the request URL and message fields rather than to every string, keeps the token protection and the breadcrumb."
+  }
+]

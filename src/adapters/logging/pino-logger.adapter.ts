@@ -1,40 +1,16 @@
 import pino from 'pino';
-import type { EarlyAccessLogFields, Logger } from '../../core/ports/logger.port';
-
-const ALLOWED_FIELDS = [
-  'signupId',
-  'operation',
-  'status',
-  'errorCode',
-  'attemptCount',
-  'aggregateCount',
-  'durationMs',
-] as const satisfies readonly (keyof EarlyAccessLogFields)[];
+import {
+  allowlistLogFields,
+  type EarlyAccessLogFields,
+  type Logger,
+} from '../../core/ports/logger.port';
 
 /**
  * Strips anything outside the port's allowlist at runtime — a caller
  * building `fields` dynamically (a spread, a cast) bypasses the type
- * system, so this is the actual enforcement, not the interface.
+ * system, so `allowlistLogFields` is the actual enforcement, not the
+ * interface. The same allowlist feeds the Sentry reporter adapter.
  */
-/**
- * Only string/number survive, even in an allowed key's slot — a caller
- * passing an object where a scalar belongs (e.g. a whole Error as
- * `errorCode`) must not smuggle its nested fields into the log line.
- */
-function toSafeValue(value: unknown): string | number | undefined {
-  return typeof value === 'string' || typeof value === 'number' ? value : undefined;
-}
-
-function allowlist(fields: EarlyAccessLogFields): Record<string, unknown> {
-  const asRecord = fields as unknown as Record<string, unknown>;
-  const safe: Record<string, unknown> = {};
-  for (const key of ALLOWED_FIELDS) {
-    const value = toSafeValue(asRecord[key]);
-    if (value !== undefined) safe[key] = value;
-  }
-  return safe;
-}
-
 export class PinoLoggerAdapter implements Logger {
   private readonly logger: pino.Logger;
 
@@ -43,14 +19,14 @@ export class PinoLoggerAdapter implements Logger {
   }
 
   info(message: string, fields: EarlyAccessLogFields): void {
-    this.logger.info(allowlist(fields), message);
+    this.logger.info(allowlistLogFields(fields), message);
   }
 
   warn(message: string, fields: EarlyAccessLogFields): void {
-    this.logger.warn(allowlist(fields), message);
+    this.logger.warn(allowlistLogFields(fields), message);
   }
 
   error(message: string, fields: EarlyAccessLogFields): void {
-    this.logger.error(allowlist(fields), message);
+    this.logger.error(allowlistLogFields(fields), message);
   }
 }

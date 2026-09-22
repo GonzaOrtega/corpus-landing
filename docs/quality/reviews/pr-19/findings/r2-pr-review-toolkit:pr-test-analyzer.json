@@ -1,0 +1,72 @@
+[
+  {
+    "file": "src/config/sentry-client.test.ts",
+    "line": 56,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "The browser start-up test only counts that Sentry was started, never what settings it was started with, so stripping the privacy filters out of that call (or adding the session-recording feature the design forbids) would leave every test passing.",
+    "requires": ["a future edit to the browser start-up call in src/config/sentry-client.ts"],
+    "repro": "test",
+    "evidence": "The round-1 critical asked that the privacy hooks be proven present on the built settings objects, and that is now done in sentry-options.test.ts. The last hop is still unasserted: sentry-client.ts starts the browser SDK with the built settings spread into a new object plus an integrations list, and the only assertions about that call are call counts. Dropping the spread, or appending a replay integration, keeps all four tests in this file green. Nothing exercises the two server-side start-up files at all, which have the same shape. A one-line change asserting the exact object the mocked start-up function received would close all three."
+  },
+  {
+    "file": "app/monitoring/monitoring-route.handler.test.ts",
+    "line": 30,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "No test proves the reporting tunnel ignores the destination named inside the uploaded payload itself, so a future edit that trusted that destination would pass every tunnel test and turn the public site into a forwarder for someone else's account.",
+    "requires": ["a future edit to the forwarding destination logic"],
+    "repro": "test",
+    "evidence": "The nine tests here pin the two query parameters and the derived destination, but the sample payload every test sends names this deployment's own account, so an implementation that read the destination out of the payload (the shape the vendor's own published tunnel example uses) would produce identical results and stay green. The missing case is a request whose query parameters match but whose payload names a foreign account, asserting the forwarded destination is unchanged. This is the exact risk the round-1 tunnel decision was written to prevent."
+  },
+  {
+    "file": "tests/unit/e2e-runtime-config.test.ts",
+    "line": 51,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "The newly added Lighthouse row only searches the config file's text for the two blanking lines, so an edit that keeps the words but stops them taking effect would still pass, even though a sibling test already loads that same config file for real and could check the effect directly.",
+    "requires": ["a future edit to the conditional block in lighthouserc.cjs"],
+    "repro": "test",
+    "evidence": "Unlike the other two files in this table, the Lighthouse config is executable code: the blanking sits inside a conditional guard, and the text search cannot tell a live guard from an inverted or dead one. Inverting the guard would leave a local Lighthouse run reading a developer's real credentials from the env file while this test stays green. tests/unit/lighthouse-config.test.ts already evaluates this file in a sandbox with an injected environment object, so asserting the blanking actually happened (and only outside the preview case) is a few lines against an existing harness."
+  },
+  {
+    "file": "app/error.test.tsx",
+    "line": 9,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The two new error-page tests cover the reporting helper but never the page that is supposed to call it, so deleting the single line that fires the report when the error page appears would silently end all browser error reporting with the tests still green.",
+    "requires": ["a future edit to the error page components"],
+    "repro": "test",
+    "evidence": "app/error.test.tsx and app/global-error.test.tsx both import only the exported helper; neither renders the component, so the one-line effect that invokes it on mount is unasserted in both files. This is the same helper-versus-wiring gap the round-1 critical raised, with a smaller blast radius (loss of reporting, not leakage). The project's component tests use static server rendering, which does not run mount effects, so an honest fix needs either a client renderer or a source-level assertion in the style of the config tests; the cost is real and the gap is worth recording rather than necessarily closing."
+  },
+  {
+    "file": "app/monitoring/monitoring-route.handler.test.ts",
+    "line": 61,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "A size-limit test is named for a request that understates how big it is, but the request it builds declares no size at all, so the case a reader would assume is pinned is not the case that runs.",
+    "requires": [],
+    "repro": "test",
+    "evidence": "In this runtime a request constructed with a text body carries no declared-size header (verified), so this test exercises the absent-header path, not an understated one. Both land on the same measured-size check, so the handler is genuinely covered against an oversized body with no honest declaration; the title is what is wrong. Renaming it, or adding a second case with a deliberately small declared size, removes the false impression."
+  },
+  {
+    "file": "src/core/testing/never-log-fixture.ts",
+    "line": 25,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The shared list of forbidden sample values is maintained by hand next to the object it is derived from, so adding a new forbidden field to the object without also adding it to the list would quietly shrink what both test suites check.",
+    "requires": ["a future never-log field being added to the fixture"],
+    "repro": "test",
+    "evidence": "The round-1 drift between the two suites is genuinely gone: both now import this one module, the field spelling matches the rest of the codebase, and the logging suite's sweep is the same list the Sentry suite uses. The remaining silent-divergence path is inside the fixture itself, because the flattened string list is a second hand-written copy of the object's values; deriving it from the object would make that impossible. Separately, one of the flattened values is a very short numeric string, which is prone to matching unrelated numbers in a future payload and failing for the wrong reason."
+  },
+  {
+    "file": "tests/unit/e2e-runtime-config.test.ts",
+    "line": 53,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The pipeline marker that keeps a local Lighthouse run from behaving like a real deployment was added to the config but is asserted nowhere, so removing it would go unnoticed.",
+    "requires": ["a future edit to lighthouserc.cjs"],
+    "repro": "test",
+    "evidence": "The same marker in the container compose file is equally unasserted today, so this is not a regression introduced here, and its practical effect for a Lighthouse run is largely redundant with the blanked reporting credential that is asserted. It still matters as the signal that keeps the notification path fake during the run, and it costs one line to pin alongside the two blanking assertions if the effect-based version of the previous finding is adopted."
+  }
+]

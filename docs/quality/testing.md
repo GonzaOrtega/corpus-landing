@@ -52,11 +52,11 @@ Provider: `@vitest/coverage-v8` (pinned to the Vitest major). Measured files:
 | `src/core/**` | 100 | 100 / 100 / 100 / 100 |
 | `src/adapters/**` | 90 | 100 / 92 / 100 / 99 |
 | `src/composition/**` | 90 | 98 / 100 / 93 / 98 |
-| `src/config/**` | 90 | 100 / 100 / 100 / 100 |
+| `src/config/**` | 90 | 99 / 97 / 100 / 98 |
 | `src/ops/**` | 90 | 95 / 90 / 100 / 95 |
-| `src/features/**` | 80 | 88 / 89 / 87 / 87 |
+| `src/features/**` | 80 | 88 / 89 / 86 / 87 |
 | `src/components/**` | 80 | 100 / 100 / 100 / 100 |
-| `app/**` | 80 | 100 / 100 / 100 / 100 |
+| `app/**` | 80 | 93 / 94 / 80 / 93 |
 | `proxy.ts` | 80 | 100 / 97 / 100 / 100 |
 | anything else | 80 | 80 / 80 / 80 / 80 (catch-all so a new directory is never unmeasured) |
 

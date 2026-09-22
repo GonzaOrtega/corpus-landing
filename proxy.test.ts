@@ -193,7 +193,7 @@ describe('proxy', () => {
     it('enters the proxy for Markdown-accepting and non-navigation requests only, skipping Next internals', () => {
       const [, , , , , , byAccept, byFetchMode] = config.matcher;
       const excluded =
-        'api|_next|_vercel|brand|favicon.ico|robots.txt|sitemap.xml|llms.txt|opengraph-image|motion-preflight.js';
+        'api|monitoring|_next|_vercel|brand|favicon.ico|robots.txt|sitemap.xml|llms.txt|opengraph-image|motion-preflight.js';
 
       expect(byAccept).toEqual({
         source: `/((?!${excluded}).*)`,

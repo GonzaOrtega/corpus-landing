@@ -120,6 +120,11 @@ connection strings, account identifiers, subscriber data, or raw tokens.
 | `CRON_SECRET` | Secret | Bearer credential for the maintenance route. |
 | `LAUNCH_DRY_RUN_RECIPIENT` | Secret | Approved recipient for launch-email review. |
 | `MANAGEMENT_TOKEN_SECRET` | Secret | Server-only key for deterministic launch management tokens. |
+| `NEXT_PUBLIC_SENTRY_DSN` | Public configuration | Sentry DSN for errors, traces and logs; unset disables the SDK. See [the Sentry runbook](docs/operations/sentry.md). |
+| `SENTRY_TRACES_SAMPLE_RATE` | Server | Optional 0..1 override for server-side tracing (defaults: 0.1 in Production, 1 elsewhere). |
+| `NEXT_PUBLIC_SENTRY_BROWSER_TRACES_SAMPLE_RATE` | Public configuration | Opt-in browser tracing rate (0..1); off when unset because it costs Lighthouse performance points. |
+| `SENTRY_ORG`, `SENTRY_PROJECT` | Build automation | Source-map upload target. |
+| `SENTRY_AUTH_TOKEN` | Secret (build automation) | Source-map upload credential for the `vercel build` steps in GitHub Actions; never a Vercel Sensitive variable. |
 
 Automation also uses scoped Vercel and Neon identifiers and tokens described
 in the linked operations runbooks. `.env.example` is a names-and-descriptions
@@ -143,10 +148,12 @@ use disposable Neon branches; E2E uses ephemeral local Postgres through a Neon
 HTTP proxy. Email and CAPTCHA remain fake. See
 [Preview CI operations](docs/operations/preview-ci.md).
 
-The `test` check also enforces per-layer coverage thresholds (core 100%,
-adapters and composition 90%+, delivery layers 80%+) and publishes the
-lcov/HTML report as a workflow artifact. The thresholds, the exclusion list and
-the rule for raising them are in [Testing](docs/quality/testing.md).
+`bun run test:coverage` enforces per-layer coverage thresholds (core 100%,
+adapters and composition 90%+, delivery layers 80%+) and writes the lcov/HTML
+report to `coverage/`. It is a local and pre-merge gate: no workflow runs it,
+so the required `test` check does not enforce it and no report is published as
+a workflow artifact. The thresholds, the exclusion list and the rule for
+raising them are in [Testing](docs/quality/testing.md).
 
 ## Database schema and migrations
 

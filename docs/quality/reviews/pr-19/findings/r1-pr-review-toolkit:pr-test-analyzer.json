@@ -1,0 +1,126 @@
+[
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 182,
+    "category": "test-gap",
+    "severity": "critical",
+    "summary": "Every test of the privacy scrubbers calls them directly, and no test checks that they are actually attached to the settings handed to Sentry, so deleting one line would silently send everything unscrubbed while the whole suite stays green.",
+    "requires": [
+      "a future edit removes or renames beforeSend / beforeSendTransaction / beforeSendLog in sharedOptions",
+      "a deployment with a DSN configured"
+    ],
+    "repro": "test",
+    "evidence": "sharedOptions attaches beforeSend, beforeSendTransaction, beforeSendLog and ignoreErrors, but the assertions in sentry-options.test.ts on the built objects cover only dataCollection, enableLogs, initialScope.tags, enabled, sendClientReports and tracesSampleRate. The scrubbing tests invoke scrubEvent/scrubLog/redactText as standalone functions, so they pass whether or not the hooks are installed. No test exercises sentry.server.config.ts, sentry.edge.config.ts or instrumentation-client.ts either, so nothing else covers the wiring."
+  },
+  {
+    "file": "src/config/sentry-options.test.ts",
+    "line": 17,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "The approved design says the Sentry tests must check against the same banned-values list the logger tests use, but the two lists are separate copies that have already drifted apart.",
+    "requires": ["a new never-log field is added to one test file and not the other"],
+    "repro": "test",
+    "evidence": "sentry-options.test.ts declares its own FORBIDDEN object and forbiddenStrings array; pino-logger.adapter.test.ts declares an independent JSON literal with different sample values and a different key spelling for the normalised-address field. Neither imports a shared fixture, so nothing keeps them in step. Design spec decision 2 states the Sentry test asserts against the same forbidden values the Pino test uses."
+  },
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 78,
+    "category": "security",
+    "severity": "important",
+    "summary": "The text scrubber never touches the part of a web address after the '#', which is exactly where this product puts its secret management link, and no test covers that case even though one test looks like it does.",
+    "requires": [
+      "a browser-side event, log or breadcrumb captured while the address still carries the management fragment",
+      "a DSN configured on that deployment"
+    ],
+    "repro": "test",
+    "evidence": "redactText redacts URL credentials, e-mail addresses and query parameters whose name follows a '?' or '&'. A fragment such as the manage page's '#<token>' matches none of them, and scrubEvent deliberately preserves request.url and request.query_string. The redactText test case that ends in '#frag' puts the token in a query parameter, so it proves nothing about fragments. The same anchoring means the first pair of a bare query_string (no leading '?') is also left intact. The management token is the product's only credential and the fragment is how it is delivered."
+  },
+  {
+    "file": "src/features/early-access/actions/resolve-management.action.ts",
+    "line": 12,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "Nothing checks that the three form submissions are traced without their form contents and without their answer, so a one-word change could start attaching the visitor's masked address and state to the trace unnoticed.",
+    "requires": [
+      "a future edit sets recordResponse to true or passes formData into the instrumentation options"
+    ],
+    "repro": "test",
+    "evidence": "All three Server Actions pass { headers, recordResponse: false } to withServerActionInstrumentation. The action tests call the inner handlers directly, and the one test that calls joinEarlyAccessAction end to end does not mock the SDK, so it cannot observe the options object. The cron test shows the pattern that would work here: it mocks @sentry/nextjs and asserts the exact arguments. Design spec decision 2 lists 'instrumented without formData and without the response' as one of the three enforcement layers."
+  },
+  {
+    "file": "tests/unit/e2e-runtime-config.test.ts",
+    "line": 48,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "The design and the runbook both promise that the three local measurement runs never report to Sentry, but the new test only checks two of them, and the third genuinely does not blank the setting.",
+    "requires": [
+      "a developer with a DSN in their local environment file running the local performance check"
+    ],
+    "repro": "test",
+    "evidence": "The new assertion loops over compose.yaml and playwright.config.ts only. lighthouserc.cjs starts the production server for local runs with no Sentry environment of its own, and the lighthouse script is a plain autorun, so a locally built bundle carries whatever DSN the environment file held. Design spec decision 6 names compose, Playwright and Lighthouse; docs/operations/sentry.md states the local performance run never reports regardless. That makes the performance number the design leans on non-reproducible between machines."
+  },
+  {
+    "file": "app/error.tsx",
+    "line": 20,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The two screens that catch failures happening inside the visitor's browser, and the loader that starts the browser reporter after the page settles, have no tests at all.",
+    "requires": ["a future edit breaks the lazy import path, the capture call, or the deferral"],
+    "repro": "test",
+    "evidence": "app/error.tsx, app/global-error.tsx and instrumentation-client.ts are new and no test file imports any of them. Untested behaviour includes: the effect that lazily imports the client module and captures the error; the guard that skips loading entirely without a DSN; the after-load/idle deferral that the design measured as worth two to three performance points; and the router-transition hook's early return. The prop names destructured by the boundaries do match Next 16, which exposes both reset and retry."
+  },
+  {
+    "file": "proxy.ts",
+    "line": 144,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The address the browser sends its reports to is written out by hand in two places, and unlike the cron schedule this PR does pin, nothing checks the two stay the same.",
+    "requires": ["the tunnel path is renamed in one place and not the other"],
+    "repro": "test",
+    "evidence": "sentry-options.ts exports SENTRY_TUNNEL_ROUTE and the build options test asserts its literal value; proxy.ts hard-codes the bare word inside two matcher patterns. If they diverge, envelope requests re-enter content negotiation and browser reporting fails silently. There is no test file for proxy.ts at all. Compare the cron test, which does read vercel.json and assert it equals the shared constant."
+  },
+  {
+    "file": "src/config/maintenance-schedule.ts",
+    "line": 3,
+    "category": "docs",
+    "severity": "minor",
+    "summary": "A comment sends the next maintainer to a test file that does not exist; the real check lives somewhere else.",
+    "requires": [],
+    "repro": "none",
+    "evidence": "The comment names tests/unit/maintenance-monitor-config.test.ts. That path is absent from the repository and from the diff. The assertion that reads vercel.json and compares it to the shared schedule constant is in app/api/cron/maintenance/route.test.ts. The assertion itself is real and correct."
+  },
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 92,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The scrubber stops cleaning once a payload nests more than twelve levels deep and hands the rest through untouched, and no test pins that boundary.",
+    "requires": [
+      "an outgoing payload nested deeper than twelve levels that still reaches the hook unflattened"
+    ],
+    "repro": "test",
+    "evidence": "scrubValue returns the value unchanged once depth reaches MAX_DEPTH, which means denied keys and unredacted strings below that point survive. The deep-payload test reaches roughly four levels. The practical risk is low because the SDK normalises events to a shallower depth before the hook runs, but the cutoff is the kind of edge a future refactor can move without noticing."
+  },
+  {
+    "file": "src/features/early-access/actions/management.actions.test.ts",
+    "line": 56,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "A check meant to prove the secret link never reaches the reporter is written so that it can never fail, which makes the coverage look stronger than it is.",
+    "requires": [],
+    "repro": "test",
+    "evidence": "The assertion serialises only the reported fields object, which the handler builds as a fixed one-entry record containing the operation name, and looks for the string 'token' - which is also the placeholder used as the token value in that test. It would pass unchanged even if the real token were forwarded in the error argument. The equivalent check in the join test has the same shape. A distinctive token value plus an assertion over the whole recorded report would actually bite."
+  },
+  {
+    "file": "src/features/early-access/actions/unsubscribe.action.ts",
+    "line": 16,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The signup form has a test proving that a broken configuration is still reported before the visitor sees the polite retry message; the two management actions have the same code path with no such test.",
+    "requires": [
+      "the wiring lookup in a management action throws, for example missing database configuration"
+    ],
+    "repro": "test",
+    "evidence": "joinEarlyAccessAction is covered end to end by a test that mocks the wiring module to throw and asserts both the public retry state and the recorded report tagged as a wiring failure. resolveManagementAction and unsubscribeAction contain the identical outer catch with the same wiring tag, and only their inner handlers are tested."
+  }
+]
