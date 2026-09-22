@@ -191,7 +191,9 @@ Measured on the first Dependabot run in this repository: all six gated checks
 failed at `bun install --frozen-lockfile` before reaching a gate, and
 `gitleaks` - which needs no secrets - was the only green check. `preview` never
 even reached the step that reads `VERCEL_*`, so the frozen-install blocker fully
-masks the secret blocker. After adoption all seven checks passed.
+masks the secret blocker. After adoption all seven checks passed. Seven green
+checks are not the same as a mergeable pull request; see [Merging an adopted
+branch](#merging-an-adopted-branch).
 
 The lockfile half is permanent, not a bug to wait out. The Dependabot update job
 log shows the `npm_and_yarn` ecosystem shelling out to npm:
@@ -217,11 +219,45 @@ to prove it settled, then runs `check` and `test`. Pass `--push` to have it push
 for you. If a linter minor reformats files, run `bun run format` and include the
 result in the same commit so no intermediate commit leaves `check` red.
 
+`main` requires branches to be up to date before merging, and `deps:adopt`
+branches straight off the Dependabot ref without consulting `main`. When the bot
+branch is behind, merge `main` into the adopt branch before pushing:
+
+```bash
+git merge origin/main --no-edit
+```
+
+Merge rather than rebase. A rebase rewrites the branch, which turns the adoption
+push into a force-push for no gain, and the merge commit is squashed away at the
+end regardless.
+
 Pushing to a Dependabot branch permanently stops Dependabot from managing that
 pull request. That is the intent, not a side effect.
 
 `.github/dependabot.yml` groups every npm update into a single weekly pull
 request for this reason: the cost is one adoption per PR, not per dependency.
+
+### Merging an adopted branch
+
+Green checks do not make an adopted branch mergeable. `main` requires code owner
+review and `.github/CODEOWNERS` assigns `*` to the repository owner, so a
+Dependabot-authored pull request needs an approval recorded against it:
+
+```bash
+gh pr review <n> --approve
+```
+
+No other pull request in this repository reaches that rule. Every one of them is
+authored by the owner, who cannot be asked to review their own work, so the
+requirement is satisfied with no review on record. A bot-authored branch is the
+only case where author and code owner differ, and GitHub then requests the
+review for real. `enforce_admins` is on, so there is no bypass.
+
+PR #13, the first adoption, merged on 2026-09-10 with no review on record; the
+protection settings in force that day were not captured, so this may simply have
+been tightened since. PR #18 was the first adoption to meet the rule, and sat at
+`BLOCKED` with all seven checks green until it was approved. Either way the rule
+applies now, and a green branch that will not merge is this step, not a flake.
 
 ### Upgrading Playwright
 
