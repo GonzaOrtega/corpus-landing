@@ -1,0 +1,26 @@
+[
+  {
+    "file": "lighthouserc.cjs",
+    "line": 15,
+    "category": "docs",
+    "severity": "minor",
+    "summary": "A comment in the performance-test config promises that a local run sends nothing to the real error-tracking account, but only the server half of the run is actually silenced — the browser half can still send, as the runbook edited in the very same change admits.",
+    "requires": [
+      "a local (non-preview) `bun run lighthouse` against a build produced while a real Sentry DSN was configured"
+    ],
+    "repro": "none",
+    "evidence": "The new comment states that blanking the DSN at run time 'stops this run's traffic and errors from reaching a real project', reasoning that only the client bundle is build-time inlined. Next.js inlines NEXT_PUBLIC_* values into the server compilation too, and the new tunnel route reads that value as a literal member expression, so an already-built server still holds the build-time DSN; the browser SDK in the same prebuilt bundle is not pipeline-gated. docs/operations/sentry.md in this same diff says exactly that and tells the reader to rebuild with the DSN unset first, so the two texts contradict each other. The protection the comment claims does hold for the server SDK, which is configured from the whole env object and is additionally switched off by the new CI signal."
+  },
+  {
+    "file": "docs/operations/sentry.md",
+    "line": 53,
+    "category": "docs",
+    "severity": "minor",
+    "summary": "The runbook tells maintainers that the unit-test command is kept away from the real error tracker by blanking configuration values, but that command runs no build and blanks nothing — a different safeguard is what actually protects it.",
+    "requires": [
+      "someone relying on this runbook while changing how test runs are shielded from the real error tracker"
+    ],
+    "repro": "none",
+    "evidence": "The reworded sentence attributes DSN and auth-token blanking to both the unit-test command and the containerised end-to-end command. Only the end-to-end path blanks anything (the compose file and the Playwright config, which are the files the extended conformance test checks). The unit-test command is Vitest, which sets the test node environment; the pipeline-signal helper in src/config/runtime-environment.ts is what disables reporting there. The stated conclusion ('never report regardless') is correct; the stated mechanism is not, which is the part a maintainer would act on."
+  }
+]

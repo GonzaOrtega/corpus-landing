@@ -120,6 +120,11 @@ connection strings, account identifiers, subscriber data, or raw tokens.
 | `CRON_SECRET` | Secret | Bearer credential for the maintenance route. |
 | `LAUNCH_DRY_RUN_RECIPIENT` | Secret | Approved recipient for launch-email review. |
 | `MANAGEMENT_TOKEN_SECRET` | Secret | Server-only key for deterministic launch management tokens. |
+| `NEXT_PUBLIC_SENTRY_DSN` | Public configuration | Sentry DSN for errors, traces and logs; unset disables the SDK. See [the Sentry runbook](docs/operations/sentry.md). |
+| `SENTRY_TRACES_SAMPLE_RATE` | Server | Optional 0..1 override for server-side tracing (defaults: 0.1 in Production, 1 elsewhere). |
+| `NEXT_PUBLIC_SENTRY_BROWSER_TRACES_SAMPLE_RATE` | Public configuration | Opt-in browser tracing rate (0..1); off when unset because it costs Lighthouse performance points. |
+| `SENTRY_ORG`, `SENTRY_PROJECT` | Build automation | Source-map upload target. |
+| `SENTRY_AUTH_TOKEN` | Secret (build automation) | Source-map upload credential for the `vercel build` steps in GitHub Actions; never a Vercel Sensitive variable. |
 
 Automation also uses scoped Vercel and Neon identifiers and tokens described
 in the linked operations runbooks. `.env.example` is a names-and-descriptions

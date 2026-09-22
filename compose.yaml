@@ -87,6 +87,12 @@ services:
       # configuration" — this is that signal.
       CORPUS_FAKE_CAPTCHA: '1'
       CI: 'true'
+      # Blank on purpose, for the same bind-mount reason as SITE_URL: a developer's
+      # .env.local DSN would otherwise be inlined into this build's client bundle
+      # and an auth token would upload a release nothing deploys. An explicit
+      # empty value wins over the env file (Next.js never overrides a set var).
+      NEXT_PUBLIC_SENTRY_DSN: ''
+      SENTRY_AUTH_TOKEN: ''
     volumes:
       - .:/work
       # Container-side node_modules: the host's may hold darwin or glibc-

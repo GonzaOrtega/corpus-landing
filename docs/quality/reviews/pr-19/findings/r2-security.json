@@ -1,0 +1,79 @@
+[
+  {
+    "file": "app/monitoring/monitoring-route.handler.ts",
+    "line": 29,
+    "category": "security",
+    "severity": "important",
+    "summary": "Anyone on the internet can make the site forward messages to its error-tracking provider as many times as they like, at the site's expense, because the endpoint has no rate limit and the only 'password' it checks is a pair of numbers that is published in the site's own JavaScript.",
+    "requires": [
+      "a deployment with an error-tracking DSN configured",
+      "knowledge of the org/project id pair, which ships in the public browser bundle and in every tunnelled envelope"
+    ],
+    "repro": "none",
+    "evidence": "The handler accepts POST from any caller, checks only that the o and p query values equal the org/project ids parsed from the deployment's own DSN, then performs one outbound request per call. Those ids are not secret. There is no rate limit, no same-origin/Sec-Fetch-Site check and no bearer credential anywhere in the repo (the spec records 'no dedicated rate-limit SaaS in v1'). A cross-origin page can drive this with a no-cors POST using a simple content type, so no preflight is needed. Each call costs a billed function invocation plus egress, and the forwarded body is never inspected, so arbitrary fabricated events can be pushed into the project's error-tracking quota. This is still strictly better than the SDK's tunnelRoute it replaces (which forwarded to caller-chosen orgs), but the abuse budget is unbounded. A Vercel Firewall rate-limit rule on this path, or an explicit accept-the-risk note in the spec/runbook, would close it."
+  },
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 164,
+    "category": "performance",
+    "severity": "minor",
+    "summary": "One of the four text-cleaning rules gets dramatically slower the longer a piece of text is, so an unusually long line inside an error report can freeze the request that is trying to send it.",
+    "requires": [
+      "an outgoing report containing a single unbroken run of ~100k+ letters/digits/dots with no @ sign (a base64 blob, a minified source line, a large driver payload)"
+    ],
+    "repro": "test",
+    "evidence": "Measured in-process against the exact pattern literals: a 200k-character unbroken alphanumeric run took ~34 s and a 500k run ~224 s inside redactText, because the email pattern's greedy leading character class re-scans from every start position when no @ follows. The two patterns this diff actually changes are linear: the widened ^-anchored query pattern showed no backtracking blow-up, and the new fragment pattern is a single greedy class with nothing after it. The quadratic rule predates this PR and is unchanged here, but redactText is now the sole defence for several token carriers, and it runs synchronously inside beforeSend on the server. Cheap fixes: bound the input length before redacting, or reorder so the query/fragment rules shrink the string first."
+  },
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 160,
+    "category": "correctness",
+    "severity": "minor",
+    "summary": "The new rule that blanks out anything after a '#' is much broader than the comment admits: it also destroys the element identifiers in click history, framework error numbers and ordinary text, which is exactly the detail an engineer needs when reading a report.",
+    "requires": [],
+    "repro": "test",
+    "evidence": "Measured against the shipped pattern: a DOM breadcrumb selector 'button#submit.primary > span' becomes 'button#[redacted] > span' (the id AND the trailing classes are lost, since the rule runs to the next whitespace or quote); a minified framework error string 'Minified React error #418; visit ...' loses its error number; '## Heading here' and 'color: #ff00aa;' are also rewritten. The SDK emits a selector breadcrumb for every click, so this is not the rare 'inert #anchor' the comment describes. The trade-off is still the right one for safety, but the comment understates the blast radius and no test pins the intended behaviour on selectors."
+  },
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 202,
+    "category": "docs",
+    "severity": "minor",
+    "summary": "A comment states that the page address field is the only place the subscriber's secret link can travel, which is not true — two other fields carry it as well, and those are protected only by the new text rule, not by the structural fix.",
+    "requires": ["browser tracing enabled (opt-in but supported)"],
+    "repro": "test",
+    "evidence": "Verified against the pinned SDK (10.75.0): the browser tracing integration writes the full document href, fragment included, into the segment span's url.full attribute, and the HTTP-context integration backfills the same value; the navigation breadcrumb's from/to fields also come from the full href. Running the shipped scrubEvent over both shapes confirms the secret is removed today — but only by URL_FRAGMENT_PATTERN, not by reduceRequestUrl. The comment's 'the one place this product's raw management token ever travels' would mislead a future change that narrowed or reordered that pattern into silently reopening the round-1 finding. No standalone-span path exists in this SDK version (they would bypass beforeSend entirely), so the current coverage is complete; that is worth recording too, because a future SDK upgrade that reintroduces them, or enabling span streaming, would need a beforeSendSpan hook."
+  },
+  {
+    "file": "src/config/sentry-options.test.ts",
+    "line": 81,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The tests prove the secret link is stripped from the page-address field, but never prove it is stripped from the two other fields that carry it, which are the ones relying on a pattern that a future edit could weaken.",
+    "requires": [],
+    "repro": "test",
+    "evidence": "The existing 'at any depth' case exercises breadcrumbs and spans, but only with query-parameter shapes (?token=, ?email=). No case feeds a '#<token>' tail through a span's url.full attribute or a navigation breadcrumb's from/to. Both are covered in practice, so this is a regression-guard gap rather than a live hole: narrowing the fragment pattern would leave this suite green."
+  },
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 50,
+    "category": "correctness",
+    "severity": "minor",
+    "summary": "The check that recognises the error-tracking address only accepts a two-letter region code, so a legitimate address with a longer region name would silently switch off all browser error reporting with no warning anywhere.",
+    "requires": [
+      "a provider-issued DSN whose ingest host uses a region label that is not exactly two lowercase letters"
+    ],
+    "repro": "test",
+    "evidence": "Confirmed by running parseSentryDsn: the current two SaaS regions parse fine, a host with a longer hyphenated region label returns undefined, and undefined now feeds enabled:false in buildClientSentryOptions. Fail-closed is the right default (it avoids posting to a third-party origin the CSP forbids), but the failure is completely silent — no console warning, no build-time check — so a future region migration would remove browser monitoring without anyone noticing. Host anchoring itself is sound: a look-alike suffix host and a trailing-dot host are both rejected, and URL parsing normalises case and punycodes IDNs before the test."
+  },
+  {
+    "file": "app/monitoring/monitoring-route.handler.ts",
+    "line": 43,
+    "category": "security",
+    "severity": "minor",
+    "summary": "When a caller does not declare how big the upload is, the whole upload is pulled into memory before the size limit is applied, so the limit bounds what gets forwarded but not what gets held.",
+    "requires": ["a request with no Content-Length header (chunked or streamed body)"],
+    "repro": "none",
+    "evidence": "declaredOversized only short-circuits when Content-Length is present and over the cap; otherwise request.arrayBuffer() buffers the entire body and only then is byteLength compared. Verified that a constructed Request with a plain string body carries no Content-Length, so the second check is genuinely the one doing the work in that case. Nothing over the cap is ever forwarded, so the forwarding bound holds; the memory held per in-flight request is bounded only by the platform's own request-body ceiling, which is an order of magnitude above the cap. Reading the body as a bounded stream, or rejecting requests with no Content-Length, would make the handler's own limit the real one."
+  }
+]

@@ -121,4 +121,42 @@ describe('Lighthouse deployment policy', () => {
     expect(scoreWithNoindex(standardCategories.seo.auditRefs)).toBeLessThan(0.95);
     expect(scoreWithNoindex(previewCategories.seo.auditRefs)).toBe(1);
   });
+
+  // The blanking lives inside `if (!previewUrl)`, executed for its
+  // side effect on `process.env` before the LHCI config is even built.
+  // A text search over the file (as tests/unit/e2e-runtime-config.test.ts
+  // does for the other two runtimes) cannot tell a live guard from one
+  // that has been inverted or neutered — the literal strings survive
+  // either way. `loadConfig` runs this file in a VM with our own `env`
+  // object standing in for `process.env`; because `Object.assign(process.env, …)`
+  // mutates that same object in place, we can assert on `env` itself after
+  // the call to prove the guard actually ran, not just that the words exist.
+  it('blanks the Sentry DSN/auth token and forces CI=true for the local server it starts', () => {
+    const env: Record<string, string | undefined> = {
+      NEXT_PUBLIC_SENTRY_DSN: 'https://fakepublickey@fake.ingest.sentry.io/0000000',
+      SENTRY_AUTH_TOKEN: 'fake-local-auth-token',
+    };
+
+    loadConfig(env);
+
+    expect(env.NEXT_PUBLIC_SENTRY_DSN).toBe('');
+    expect(env.SENTRY_AUTH_TOKEN).toBe('');
+    // The actual server-side kill switch: provideObservability gates on
+    // isPipelineRun, so a blank DSN alone would still leave the SDK live.
+    expect(env.CI).toBe('true');
+  });
+
+  it('leaves a developer Sentry env untouched when scoring an already-deployed Preview', () => {
+    const env: Record<string, string | undefined> = {
+      LHCI_URL: 'https://corpus-preview.vercel.app',
+      NEXT_PUBLIC_SENTRY_DSN: 'https://fakepublickey@fake.ingest.sentry.io/0000000',
+      SENTRY_AUTH_TOKEN: 'fake-preview-auth-token',
+    };
+
+    loadConfig(env);
+
+    expect(env.NEXT_PUBLIC_SENTRY_DSN).toBe('https://fakepublickey@fake.ingest.sentry.io/0000000');
+    expect(env.SENTRY_AUTH_TOKEN).toBe('fake-preview-auth-token');
+    expect(env.CI).toBeUndefined();
+  });
 });

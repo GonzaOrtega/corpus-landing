@@ -2,6 +2,7 @@ import type { ServerConfig } from '../../config/server-env';
 import type { CaptchaVerifier } from '../../core/ports/captcha-verifier.port';
 import type { Clock } from '../../core/ports/clock.port';
 import type { EmailSender } from '../../core/ports/email-sender.port';
+import type { ErrorReporter } from '../../core/ports/error-reporter.port';
 import type { Logger } from '../../core/ports/logger.port';
 import type { TokenGenerator } from '../../core/ports/token-generator.port';
 import type { TokenHasher } from '../../core/ports/token-hasher.port';
@@ -18,6 +19,7 @@ export interface EarlyAccessDeps {
   serverConfig: ServerConfig;
   captchaVerifier: CaptchaVerifier;
   emailSender: EmailSender;
+  errorReporter: ErrorReporter;
 }
 
 /**
@@ -37,5 +39,6 @@ export function wireEarlyAccess(ctx: AppContext): EarlyAccessDeps {
     serverConfig: ctx.serverConfig,
     captchaVerifier: ctx.captchaVerifier,
     emailSender: ctx.emailSender,
+    errorReporter: ctx.errorReporter,
   };
 }
