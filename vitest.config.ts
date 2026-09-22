@@ -28,12 +28,23 @@ if (process.argv.includes('--coverage') && !testDatabaseConfigured) {
 // Browser-only client modules. Their behaviour lives entirely in effects and
 // GSAP timelines that never run under renderToStaticMarkup, and this repo has
 // no jsdom/testing-library layer by decision. They are covered by Playwright:
-// tests/e2e/landing-motion.spec.ts, living-lexicon.spec.ts, homepage.spec.ts,
-// signup.spec.ts (reCAPTCHA bridge). Adding a file here requires an e2e spec.
+// tests/e2e/landing-motion.spec.ts, living-lexicon.spec.ts and
+// homepage.spec.ts. Adding a file here requires an e2e spec.
+//
+// recaptcha-bridge.tsx (R-11) is deliberately NOT on this list even though
+// it is a browser-only client module by the same description: the browser
+// suite always runs with the fake CAPTCHA switch on (CORPUS_FAKE_CAPTCHA=1
+// in both compose.yaml and playwright.config.ts), which makes
+// productionRecaptchaSiteKey return null, which means `<SignupForm>` never
+// renders `<RecaptchaBridge>` and no Playwright spec ever mounts it — the
+// "requires an e2e spec" rule this list enforces cannot be met honestly for
+// this file. It is measured instead, by
+// src/features/early-access/ui/recaptcha-bridge.test.tsx, which drives
+// `getRecaptchaToken` directly with hand-stubbed `document`/`window`
+// globals (same technique as tests/unit/instrumentation-client.test.ts).
 const browserOnly = [
   'src/features/landing/motion/**',
   'src/features/landing/ui/living-lexicon.client.tsx',
-  'src/features/early-access/ui/recaptcha-bridge.tsx',
 ];
 
 export default defineConfig({
@@ -127,7 +138,11 @@ export default defineConfig({
         'src/composition/**': { lines: 98, branches: 100, functions: 93, statements: 98 },
         'src/config/**': { lines: 99, branches: 97, functions: 100, statements: 98 },
         'src/ops/**': { lines: 95, branches: 90, functions: 100, statements: 95 },
-        'src/features/**': { lines: 88, branches: 89, functions: 86, statements: 87 },
+        // R-11: recaptcha-bridge.tsx is now measured (see browserOnly's
+        // comment above) and mostly covered, which raised this glob's floor.
+        // Ratchet rule: raised to floor(measured) — 90 / 90 / 86 / 88 — in
+        // this same PR rather than left at the old, now-stale 88 / 89 / 86 / 87.
+        'src/features/**': { lines: 90, branches: 90, functions: 86, statements: 88 },
         'src/components/**': { lines: 100, branches: 100, functions: 100, statements: 100 },
         'app/**': { lines: 93, branches: 94, functions: 80, statements: 93 },
         'proxy.ts': { lines: 100, branches: 97, functions: 100, statements: 100 },

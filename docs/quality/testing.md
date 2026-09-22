@@ -17,6 +17,7 @@ manual for meeting them.
 | Delivery: Server Actions, routes, pages, proxy | `src/features/**/actions/*.test.ts`, `app/**/*.test.ts(x)`, `proxy.test.ts` | Validation, error mapping, response shaping, metadata, and server-rendered markup via `renderToStaticMarkup` | `vi.mock` of wiring modules and Next-only modules (`next/font/*`, `next/og`, `next/script`) |
 | Runtime bootstrap | `tests/unit/instrumentation.test.ts`, `src/config/sentry-runtime-configs.test.ts` | `register()` loads the right Sentry runtime config for `NEXT_RUNTIME`, `onRequestError` is still `Sentry.captureRequestError` (the hook Next calls on every uncaught RSC/route/Server Action failure), and both `sentry.*.config.ts` forward `buildServerSentryOptions`'s output intact | `vi.mock` of `@sentry/nextjs`, `./sentry-options`, and (for the instrumentation test) both `sentry.*.config.ts` modules |
 | Ops script | `scripts/launch-email.test.ts` | Argument parsing and dispatch to `dry-run`/`production`, exhaustively; the `import.meta.main` entry body is 2 lines and untestable in-process (true only for the real process entry) | `vi.mock` of `src/composition/ops/launch.wiring` — `getLaunchOperations` itself is covered by `launch.wiring.test.ts` |
+| reCAPTCHA bridge | `src/features/early-access/ui/recaptcha-bridge.test.tsx` | Script injection, reuse of an already-present script tag, the load/error handlers, and the "CAPTCHA is unavailable" failure path — asserted directly rather than through Playwright, since the browser suite always runs with the fake CAPTCHA switch on and so never mounts this component (see the exclusions table) | Hand-stubbed `document`/`window` globals, no jsdom — same technique as `tests/unit/instrumentation-client.test.ts` |
 | Browser behaviour | `tests/e2e/*.spec.ts` (Playwright) | Motion, the Living Lexicon, signup and management journeys, axe, prototype parity | Local Postgres behind a Neon HTTP proxy, fake CAPTCHA and email |
 | Configuration regressions | `tests/unit/*.test.ts` | Workflow, compose, Lighthouse and font-asset invariants | — |
 
@@ -65,7 +66,7 @@ them.
 | `src/composition/**` | 90 | 98 / 100 / 93 / 98 |
 | `src/config/**` | 90 | 99 / 97 / 100 / 98 |
 | `src/ops/**` | 90 | 95 / 90 / 100 / 95 |
-| `src/features/**` | 80 | 88 / 89 / 86 / 87 |
+| `src/features/**` | 80 | 90 / 90 / 86 / 88 |
 | `src/components/**` | 80 | 100 / 100 / 100 / 100 |
 | `app/**` | 80 | 93 / 94 / 80 / 93 |
 | `proxy.ts` | 80 | 100 / 97 / 100 / 100 |
@@ -100,13 +101,23 @@ adds the integration suite on top, so CI can only measure higher.
 | --- | --- |
 | `**/*.test.{ts,tsx}`, Vitest defaults | Tests are not the thing measured |
 | `src/core/testing/early-access-signup-repository.contract.ts` | A Vitest suite exported as a function, not a module under test |
-| `src/features/landing/motion/**`, `src/features/landing/ui/living-lexicon.client.tsx`, `src/features/early-access/ui/recaptcha-bridge.tsx` | Browser-only: their behaviour lives in effects and GSAP timelines that never run under static markup. Covered by `tests/e2e/landing-motion.spec.ts`, `living-lexicon.spec.ts`, `homepage.spec.ts` and `signup.spec.ts`. Adding a file here requires a Playwright spec for it. |
+| `src/features/landing/motion/**`, `src/features/landing/ui/living-lexicon.client.tsx` | Browser-only: their behaviour lives in effects and GSAP timelines that never run under static markup. Covered by `tests/e2e/landing-motion.spec.ts`, `living-lexicon.spec.ts` and `homepage.spec.ts`. Adding a file here requires a Playwright spec for it. |
 | `src/adapters/db/drizzle-early-access-signup.repository.ts` **only when `DATABASE_URL_TEST` is unset** | Its integration suite self-skips without a database, which would report the file at ~0% locally for a reason unrelated to the change under test. Gated on `DATABASE_URL_TEST`, never the ordinary `DATABASE_URL` (see "Measuring the Drizzle repository" below for why). `bun run test:coverage` prints a one-line notice when this applies. The CI `test` job always sets `DATABASE_URL_TEST` against its disposable branch and never takes this path. |
 
 Client components that render on the server but act in the browser
 (`signup-form.tsx`, `manage-token-bridge.tsx`, `cloze-demo.tsx`) stay measured:
 their markup is asserted here and their handlers in Playwright, and the
 `src/features/**` threshold already reflects that split.
+
+`recaptcha-bridge.tsx` is a browser-only client module by the same
+description as the exclusions above, but it is deliberately **not** on that
+list: the browser suite always runs with the fake CAPTCHA switch on
+(`CORPUS_FAKE_CAPTCHA=1` in both `compose.yaml` and `playwright.config.ts`),
+which makes `productionRecaptchaSiteKey` return `null`, so `<SignupForm>`
+never renders `<RecaptchaBridge>` and no Playwright spec ever mounts it — the
+"requires a Playwright spec" rule the exclusions list enforces cannot be met
+honestly here. It is measured and covered directly instead (see the "reCAPTCHA
+bridge" row above).
 
 ## Reading a failure
 
