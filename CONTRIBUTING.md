@@ -102,9 +102,20 @@ bun run test:e2e        # Playwright, in Docker
 ```
 
 A change that lowers a layer below its coverage threshold fails `test:coverage`
-locally exactly as it fails the `test` check. Cover the new branch; do not lower
-the number. See [Testing](docs/quality/testing.md) for the thresholds and the
-rule for raising them.
+locally the same way it fails the `test` check, with one documented exception:
+`src/adapters/**`. Its threshold (100 / 92 / 100 / 99) is set for the file set
+CI measures, which includes the Drizzle repository's integration suite
+against a real database; without `DATABASE_URL_TEST` set locally, that suite
+is excluded rather than counted against you (see [Testing — Measuring the
+Drizzle repository](docs/quality/testing.md#measuring-the-drizzle-repository)).
+The remaining adapter files alone measure 100% on every metric locally, well
+above the 92%-branches floor CI's larger, lower-scoring file set earned, so a
+few newly-uncovered branches in a *non*-Drizzle adapter can pass locally and
+still fail the `test` check in CI. Set `DATABASE_URL_TEST` locally (see the
+link above) to close that gap before you open a PR. Cover the new branch; do
+not lower the number. See
+[Testing](docs/quality/testing.md) for the thresholds and the rule for
+raising them.
 
 `bun` only — never `npm`, `yarn`, or `pnpm`. The lockfile is committed and CI
 installs with `--frozen-lockfile`.
