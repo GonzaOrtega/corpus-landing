@@ -1,6 +1,6 @@
 version: 1
 pr: 21
-status: awaiting-triage
+status: fixing
 rounds:
   - "n": 1
     head: 746bb0781414b224ddf374a3e6cbda1c665d8fd5
@@ -48,7 +48,7 @@ findings:
         association: null
         url: null
     verdict: fix
-    verdict_by: auto
+    verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
       []
@@ -73,7 +73,7 @@ findings:
         association: null
         url: null
     verdict: later
-    verdict_by: auto
+    verdict_by: human
     reason: Below the severity floor (important)
     fix_commits:
       []
@@ -103,7 +103,7 @@ findings:
         association: null
         url: null
     verdict: later
-    verdict_by: auto
+    verdict_by: human
     reason: Below the severity floor (important)
     fix_commits:
       []
@@ -128,7 +128,7 @@ findings:
         association: null
         url: null
     verdict: later
-    verdict_by: auto
+    verdict_by: human
     reason: Below the severity floor (important)
     fix_commits:
       []
@@ -153,7 +153,7 @@ findings:
         association: null
         url: null
     verdict: later
-    verdict_by: auto
+    verdict_by: human
     reason: Below the severity floor (important)
     fix_commits:
       []
@@ -184,7 +184,7 @@ findings:
         association: null
         url: null
     verdict: fix
-    verdict_by: auto
+    verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
       []
@@ -210,7 +210,7 @@ findings:
         association: null
         url: null
     verdict: fix
-    verdict_by: auto
+    verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
       []
@@ -235,7 +235,7 @@ findings:
         association: null
         url: null
     verdict: later
-    verdict_by: auto
+    verdict_by: human
     reason: Below the severity floor (important)
     fix_commits:
       []
@@ -260,7 +260,7 @@ findings:
         association: null
         url: null
     verdict: later
-    verdict_by: auto
+    verdict_by: human
     reason: Below the severity floor (important)
     fix_commits:
       []
@@ -285,7 +285,7 @@ findings:
         association: null
         url: null
     verdict: later
-    verdict_by: auto
+    verdict_by: human
     reason: Below the severity floor (important)
     fix_commits:
       []
@@ -310,7 +310,7 @@ findings:
         association: null
         url: null
     verdict: fix
-    verdict_by: auto
+    verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
       []
@@ -335,7 +335,7 @@ findings:
         association: null
         url: null
     verdict: fix
-    verdict_by: auto
+    verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
       []
@@ -360,7 +360,7 @@ findings:
         association: null
         url: null
     verdict: fix
-    verdict_by: auto
+    verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
       []
@@ -385,7 +385,7 @@ findings:
         association: null
         url: null
     verdict: later
-    verdict_by: auto
+    verdict_by: human
     reason: Below the severity floor (important)
     fix_commits:
       []
@@ -410,7 +410,7 @@ findings:
         association: null
         url: null
     verdict: fix
-    verdict_by: auto
+    verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
       []
@@ -435,7 +435,7 @@ findings:
         association: null
         url: null
     verdict: later
-    verdict_by: auto
+    verdict_by: human
     reason: Below the severity floor (important)
     fix_commits:
       []
@@ -460,7 +460,7 @@ findings:
         association: null
         url: null
     verdict: later
-    verdict_by: auto
+    verdict_by: human
     reason: Below the severity floor (important)
     fix_commits:
       []
