@@ -61,9 +61,7 @@
     "category": "test-gap",
     "severity": "important",
     "summary": "The measured area covers only two folders and one file, so several pieces of live production code at the top of the project are outside the gate entirely, and one of them has no test at all.",
-    "requires": [
-      "a later change that edits or removes one of these unmeasured top-level files"
-    ],
+    "requires": ["a later change that edits or removes one of these unmeasured top-level files"],
     "repro": "test",
     "evidence": "The measured set is src, app and proxy.ts. instrumentation.ts sits outside it and no test imports it; its one-line export is the hook that reports every uncaught failure in server rendering, route handlers and Server Actions, so removing or renaming it would turn off production error reporting without any check turning red. The two Sentry runtime config files and scripts/launch-email.ts, the command that performs the one-time launch mailing, are likewise outside the measured set (the Sentry pair do at least have a test). This is the same blind spot the catch-all comment claims cannot exist. Suggested fix: extend the measured set to the root runtime files and the ops script, with thresholds set from their current measurement, or list them in the exclusions table with the reason they stay out."
   },
@@ -73,9 +71,7 @@
     "category": "test-gap",
     "severity": "minor",
     "summary": "Nothing automatically checks that the agreed minimum for each layer is still respected, so a future change could quietly reduce one and only the written rule would object.",
-    "requires": [
-      "a later change that edits the threshold block"
-    ],
+    "requires": ["a later change that edits the threshold block"],
     "repro": "test",
     "evidence": "The agreed per-layer targets (core 100, adapters, composition, config and ops 90, features, components, app and proxy 80) live only in prose in the config comment and in docs/quality/testing.md. This same change demonstrates the repo's habit of pinning configuration in tests: tests/unit/e2e-runtime-config.test.ts was extended to pin the exact command wiring so the gate cannot be unhooked. The numbers the gate enforces got no equivalent pin, even though the history in this branch shows they can move down under merge pressure. Suggested fix: add a small test that reads the threshold block and asserts each glob's four values are at or above its agreed target, so a lowering below target has to be argued for in review."
   },
