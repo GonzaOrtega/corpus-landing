@@ -1,0 +1,94 @@
+[
+  {
+    "file": "vitest.config.ts",
+    "line": 29,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "The code that fetches a real anti-spam token from Google is left out of the coverage measurement on the grounds that browser tests cover it, but no browser test ever runs it.",
+    "requires": [
+      "the production deployment, the only place a real reCAPTCHA site key is configured and this code actually runs"
+    ],
+    "repro": "test",
+    "evidence": "vitest.config.ts excludes src/features/early-access/ui/recaptcha-bridge.tsx from coverage under a comment naming signup.spec.ts as its browser cover, and docs/quality/testing.md line 92 repeats that claim. The browser suite always runs with the fake CAPTCHA switch on (set in both compose.yaml and playwright.config.ts), so the bridge component is never mounted there. The only browser assertion that mentions it, in preview-safety.spec.ts, asserts the provider script is absent. The file's script injection, its reuse of an already-present script tag, its load and error handlers and its 'CAPTCHA is unavailable' failure path are therefore exercised by no test of any kind, and the exclusion removes the one signal that would have shown that. Suggested fix: either drop the exclusion and assert the bridge's token flow directly against stubbed globals (the repo already does exactly this for instrumentation-client), or add a browser spec that arms a site key, and only then keep the exclusion."
+  },
+  {
+    "file": "vitest.config.ts",
+    "line": 98,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "The safety net described as making sure a brand-new folder of code can never arrive untested does not work that way, because the check averages the whole project together.",
+    "requires": [
+      "a later change that adds a new source directory not named by any of the per-layer rules"
+    ],
+    "repro": "test",
+    "evidence": "The comment on the catch-all thresholds says a new directory can never ship unmeasured, and docs/quality/testing.md line 65 repeats it. The test runner's own threshold resolver adds every measured file to the global set, including files already claimed by a specific rule, so the 80 percent catch-all is an average over the entire project rather than a floor on the unclaimed part. Against the report currently in the worktree (1063 of 1108 lines covered) roughly 220 completely untested lines could be added anywhere before that average drops below 80 percent. A new directory also matches none of the per-layer rules, so nothing but that diluted average would apply to it. Suggested fix: either state plainly that the catch-all is a whole-project average, or add a per-file threshold or a narrower glob so unclaimed files are held to a floor of their own."
+  },
+  {
+    "file": "vitest.config.ts",
+    "line": 67,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "The gate a developer runs before pushing and the gate the pipeline runs measure different sets of files, so for the database layer the local numbers are set far below what that machine actually achieves.",
+    "requires": [
+      "a developer machine without a database connection string, which is the documented default"
+    ],
+    "repro": "test",
+    "evidence": "When no database is configured the Drizzle repository file is dropped from the measurement. With it dropped, the adapters layer in the worktree's own report measures 100 percent on all four metrics, while the enforced floor for that layer is 100/92/100/99 because the number was derived from the pipeline-shaped file set. Locally that leaves three adapter branches that can quietly stop being covered without the gate reacting, and those are the branches that prove provider errors are mapped and that no email address or query text escapes into an error. CONTRIBUTING.md line 105 tells contributors the local run fails 'exactly as' the pipeline check, which is not the case for this layer. Suggested fix: either measure the same file set in both places, or carry two threshold sets and say which one the local command enforces."
+  },
+  {
+    "file": "docs/quality/testing.md",
+    "line": 67,
+    "category": "docs",
+    "severity": "important",
+    "summary": "The rule that coverage numbers may only ever go up says any lowering must be written down in this document, yet the lowering this change itself performed is not written down there.",
+    "requires": [],
+    "repro": "none",
+    "evidence": "The table introduces the enforced numbers as measured 'at the time the gate was introduced (2026-09-20, 454 tests)', but three of them (config, features and app) are the lower re-measurement taken after main was merged, at 562 tests, as the verification ledger row 5a and the comment in vitest.config.ts both describe. The ratchet section immediately below requires that lowering a number be recorded 'in this file' with a reason, and no such record exists there. A later reader of the governing document therefore sees a set of numbers presented as only ever having risen. Suggested fix: add a short dated entry to the ratchet section naming the three layers that moved down, by how much and why, and correct the provenance sentence to the run the numbers actually come from."
+  },
+  {
+    "file": "vitest.config.ts",
+    "line": 8,
+    "category": "docs",
+    "severity": "minor",
+    "summary": "The reason given for skipping the database repository on a developer machine, that it would otherwise look completely untested, is no longer true once this change's own new tests are counted.",
+    "requires": [],
+    "repro": "none",
+    "evidence": "The comment and the exclusion table in docs/quality/testing.md line 93 both say the file would report at about zero percent without a database, because its integration suite self-skips. This change adds a database-free unit suite for that same file which drives it through a stubbed driver, and the same document states that suite alone leaves the file at 100/85/100/98. The stale reason is what keeps a real, available local measurement out of the report, which is the root of the local-versus-pipeline mismatch reported separately. Suggested fix: re-measure without a database and, if the file now sits comfortably above the layer floor, delete the conditional exclusion and the paragraph that explains it."
+  },
+  {
+    "file": "vitest.config.ts",
+    "line": 60,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "The measured area covers only two folders and one file, so several pieces of live production code at the top of the project are outside the gate entirely, and one of them has no test at all.",
+    "requires": [
+      "a later change that edits or removes one of these unmeasured top-level files"
+    ],
+    "repro": "test",
+    "evidence": "The measured set is src, app and proxy.ts. instrumentation.ts sits outside it and no test imports it; its one-line export is the hook that reports every uncaught failure in server rendering, route handlers and Server Actions, so removing or renaming it would turn off production error reporting without any check turning red. The two Sentry runtime config files and scripts/launch-email.ts, the command that performs the one-time launch mailing, are likewise outside the measured set (the Sentry pair do at least have a test). This is the same blind spot the catch-all comment claims cannot exist. Suggested fix: extend the measured set to the root runtime files and the ops script, with thresholds set from their current measurement, or list them in the exclusions table with the reason they stay out."
+  },
+  {
+    "file": "vitest.config.ts",
+    "line": 100,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "Nothing automatically checks that the agreed minimum for each layer is still respected, so a future change could quietly reduce one and only the written rule would object.",
+    "requires": [
+      "a later change that edits the threshold block"
+    ],
+    "repro": "test",
+    "evidence": "The agreed per-layer targets (core 100, adapters, composition, config and ops 90, features, components, app and proxy 80) live only in prose in the config comment and in docs/quality/testing.md. This same change demonstrates the repo's habit of pinning configuration in tests: tests/unit/e2e-runtime-config.test.ts was extended to pin the exact command wiring so the gate cannot be unhooked. The numbers the gate enforces got no equivalent pin, even though the history in this branch shows they can move down under merge pressure. Suggested fix: add a small test that reads the threshold block and asserts each glob's four values are at or above its agreed target, so a lowering below target has to be argued for in review."
+  },
+  {
+    "file": "proxy.test.ts",
+    "line": 194,
+    "category": "style",
+    "severity": "minor",
+    "summary": "Two of the new proxy tests depend on the exact order of entries in a configuration list, so simply rearranging that list breaks them even though nothing about the behaviour changed.",
+    "requires": [
+      "a later change that reorders the proxy matcher entries without changing what they match"
+    ],
+    "repro": "test",
+    "evidence": "One assertion takes the first six entries by position and another destructures the seventh and eighth by position, then compares them to literal source strings. The rest of this file is strong behavioural testing driven through real requests; these two assertions instead pin the shape of the configuration object, which is the kind of test that fails on a harmless refactor and teaches contributors to edit the test rather than think. Suggested fix: match the entries by their content (find the string entries and the two object entries) rather than by index, or cover the same intent by sending requests that should and should not enter the proxy."
+  }
+]

@@ -1,14 +1,475 @@
 version: 1
 pr: 21
-status: intake
+status: awaiting-triage
 rounds:
-  []
+  - "n": 1
+    head: 746bb0781414b224ddf374a3e6cbda1c665d8fd5
+    scope: full
+    reviewers:
+      - pr-review-toolkit:code-reviewer
+      - pr-review-toolkit:silent-failure-hunter
+      - pr-review-toolkit:pr-test-analyzer
+    findings:
+      - R-01
+      - R-02
+      - R-03
+      - R-04
+      - R-05
+      - R-06
+      - R-07
+      - R-08
+      - R-09
+      - R-10
+      - R-11
+      - R-12
+      - R-13
+      - R-14
+      - R-15
+      - R-16
+      - R-17
 findings:
-  []
+  - id: R-01
+    round: 1
+    fingerprint: cc8de0281d933e64
+    file: package.json
+    line: 32
+    category: correctness
+    severity: important
+    summary: "The `check` command, which used to only inspect the code without touching anything, now runs the whole test suite — and one of those tests empties the signup table of whatever database the developer's local settings point at, which the setup guide says should be the shared Neon development branch."
+    requires:
+      - "a developer or maintainer runs `bun run check`, `bun run test:all`, or `bun run deps:adopt` on a machine where DATABASE_URL is set — which the README's own setup instructions produce, because it tells you to put the shared Neon `development` connection string in `.env.local`, and Bun loads `.env.local` into the environment of every `bun run` script"
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-02
+    round: 1
+    fingerprint: eb3ee3b0c226665c
+    file: docs/quality/testing.md
+    line: 112
+    category: docs
+    severity: minor
+    summary: "The coverage documentation assumes a developer machine normally has no database configured, but the project's own setup instructions plus Bun's automatic loading of local settings mean it normally does — so the described difference between a local run and the pipeline, and the warning line the config prints, will rarely apply as written."
+    requires:
+      - "a developer set up by following the README, which is the documented path"
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-03
+    round: 1
+    fingerprint: 6c0c68e7acacd18a
+    file: CLAUDE.md
+    line: 33
+    category: docs
+    severity: minor
+    summary: "Two documents still describe the `check` command as only doing typechecking, linting and structure checks, even though this change makes it also run the entire test suite with coverage; one of them then tells contributors to run that suite a second time."
+    requires:
+      []
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-04
+    round: 1
+    fingerprint: 0d55b595ea7ec4ba
+    file: docs/quality/testing.md
+    line: 75
+    category: docs
+    severity: minor
+    summary: "The new rule says a coverage number may only ever go up and that any reduction must be justified on that same page, but this change reduces three of them and records the reason somewhere else, leaving the page claiming the numbers come from a measurement that no longer produced them."
+    requires:
+      []
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-05
+    round: 1
+    fingerprint: 9ce672a6280d2d62
+    file: docs/quality/testing.md
+    line: 50
+    category: docs
+    severity: minor
+    summary: "The page says the coverage tool is tied to the test runner's major version, but it is actually locked to one exact version while the test runner is allowed to drift within that major, and the tool refuses to work unless the two match exactly."
+    requires:
+      - a future version bump that moves the test runner without moving the coverage package
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-06
+    round: 1
+    fingerprint: b3466d9318d85552
+    file: vitest.config.ts
+    line: 98
+    category: test-gap
+    severity: important
+    summary: "The \"catch-all\" coverage floor does not do what its comment and the testing guide promise: it is a whole-repository average, not a net under directories the named rules miss, so a brand-new folder with no tests at all can ship green."
+    requires:
+      - a new source directory under src/ or app/ that none of the per-glob thresholds names
+      - a later change that adds a new source directory not named by any of the per-layer rules
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-07
+    round: 1
+    fingerprint: 90d2c5efc794aebd
+    file: .github/workflows/ci.yml
+    line: 86
+    category: test-gap
+    severity: important
+    summary: The one job this change designates as the complete coverage measurement still reports success when the disposable database never appeared - it quietly measures less instead of failing.
+    requires:
+      - the disposable-branch step finishing without producing a connection string (an outcome the workflow already anticipates)
+      - the Neon create-branch action returns an empty branch id on a same-repository run; fork pull requests already exit 1 at the earlier fail-closed step
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-08
+    round: 1
+    fingerprint: b23eb355c73cbcd9
+    file: src/adapters/db/drizzle-early-access-signup.repository.test.ts
+    line: 19
+    category: test-gap
+    severity: minor
+    summary: "The stand-in database accepts any sequence of query calls, so the new repository tests raise that file's coverage without checking a single thing about the queries it builds."
+    requires:
+      - "a change to a filter, ordering or paging clause in the repository"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-09
+    round: 1
+    fingerprint: 909712db9d5177f2
+    file: src/composition/capabilities/config-secrets.test.ts
+    line: 35
+    category: test-gap
+    severity: minor
+    summary: "Several new \"fails closed\" tests accept any error whatsoever, so they would still pass if the code broke earlier and for an entirely unrelated reason."
+    requires:
+      - "a refactor that throws before, or instead of, the validation the test is named for"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-10
+    round: 1
+    fingerprint: 253e97dd8ddd00ec
+    file: app/about/page.test.tsx
+    line: 11
+    category: test-gap
+    severity: minor
+    summary: "Three new page tests say they check that every published section is rendered, but they walk a list nothing requires to be non-empty, so emptying the page's content would leave them green."
+    requires:
+      - the section list for a page shrinking or being emptied
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-11
+    round: 1
+    fingerprint: b536a15a52c83071
+    file: vitest.config.ts
+    line: 29
+    category: test-gap
+    severity: important
+    summary: "The code that fetches a real anti-spam token from Google is left out of the coverage measurement on the grounds that browser tests cover it, but no browser test ever runs it."
+    requires:
+      - "the production deployment, the only place a real reCAPTCHA site key is configured and this code actually runs"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-12
+    round: 1
+    fingerprint: befddaba7302d29b
+    file: vitest.config.ts
+    line: 67
+    category: test-gap
+    severity: important
+    summary: "The gate a developer runs before pushing and the gate the pipeline runs measure different sets of files, so for the database layer the local numbers are set far below what that machine actually achieves."
+    requires:
+      - "a developer machine without a database connection string, which is the documented default"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-13
+    round: 1
+    fingerprint: eb98562a2fcf2844
+    file: docs/quality/testing.md
+    line: 67
+    category: docs
+    severity: important
+    summary: "The rule that coverage numbers may only ever go up says any lowering must be written down in this document, yet the lowering this change itself performed is not written down there."
+    requires:
+      []
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-14
+    round: 1
+    fingerprint: d1038b5f19f3e9de
+    file: vitest.config.ts
+    line: 8
+    category: docs
+    severity: minor
+    summary: "The reason given for skipping the database repository on a developer machine, that it would otherwise look completely untested, is no longer true once this change's own new tests are counted."
+    requires:
+      []
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-15
+    round: 1
+    fingerprint: cdfa001143750c29
+    file: vitest.config.ts
+    line: 60
+    category: test-gap
+    severity: important
+    summary: "The measured area covers only two folders and one file, so several pieces of live production code at the top of the project are outside the gate entirely, and one of them has no test at all."
+    requires:
+      - a later change that edits or removes one of these unmeasured top-level files
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-16
+    round: 1
+    fingerprint: 15d7f3dca08bd7c6
+    file: vitest.config.ts
+    line: 100
+    category: test-gap
+    severity: minor
+    summary: "Nothing automatically checks that the agreed minimum for each layer is still respected, so a future change could quietly reduce one and only the written rule would object."
+    requires:
+      - a later change that edits the threshold block
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-17
+    round: 1
+    fingerprint: c6952062f3f90e4b
+    file: proxy.test.ts
+    line: 194
+    category: style
+    severity: minor
+    summary: "Two of the new proxy tests depend on the exact order of entries in a configuration list, so simply rearranging that list breaks them even though nothing about the behaviour changed."
+    requires:
+      - a later change that reorders the proxy matcher entries without changing what they match
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
 evidence:
   []
 waivers:
   []
 eli5:
-  []
-comment_id: null
+  - round: 1
+    text: "This change was supposed to do two things: write a lot of missing tests, and put a\nrule in place that says \"if any part of the code stops being tested enough, stop\nthe build\". The tests themselves came out well. Three reviewers read them and\nagreed: they check that the code behaves correctly, not just that it runs, and\nseveral of them lock in promises that matter, like never writing a subscriber's\nemail address into an error report.\n\nThe rule is the part with problems. Seventeen were found, seven of them worth\nyour attention, and they fall into one pattern: the rule reports that everything\nis fine while checking less than it says it checks.\n\nThree examples. The safety net meant to catch a brand-new untested folder does\nnot work the way its own comment describes, because the tool averages everything\ntogether instead of looking at that folder on its own; roughly two hundred\ncompletely untested lines could be added before anything complains. The one file\nthat forwards crash reports to the monitoring service is outside the measured\narea entirely, so deleting it would silently switch off error reporting with\nnothing turning red. And the file that connects the site to Google's anti-spam\ncheck is deliberately skipped on the grounds that a browser test covers it, but\nthat browser test always runs with a fake anti-spam check, so nothing exercises\nthe real one.\n\nThere is also one thing that is not about measurement at all, and it is the\nreason to stop before running anything. The command you type before pushing,\n`bun run check`, now runs the whole test suite. One of those tests empties the\nsignup table whenever a database address is configured, and it does not check\nwhether that database is a throwaway one. If your local settings file points at\nthe shared development database, typing that command deletes its rows. I have\nnot run it anywhere that could reach a real database, and I have not fixed\nanything yet, because the process here is that you decide what gets fixed before\nI touch it.\n\nWhat you have to decide: for each of the seventeen findings, whether it gets\nfixed now, deferred to a ticket, or dismissed. The reply format is in the\ndigest below.\n"
+comment_id: 5783881003
