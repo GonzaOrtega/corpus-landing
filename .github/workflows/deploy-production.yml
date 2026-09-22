@@ -79,6 +79,14 @@ jobs:
       - name: Pull Production environment and build once
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          # Source maps; see the same block in preview.yml for why these come
+          # from Actions and not from Vercel.
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+          # Name the release after the commit whose maps are uploaded instead
+          # of letting the plugin infer one from the build environment.
+          SENTRY_RELEASE: ${{ inputs.sha }}
         run: |
           vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
           vercel build --prod --yes --token="$VERCEL_TOKEN"
