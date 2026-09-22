@@ -26,16 +26,19 @@ timelines is asserted in the browser by Playwright.
 
 ```bash
 bun run test            # Vitest, no coverage (fast feedback)
-bun run test:coverage   # Vitest with the coverage gate — what the CI `test` job runs
+bun run test:coverage   # Vitest with the coverage gate — local and pre-merge only
 bun run test:e2e        # Containerized Playwright
 bun run test:all        # check + test:coverage + test:e2e
 ```
 
 `bun run test:coverage` writes `coverage/` (git-ignored): `index.html` for
 browsing, `lcov.info`, `coverage-summary.json` and `coverage-summary.txt`. The
-CI `test` job uploads the same files as the `coverage-<run>` artifact and
-appends the text summary to the job page. The report contains source paths and
-hit counts only, never an environment value.
+report contains source paths and hit counts only, never an environment value.
+
+No workflow runs this gate. The CI `test` job runs `bun run test`, so the
+thresholds below bind locally and before merge, not on a pull request. Treat
+them as a discipline this repository keeps, not one it enforces automatically;
+wiring the gate into `.github/workflows/ci.yml` is what would change that.
 
 `server-only` is aliased to `tests/setup/server-only.stub.ts` in
 `vitest.config.ts`, mirroring the empty module Next resolves under its
@@ -86,7 +89,7 @@ adds the integration suite on top, so CI can only measure higher.
 | `**/*.test.{ts,tsx}`, Vitest defaults | Tests are not the thing measured |
 | `src/core/testing/early-access-signup-repository.contract.ts` | A Vitest suite exported as a function, not a module under test |
 | `src/features/landing/motion/**`, `src/features/landing/ui/living-lexicon.client.tsx`, `src/features/early-access/ui/recaptcha-bridge.tsx` | Browser-only: their behaviour lives in effects and GSAP timelines that never run under static markup. Covered by `tests/e2e/landing-motion.spec.ts`, `living-lexicon.spec.ts`, `homepage.spec.ts` and `signup.spec.ts`. Adding a file here requires a Playwright spec for it. |
-| `src/adapters/db/drizzle-early-access-signup.repository.ts` **only when `DATABASE_URL` is unset** | Its integration suite self-skips without a database, which would report the file at ~0% locally for a reason unrelated to the change under test. `bun run test:coverage` prints a one-line notice when this applies. CI always provisions a Neon branch and never takes this path. |
+| `src/adapters/db/drizzle-early-access-signup.repository.ts` **only when `DATABASE_URL` is unset** | Its integration suite self-skips without a database, which would report the file at ~0% locally for a reason unrelated to the change under test. `bun run test:coverage` prints a one-line notice when this applies. Set `DATABASE_URL` to measure it — see "Measuring the Drizzle repository" below. |
 
 Client components that render on the server but act in the browser
 (`signup-form.tsx`, `manage-token-bridge.tsx`, `cloze-demo.tsx`) stay measured:
@@ -99,15 +102,20 @@ Vitest prints one `ERROR: Coverage for <metric> (<measured>%) does not meet
 "<glob>" threshold (<n>%)` line per breached gate, after the test results, and
 exits non-zero. The per-file table above it names the uncovered lines. Locally,
 `coverage/index.html` shows the same file with the missed branches highlighted.
-In CI the table is in the job log, the summary is on the job page, and the
-full HTML report is in the `coverage-<run>` artifact.
+There is no CI equivalent: the required `test` check runs `bun run test`
+without coverage, so a breached gate is something you see locally or not at
+all.
 
-## Reproducing the CI-complete measurement locally
+## Measuring the Drizzle repository
 
-The only difference between a local run and CI is the Drizzle repository. To
-measure it here, start the E2E database and point the driver at the local
-proxy, exactly as `docs/verification/definition-of-done.md` documents for the
-integration suite:
+A coverage run without `DATABASE_URL` excludes the Drizzle repository, because
+its suite self-skips and would otherwise report ~0% and fail the adapters
+threshold for a reason unrelated to the change under test. That exclusion is
+the one gap between an ordinary run and a complete one. No workflow closes it,
+since no workflow runs the coverage gate at all, so closing it is a local step:
+start the E2E database and point the driver at the local proxy, exactly as
+`docs/verification/definition-of-done.md` documents for the integration
+suite:
 
 ```sh
 docker compose up -d db proxy

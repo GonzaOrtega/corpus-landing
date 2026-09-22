@@ -109,13 +109,18 @@ excludes them by explicit signal (`CI`, `NODE_ENV=test`, or
 ## Database lifecycle and isolation
 
 `test` creates `ci-<run-id>-<attempt>` from Neon `development`, applies
-migrations using the direct `db_url`, runs Vitest with coverage using the pooled
-URL (`bun run test:coverage`, which fails the job below the per-layer thresholds
-in `vitest.config.ts`), publishes the coverage report as the `coverage-<run>`
-workflow artifact, and deletes the branch in an `always()` cleanup step. The
-artifact holds source paths and hit counts only — never a database URL or any
-other environment value. A one-day expiration is an independent fallback if a
-runner is terminated before cleanup.
+migrations using the direct `db_url`, runs Vitest using the pooled URL
+(`bun run test`), and deletes the branch in an `always()` cleanup step. A
+one-day expiration is an independent fallback if a runner is terminated before
+cleanup.
+
+It runs `bun run test`, not `bun run test:coverage`: no workflow in this
+repository invokes the coverage gate or publishes a coverage artifact. The
+per-layer thresholds in `vitest.config.ts` are a local and pre-merge gate, and
+the required `test` check does not enforce them. Wiring them into this job
+would make the gate binding on every pull request, and would also make the
+Drizzle repository measurable, which today needs a local database — see
+"Measuring the Drizzle repository" in [Testing](../quality/testing.md).
 
 `preview` creates or reuses `pr-<number>` from `development`, then explicitly
 refreshes that branch's expiration to seven days from the current workflow run

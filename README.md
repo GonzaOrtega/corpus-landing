@@ -135,7 +135,7 @@ settings, or protected GitHub Environments.
 
 ```bash
 bun run test            # Vitest unit, component, and integration suites
-bun run test:coverage   # The same suites with per-layer coverage gates (what CI's `test` job runs)
+bun run test:coverage   # The same suites with per-layer coverage gates (local gate; CI runs `bun run test`)
 bun run test:e2e        # Containerized Playwright browser flows
 bun run test:all        # Static checks, Vitest with coverage, then containerized Playwright
 ```

@@ -32,9 +32,10 @@ authorized Vercel Cron maintenance entry point.
   registry or assignment if one is configured for your environment.
 - `bun run check` — typecheck + lint + stack conformance (the birth-certificate gate)
 - `bun run test` — Vitest
-- `bun run test:coverage` — Vitest with the per-layer coverage gates (what the CI
-  `test` job runs; report in `coverage/`). Strategy, thresholds and the ratchet
-  rule: `docs/quality/testing.md`.
+- `bun run test:coverage` — Vitest with the per-layer coverage gates (report in
+  `coverage/`). Local and pre-merge only: no workflow runs it, and the required
+  `test` check runs `bun run test`. Strategy, thresholds and the ratchet rule:
+  `docs/quality/testing.md`.
 - `bun run test:e2e` — containerized Playwright
 - `bun run test:all` — check + Vitest with coverage + containerized Playwright
 - `bunx drizzle-kit generate` — migrations (never hand-edit the DB)

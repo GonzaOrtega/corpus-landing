@@ -6,14 +6,15 @@ const root = fileURLToPath(new URL('.', import.meta.url)).replace(/\/$/, '');
 
 // The real-Postgres repository suite self-skips without DATABASE_URL, which
 // would report the Drizzle repository at ~0% on a developer machine and fail
-// the adapters threshold for a reason unrelated to the change under test. CI
-// always provisions a disposable Neon branch, so CI never takes this path and
-// the gate stays complete where it matters.
+// the adapters threshold for a reason unrelated to the change under test.
+// Setting DATABASE_URL measures it; docs/quality/testing.md ("Measuring the
+// Drizzle repository") has the local recipe. No workflow runs this gate, so
+// nothing closes the exclusion automatically.
 const databaseConfigured = Boolean(process.env.DATABASE_URL);
 const drizzleRepositoryPath = 'src/adapters/db/drizzle-early-access-signup.repository.ts';
 if (process.argv.includes('--coverage') && !databaseConfigured) {
   console.warn(
-    `[coverage] DATABASE_URL is unset: excluding ${drizzleRepositoryPath} (its integration suite is skipped). CI measures it.`,
+    `[coverage] DATABASE_URL is unset: excluding ${drizzleRepositoryPath} (its integration suite is skipped). Set DATABASE_URL to measure it.`,
   );
 }
 
