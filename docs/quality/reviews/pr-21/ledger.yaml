@@ -51,7 +51,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
-      []
+      - 33ec4276428b7cac43636f9be09556474d6a8407
     issue: null
   - id: R-02
     round: 1
@@ -187,7 +187,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
-      []
+      - 9b3c185c98542848b2e1919bf55d9f381a8d141c
     issue: null
   - id: R-07
     round: 1
@@ -213,7 +213,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
-      []
+      - 0f393f72f8abedb975d3d3d1f26f779230b1bafe
     issue: null
   - id: R-08
     round: 1
@@ -313,7 +313,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
-      []
+      - 47667086774579e6b310cec68fd409b2eb0762d8
     issue: null
   - id: R-12
     round: 1
@@ -338,7 +338,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
-      []
+      - b6ec715beb460023b5835a9c5705a8cef6e9f44e
     issue: null
   - id: R-13
     round: 1
@@ -363,7 +363,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
-      []
+      - 97999e4eaa2278dfd3a68bc4bbc53b3764cbb42a
     issue: null
   - id: R-14
     round: 1
@@ -413,7 +413,7 @@ findings:
     verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
-      []
+      - 3f0eadd0bebee8ed37c35519c4dc421017b26494
     issue: null
   - id: R-16
     round: 1
