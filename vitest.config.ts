@@ -127,8 +127,21 @@ export default defineConfig({
       // list requires an e2e spec per entry and no spec exercises the error
       // boundary — an honest lower number beats a quiet exclusion.
       thresholds: {
-        // Catch-all for any file the globs below do not claim, so a new
-        // directory can never ship unmeasured.
+        // These four bare keys are NOT scoped to files the more specific
+        // globs below leave unclaimed: Vitest's threshold resolver builds
+        // this "global" bucket from every measured file regardless of glob
+        // membership (verified against the installed
+        // @vitest/coverage-v8's resolveThresholds — see the comment
+        // "Global threshold is for all files, even if they are included by
+        // glob patterns" in its source). A wholly untested new top-level
+        // directory is averaged into a global that already sits well above
+        // 80%, so this alone would not fail (R-06). What actually keeps a
+        // new directory or root file from shipping unmeasured is
+        // tests/unit/coverage-thresholds.test.ts, which fails unless every
+        // top-level src/ directory and every standalone file in
+        // `coverage.include` below has its own entry in this object. These
+        // four keys stay as a floor under everything, including files that
+        // glob does cover.
         lines: 80,
         branches: 80,
         functions: 80,

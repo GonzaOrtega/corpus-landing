@@ -19,7 +19,7 @@ manual for meeting them.
 | Ops script | `scripts/launch-email.test.ts` | Argument parsing and dispatch to `dry-run`/`production`, exhaustively; the `import.meta.main` entry body is 2 lines and untestable in-process (true only for the real process entry) | `vi.mock` of `src/composition/ops/launch.wiring` — `getLaunchOperations` itself is covered by `launch.wiring.test.ts` |
 | reCAPTCHA bridge | `src/features/early-access/ui/recaptcha-bridge.test.tsx` | Script injection, reuse of an already-present script tag, the load/error handlers, and the "CAPTCHA is unavailable" failure path — asserted directly rather than through Playwright, since the browser suite always runs with the fake CAPTCHA switch on and so never mounts this component (see the exclusions table) | Hand-stubbed `document`/`window` globals, no jsdom — same technique as `tests/unit/instrumentation-client.test.ts` |
 | Browser behaviour | `tests/e2e/*.spec.ts` (Playwright) | Motion, the Living Lexicon, signup and management journeys, axe, prototype parity | Local Postgres behind a Neon HTTP proxy, fake CAPTCHA and email |
-| Configuration regressions | `tests/unit/*.test.ts` | Workflow, compose, Lighthouse and font-asset invariants | — |
+| Configuration regressions | `tests/unit/*.test.ts` | Workflow, compose, Lighthouse and font-asset invariants; that every top-level `src/` directory and every standalone root file in `coverage.include` has its own coverage threshold glob (R-06) | — |
 
 There is deliberately no jsdom or testing-library layer. Server components are
 asserted on their static markup; behaviour that only exists in effects or GSAP
@@ -74,13 +74,26 @@ them.
 | `sentry.server.config.ts` | 80 | 100 / 100 / 100 / 100 |
 | `sentry.edge.config.ts` | 80 | 100 / 100 / 100 / 100 |
 | `scripts/launch-email.ts` | 80 | 86 / 93 / 100 / 88 |
-| anything else | 80 | 80 / 80 / 80 / 80 (catch-all so a new directory is never unmeasured) |
+| anything else | 80 | 80 / 80 / 80 / 80 (a floor under every measured file — see below, it is not what protects a new directory) |
 
 Enforced values are `max(target, floor(measured))` at the time the gate was
 introduced (2026-09-20, 454 tests). The adapters row accounts for the Drizzle
 repository, which only CI measures: its unit suite alone leaves it at 100 / 85 /
 100 / 98, and the aggregate with that lower bound is 100 / 92 / 100 / 99. CI
 adds the integration suite on top, so CI can only measure higher.
+
+The bare `lines`/`branches`/`functions`/`statements` keys are **not** scoped
+to files the glob rows above leave unclaimed: Vitest's threshold resolver
+builds that bucket from every measured file regardless of glob membership
+(`resolveThresholds` in the installed `@vitest/coverage-v8`, whose own
+comment reads "Global threshold is for all files, even if they are included
+by glob patterns"). A wholly untested new top-level directory is averaged
+into a global that already sits well above 80% from `src/core/**` and
+friends, so on its own this row would not fail (R-06). What actually
+prevents a new directory or root file from shipping unmeasured is
+`tests/unit/coverage-thresholds.test.ts`: it fails unless every top-level
+`src/` directory and every standalone file named in `coverage.include` has
+its own row in the table above.
 
 ### Ratchet rule
 
