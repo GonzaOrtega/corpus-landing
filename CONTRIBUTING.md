@@ -97,7 +97,7 @@ Before you open a PR:
 
 ```bash
 bun run check           # typecheck + lint + stack conformance
-bun run test:coverage   # Vitest with the per-layer coverage gates (CI does not run this)
+bun run test:coverage   # Vitest with the per-layer coverage gates (also inside `check`)
 bun run test:e2e        # Playwright, in Docker
 ```
 

@@ -12,11 +12,14 @@ describe('E2E runtime configuration', () => {
         .filter((name) => name === 'test' || name.startsWith('test:'))
         .sort(),
     ).toEqual(['test', 'test:all', 'test:coverage', 'test:e2e']);
+    // `test:all` does not name `test:coverage`: `check` ends with it, so
+    // listing it here would run the whole suite with coverage twice.
     expect(scripts).toMatchObject({
       test: 'vitest run',
       'test:coverage': 'vitest run --coverage',
       'test:e2e': `sh -c 'trap "docker compose down" EXIT; docker compose run --rm e2e'`,
-      'test:all': 'bun run check && bun run test:coverage && bun run test:e2e',
+      'test:all': 'bun run check && bun run test:e2e',
+      check: 'bun run typecheck && bun run lint && bun run stack:check && bun run test:coverage',
     });
     for (const retired of ['e2e', 'e2e:local', 'e2e:migrate']) {
       expect(scripts).not.toHaveProperty(retired);

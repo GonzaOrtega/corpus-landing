@@ -135,9 +135,9 @@ settings, or protected GitHub Environments.
 
 ```bash
 bun run test            # Vitest unit, component, and integration suites
-bun run test:coverage   # The same suites with per-layer coverage gates (local gate; CI runs `bun run test`)
+bun run test:coverage   # The same suites with per-layer coverage gates (also part of `check`)
 bun run test:e2e        # Containerized Playwright browser flows
-bun run test:all        # Static checks, Vitest with coverage, then containerized Playwright
+bun run test:all        # check (which includes coverage), then containerized Playwright
 ```
 
 Pull requests expose six stable checks: `check`, `test`, `preview`, `e2e`,
@@ -150,10 +150,12 @@ HTTP proxy. Email and CAPTCHA remain fake. See
 
 `bun run test:coverage` enforces per-layer coverage thresholds (core 100%,
 adapters and composition 90%+, delivery layers 80%+) and writes the lcov/HTML
-report to `coverage/`. It is a local and pre-merge gate: no workflow runs it,
-so the required `test` check does not enforce it and no report is published as
-a workflow artifact. The thresholds, the exclusion list and the rule for
-raising them are in [Testing](docs/quality/testing.md).
+report to `coverage/`. It runs in two places: inside `bun run check`, so a
+breached threshold is caught before you push, and in the required `test` check,
+which is the only job with a database and therefore the only place the Drizzle
+repository is measured rather than excluded. No report is published as a
+workflow artifact. The thresholds, the exclusion list and the rule for raising
+them are in [Testing](docs/quality/testing.md).
 
 ## Database schema and migrations
 
