@@ -123,3 +123,55 @@ describe('disposable-branch migration configuration', () => {
     expect(refresh.run).toContain('--data "$payload"');
   });
 });
+
+/**
+ * R-07/R-22: the `test` job is designated as the only complete coverage
+ * measurement, because it is the only job with a database. What makes that
+ * true is a single `DATABASE_URL_TEST:` line — delete it and
+ * `vitest.config.ts` excludes the Drizzle repository, the remaining adapter
+ * files score full marks, the `src/adapters/**` gate still passes, and the
+ * only trace is one `console.warn` in the build log. The repo already pins
+ * workflow env this way above and package scripts in
+ * `tests/unit/e2e-runtime-config.test.ts`; this step had no equivalent.
+ */
+describe('coverage measurement configuration', () => {
+  const guardName = 'Require the disposable Neon branch before measuring coverage';
+  const pooledOutput = '${{ steps.neon.outputs.db_url_pooled }}';
+
+  const testJobSteps = (): Array<WorkflowStep & { if?: string }> => {
+    const definition = safeLoad(
+      readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8'),
+    ) as Workflow;
+    return definition.jobs.test.steps;
+  };
+
+  it('hands the disposable Neon branch to the coverage run under DATABASE_URL_TEST', () => {
+    const coverage = testJobSteps().filter((step) => step.run?.trim() === 'bun run test:coverage');
+
+    expect(coverage).toHaveLength(1);
+    expect(coverage[0].env?.DATABASE_URL_TEST).toBe(pooledOutput);
+  });
+
+  it('fails the job on a missing DATABASE_URL_TEST, not only on its neighbours', () => {
+    const guard = testJobSteps().find((step) => step.name === guardName);
+
+    expect(guard).toBeDefined();
+    // Same expression as the coverage step: the guard must fail for the same
+    // reason the measurement would degrade, not for a variable that merely
+    // shares a source today.
+    expect(guard?.env?.DATABASE_URL_TEST).toBe(pooledOutput);
+    expect(guard?.run).toContain('-z "$DATABASE_URL_TEST"');
+  });
+
+  it('runs that guard before coverage, and unconditionally', () => {
+    const steps = testJobSteps();
+    const guardIndex = steps.findIndex((step) => step.name === guardName);
+    const coverageIndex = steps.findIndex((step) => step.run?.trim() === 'bun run test:coverage');
+
+    expect(guardIndex).toBeGreaterThanOrEqual(0);
+    expect(coverageIndex).toBeGreaterThan(guardIndex);
+    // Unlike the migrate/cleanup steps around it, this one carries no `if:`.
+    // A guard that can skip itself is not a guard.
+    expect(steps[guardIndex].if).toBeUndefined();
+  });
+});
