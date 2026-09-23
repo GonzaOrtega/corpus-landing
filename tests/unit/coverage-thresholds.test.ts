@@ -1,4 +1,4 @@
-import { readdirSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import vitestConfig from '../../vitest.config';
 
@@ -50,6 +50,65 @@ const AGREED_TARGETS: Record<string, number> = {
   'next.config.ts': 80,
   'scripts/launch-email.ts': 80,
 };
+
+/**
+ * Root-level `.ts` files that are build or test tooling rather than code the
+ * deployment runs, so they are deliberately outside the measured set. Adding
+ * a root file means either measuring it or naming it here — the point of
+ * R-18 is that neither can happen by omission.
+ */
+const NON_PRODUCTION_ROOT_FILES = new Set([
+  'drizzle.config.ts', // Drizzle Kit CLI input
+  'playwright.config.ts', // E2E runner config
+  'vitest.config.ts', // this gate's own config
+]);
+
+/**
+ * Top-level directories that hold no code the deployment runs. A directory
+ * that is not here and not claimed by a threshold glob fails the check below,
+ * which is what stops a brand-new `lib/` or `server/` from shipping
+ * unmeasured (R-18). `scripts/` is measured per file rather than wholesale —
+ * `scripts/launch-email.ts` has its own threshold and the stack-conformance
+ * tool is not shipped — so it is named here and pinned by the root-file rule.
+ */
+const NON_PRODUCTION_DIRECTORIES = new Set([
+  '.claude',
+  '.github',
+  'docker',
+  'docs',
+  'drizzle',
+  'node_modules',
+  'coverage',
+  'ops',
+  'public',
+  'scripts',
+  'tests',
+]);
+
+const repoRoot = new URL('../../', import.meta.url);
+
+const isSourceFile = (name: string) =>
+  (name.endsWith('.ts') || name.endsWith('.tsx')) &&
+  !name.endsWith('.test.ts') &&
+  !name.endsWith('.test.tsx') &&
+  !name.endsWith('.spec.ts') &&
+  !name.endsWith('.d.ts');
+
+/** Every source file under `relative`, recursively, as repo-relative paths. */
+function sourceFilesUnder(relative: string): string[] {
+  const absolute = new URL(relative, repoRoot);
+  if (!existsSync(absolute)) return [];
+  if (statSync(absolute).isFile()) return isSourceFile(relative) ? [relative] : [];
+
+  const found: string[] = [];
+  for (const entry of readdirSync(absolute, { withFileTypes: true })) {
+    if (entry.name === 'node_modules') continue;
+    const child = `${relative.replace(/\/$/, '')}/${entry.name}`;
+    if (entry.isDirectory()) found.push(...sourceFilesUnder(`${child}/`));
+    else if (isSourceFile(entry.name)) found.push(child);
+  }
+  return found;
+}
 
 function coverageConfig(): Record<string, unknown> {
   const coverage = vitestConfig.test?.coverage;
@@ -127,6 +186,57 @@ describe('coverage threshold globs (R-06)', () => {
       for (const [metric, value] of Object.entries(metrics)) {
         expect(value, `${glob} ${metric}`).toBeGreaterThanOrEqual(AGREED_TARGETS[glob]);
       }
+    }
+  });
+
+  it('measures every root-level file the deployment runs, or names it as tooling', () => {
+    // Derived from the filesystem, NOT from coverage.include — reading the
+    // list out of the config it is checking is what made the earlier version
+    // pass when a root file was simply never added to it (R-18).
+    const rootFiles = readdirSync(repoRoot, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && isSourceFile(entry.name))
+      .map((entry) => entry.name)
+      .filter((name) => !NON_PRODUCTION_ROOT_FILES.has(name))
+      .sort();
+    const measured = new Set(coverageIncludeGlobs());
+
+    expect(rootFiles.length).toBeGreaterThan(0);
+    for (const file of rootFiles) {
+      expect(
+        measured.has(file),
+        `"${file}" is a root-level production file: add it to coverage.include, or to NON_PRODUCTION_ROOT_FILES if the deployment never runs it`,
+      ).toBe(true);
+    }
+  });
+
+  it('claims every top-level directory that holds code the deployment runs', () => {
+    const globs = specificThresholdGlobs();
+    const topLevel = readdirSync(repoRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+      .map((entry) => entry.name)
+      .filter((name) => !NON_PRODUCTION_DIRECTORIES.has(name))
+      .sort();
+
+    for (const dir of topLevel) {
+      const claimed = [...globs].some((glob) => glob.startsWith(`${dir}/`));
+      expect(
+        claimed,
+        `top-level "${dir}/" contains source files but no threshold glob claims it; add one, or add it to NON_PRODUCTION_DIRECTORIES`,
+      ).toBe(true);
+    }
+  });
+
+  it('never keeps a threshold glob that matches no file on disk', () => {
+    // R-23: a glob matching nothing yields an empty coverage map, which
+    // reports every metric as fully covered and passes silently. The stale
+    // key survives every other check in this file, because they all ask
+    // "does each measured file have a rule" and never the reverse.
+    for (const glob of specificThresholdGlobs()) {
+      const target = glob.endsWith('/**') ? `${glob.slice(0, -2)}` : glob;
+      expect(
+        sourceFilesUnder(target).length,
+        `threshold glob "${glob}" matches no source file: it passes vacuously, so delete it or fix the path`,
+      ).toBeGreaterThan(0);
     }
   });
 });
