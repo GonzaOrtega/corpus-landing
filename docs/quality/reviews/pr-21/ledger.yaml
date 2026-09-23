@@ -1,6 +1,6 @@
 version: 1
 pr: 21
-status: awaiting-triage
+status: fixing
 rounds:
   - "n": 1
     head: 746bb0781414b224ddf374a3e6cbda1c665d8fd5
@@ -244,7 +244,7 @@ findings:
         association: null
         url: null
     verdict: fix
-    verdict_by: auto
+    verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
       - 0f393f72f8abedb975d3d3d1f26f779230b1bafe
@@ -519,7 +519,7 @@ findings:
         association: null
         url: null
     verdict: fix
-    verdict_by: auto
+    verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
       []
@@ -544,7 +544,7 @@ findings:
         association: null
         url: null
     verdict: fix
-    verdict_by: auto
+    verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
       []
@@ -569,7 +569,7 @@ findings:
         association: null
         url: null
     verdict: later
-    verdict_by: auto
+    verdict_by: human
     reason: Below the severity floor (important)
     fix_commits:
       []
@@ -594,7 +594,7 @@ findings:
         association: null
         url: null
     verdict: later
-    verdict_by: auto
+    verdict_by: human
     reason: Below the severity floor (important)
     fix_commits:
       []
@@ -619,7 +619,7 @@ findings:
         association: null
         url: null
     verdict: fix
-    verdict_by: auto
+    verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
       []
@@ -650,7 +650,7 @@ findings:
         association: null
         url: null
     verdict: fix
-    verdict_by: auto
+    verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
       []
@@ -675,7 +675,7 @@ findings:
         association: null
         url: null
     verdict: fix
-    verdict_by: auto
+    verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
       []
@@ -700,7 +700,7 @@ findings:
         association: null
         url: null
     verdict: fix
-    verdict_by: auto
+    verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
       []
@@ -731,7 +731,7 @@ findings:
         association: null
         url: null
     verdict: fix
-    verdict_by: auto
+    verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
       []
@@ -756,7 +756,7 @@ findings:
         association: null
         url: null
     verdict: later
-    verdict_by: auto
+    verdict_by: human
     reason: Below the severity floor (important)
     fix_commits:
       []
@@ -781,7 +781,7 @@ findings:
         association: null
         url: null
     verdict: fix
-    verdict_by: auto
+    verdict_by: human
     reason: "In scope, in the threat model, important"
     fix_commits:
       []
@@ -806,7 +806,7 @@ findings:
         association: null
         url: null
     verdict: later
-    verdict_by: auto
+    verdict_by: human
     reason: Below the severity floor (important)
     fix_commits:
       []
@@ -831,7 +831,7 @@ findings:
         association: null
         url: null
     verdict: later
-    verdict_by: auto
+    verdict_by: human
     reason: Below the severity floor (important)
     fix_commits:
       []
@@ -856,7 +856,7 @@ findings:
         association: null
         url: null
     verdict: later
-    verdict_by: auto
+    verdict_by: human
     reason: Below the severity floor (important)
     fix_commits:
       []
@@ -881,7 +881,7 @@ findings:
         association: null
         url: null
     verdict: later
-    verdict_by: auto
+    verdict_by: human
     reason: Below the severity floor (important)
     fix_commits:
       []
@@ -906,7 +906,7 @@ findings:
         association: null
         url: null
     verdict: later
-    verdict_by: auto
+    verdict_by: human
     reason: Below the severity floor (important)
     fix_commits:
       []
@@ -931,7 +931,7 @@ findings:
         association: OWNER
         url: "https://github.com/GonzaOrtega/corpus-landing/pull/21#issuecomment-5784084370"
     verdict: later
-    verdict_by: auto
+    verdict_by: human
     reason: "Outside the gate's scope"
     fix_commits:
       []
@@ -956,7 +956,7 @@ findings:
         association: OWNER
         url: "https://github.com/GonzaOrtega/corpus-landing/pull/21#issuecomment-5784141004"
     verdict: later
-    verdict_by: auto
+    verdict_by: human
     reason: "Outside the gate's scope"
     fix_commits:
       []
