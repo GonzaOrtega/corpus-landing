@@ -36,7 +36,7 @@ done:                        # evidence the ledger must carry on a fresh SHA bef
   - id: "depcruise"
     how: "bunx depcruise --config .dependency-cruiser.json src app --output-type err (spec §39 item 4, hexagonal boundaries)"
   - id: "coverage-with-db"
-    how: "docker compose up -d db proxy; docker compose run --rm --no-deps e2e sh -c \"bun tests/e2e/support/migrate.mjs\"; then run bun run test:coverage with DATABASE_URL, DATABASE_URL_UNPOOLED, E2E_NEON_HTTP_ENDPOINT and the NODE_OPTIONS shim set per docs/quality/testing.md 'Measuring the Drizzle repository' (spec §39 item 6)"
+    how: "docker compose up -d db proxy; docker compose run --rm --no-deps e2e sh -c \"bun tests/e2e/support/migrate.mjs\"; then run bun run test:coverage with DATABASE_URL_TEST (the variable the integration suite reads since R-01; without it the suite self-skips and this evidence would be false), plus DATABASE_URL, DATABASE_URL_UNPOOLED, E2E_NEON_HTTP_ENDPOINT and the NODE_OPTIONS shim, all set per docs/quality/testing.md 'Measuring the Drizzle repository' (spec §39 item 6)"
   - id: "e2e"
     how: "bun run test:e2e (containerized Playwright including the axe pass; spec §39 items 7, 8)"
   - id: "lighthouse"
