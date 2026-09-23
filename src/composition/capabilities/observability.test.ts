@@ -1,7 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { NoopErrorReporterAdapter } from '../../adapters/observability/noop-error-reporter.adapter';
 import { SentryErrorReporterAdapter } from '../../adapters/observability/sentry-error-reporter.adapter';
-import { buildServerSentryOptions } from '../../config/sentry-options';
 import { provideObservability } from './observability';
 
 const ORIGINAL = { ...process.env };
@@ -51,22 +51,19 @@ describe('provideObservability', () => {
   });
 
   /**
-   * R-11: the choice must follow the SDK's own runtime rule. Reading the
-   * literal `process.env.NEXT_PUBLIC_SENTRY_DSN` here would be inlined at
-   * build time, so the two could disagree in a deployed build.
+   * R-11: the choice must follow the SDK's own runtime rule. Next.js inlines
+   * the literal `process.env.NEXT_PUBLIC_SENTRY_DSN` at build time, so a
+   * provider that read it could disagree with the SDK in a deployed build.
+   * Vitest does not inline anything, so no runtime assertion can see that;
+   * the source is checked instead.
    */
-  it.each([
-    ['a developer machine with no DSN', {}],
-    ['a developer machine with a DSN', { NEXT_PUBLIC_SENTRY_DSN: DSN }],
-    ['a deployment with a DSN', { VERCEL_ENV: 'production', NEXT_PUBLIC_SENTRY_DSN: DSN }],
-    ['the pipeline with a DSN', { CI: 'true', NEXT_PUBLIC_SENTRY_DSN: DSN }],
-  ])('agrees with the Sentry SDK on whether to report: %s', (_label, env) => {
-    process.env = { ...developerMachine, ...env };
-    const sdkEnabled = buildServerSentryOptions(process.env).enabled;
+  it('never reads the build-time-inlined DSN literal', () => {
+    const source = readFileSync(new URL('./observability.ts', import.meta.url), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/.*$/gm, '');
 
-    expect(provideObservability().errorReporter instanceof SentryErrorReporterAdapter).toBe(
-      sdkEnabled,
-    );
+    expect(source).not.toMatch(/process\.env\.NEXT_PUBLIC_SENTRY_DSN/);
+    expect(source).toMatch(/buildServerSentryOptions\(process\.env\)/);
   });
 
   it('never throws, so a boundary can always obtain a reporter before wiring', () => {

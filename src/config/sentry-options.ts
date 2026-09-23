@@ -164,18 +164,22 @@ const DENIED_KEY_PATTERN =
  * go before emails so the address-shaped `pass@host` remainder is not
  * mistaken for an email.
  *
- * Every pattern that starts on a character run is anchored with a lookbehind
- * that forbids starting in the middle of that run (R-41). Without it an
- * unanchored `[chars]+@` retries from every position of a long run and turns
- * a 40 KB line into seconds of work inside the request that is reporting it.
+ * Every pattern that scans a character run from each start position has
+ * that run bounded (R-41): an unbounded `[chars]+@` retries the whole run
+ * from every position and turned a 40 KB line into seconds of work inside
+ * the request that is reporting it. The bounds are real limits — a URL
+ * scheme is at most 32 characters, an email local part at most 64 (RFC
+ * 5321) — and a longer run still has its tail matched and redacted. No
+ * lookbehind anchors: they would skip a match glued to a `-`, a digit or a
+ * previous match (`-https://u:p@h`, `a@b.com-c@d.com`).
  *
  * The query pattern is anchored on `^` as well as `[?&]`: a bare string like
  * `token=abc&x=1` needs the same first-pair match a `?`-prefixed query would
  * get (R-14).
  */
-const DATABASE_URL_PATTERN = /(?<![a-z0-9+.-])postgres(?:ql)?:\/\/[^\s'"]+/gi;
-const URL_CREDENTIALS_PATTERN = /((?<![a-z0-9+.-])[a-z][a-z0-9+.-]{0,31}:\/\/)[^\s/@]+@/gi;
-const EMAIL_PATTERN = /(?<![A-Z0-9._%+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+const DATABASE_URL_PATTERN = /postgres(?:ql)?:\/\/[^\s'"]+/gi;
+const URL_CREDENTIALS_PATTERN = /([a-z][a-z0-9+.-]{0,31}:\/\/)[^\s/@]+@/gi;
+const EMAIL_PATTERN = /[A-Z0-9._%+-]{1,64}@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const SENSITIVE_QUERY_PATTERN =
   /((?:^|[?&])(?:key|token|secret|api_key|apikey|access_token|password|email)=)[^&\s#'"]*/gi;
 
@@ -186,14 +190,23 @@ const SENSITIVE_QUERY_PATTERN =
  * leaked token is full access to that subscriber's record, since there are
  * no accounts or passwords (R-01).
  *
- * Only a `#` that belongs to a URL or a path is redacted: one whose
- * whitespace-delimited token has a `/` before it (`https://x/y#t`,
- * `/early-access/manage#t`). A bare `#` is left alone, so a clicked
- * `button#submit`, `Minified React error #418` and `#fff` stay readable
- * (R-32/R-42). Done per token rather than with one regex so the work stays
- * linear in the length of the text.
+ * Two rules, either of which redacts:
+ * - a `#` that belongs to a URL or a path — one whose whitespace-delimited
+ *   token has a `/` before it (`https://x/y#t`, `/early-access/manage#t`),
+ *   whatever follows it;
+ * - a `#` (or its encoding `%23`) followed by a token-shaped run of 20 or
+ *   more base64url characters, wherever it appears. The token is
+ *   `randomBytes(...).toString('base64url')`, and it also surfaces with no
+ *   path in front: the bare `location.hash`, a `'#<token>' is not a valid
+ *   selector` DOMException, a console line.
+ *
+ * Anything else is left alone, so a clicked `button#submit`, `Minified
+ * React error #418` and `#fff` stay readable (R-32/R-42). The path rule is
+ * applied per token rather than with one regex so the work stays linear in
+ * the length of the text.
  */
 const TEXT_TOKEN_PATTERN = /[^\s'"]+/g;
+const TOKEN_SHAPED_FRAGMENT_PATTERN = /(#|%23)[A-Za-z0-9_-]{20,}/gi;
 
 function redactUrlFragment(token: string): string {
   const hash = token.indexOf('#');
@@ -211,7 +224,8 @@ export function redactText(value: string): string {
     .replace(URL_CREDENTIALS_PATTERN, '$1[credentials]@')
     .replace(EMAIL_PATTERN, '[email]')
     .replace(SENSITIVE_QUERY_PATTERN, '$1[redacted]')
-    .replace(TEXT_TOKEN_PATTERN, redactUrlFragment);
+    .replace(TEXT_TOKEN_PATTERN, redactUrlFragment)
+    .replace(TOKEN_SHAPED_FRAGMENT_PATTERN, '$1[redacted]');
 }
 
 /**
@@ -338,10 +352,27 @@ export function scrubEvent<E extends Event>(event: E): E {
 const PINO_LOG_ORIGIN = 'auto.log.pino';
 
 /**
+ * The metadata the SDK and its Pino integration add to a log record
+ * (`@sentry/core` logs/internal, `@sentry/node-core` integrations/pino).
+ * Named one by one rather than by prefix: the integration spreads the log
+ * line's own fields first, so a prefix would also admit a caller's field
+ * that happens to be called `sentry.something`.
+ */
+const SDK_LOG_ATTRIBUTES = new Set([
+  'sentry.origin',
+  'sentry.environment',
+  'sentry.release',
+  'sentry.sdk.name',
+  'sentry.sdk.version',
+  'sentry.trace.parent_span_id',
+  'pino.logger.level',
+]);
+
+/**
  * Pino records arrive with every field of the log line as an attribute, from
  * any pino logger in the process — not only the allowlisting adapter. As with
  * `contexts.pino`, they are re-filtered against the logger allowlist, keeping
- * only the SDK's own `sentry.*`/`pino.*` metadata besides (R-10). Console
+ * only the SDK's own metadata besides (R-10). Console
  * logs keep the denylist walk: their `sentry.message.parameter.N`
  * attributes are the message itself.
  */
@@ -349,7 +380,7 @@ function allowlistPinoAttributes(attributes: NonNullable<Log['attributes']>) {
   if (attributes['sentry.origin'] !== PINO_LOG_ORIGIN) return attributes;
   return Object.fromEntries(
     Object.entries(attributes).filter(
-      ([key]) => PINO_ALLOWED.has(key) || key.startsWith('sentry.') || key.startsWith('pino.'),
+      ([key]) => PINO_ALLOWED.has(key) || SDK_LOG_ATTRIBUTES.has(key),
     ),
   );
 }

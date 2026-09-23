@@ -61,6 +61,38 @@ describe('redactText', () => {
     );
   });
 
+  it.each([
+    ['the bare location.hash', `#${FORBIDDEN.rawToken}`],
+    ['a selector DOMException', `'#${FORBIDDEN.rawToken}' is not a valid selector`],
+    ['a path with no slash', `manage#${FORBIDDEN.rawToken}`],
+    ['a path split by a quote', `https://site/early-access/manage'#${FORBIDDEN.rawToken}`],
+    ['a backslash path', `site\\early-access\\manage#${FORBIDDEN.rawToken}`],
+    ['a URL-encoded hash', `/early-access/manage%23${FORBIDDEN.rawToken}`],
+  ])('redacts a token-shaped fragment with no URL in front of it: %s', (_label, text) => {
+    expect(redactText(text)).not.toContain(FORBIDDEN.rawToken);
+  });
+
+  it.each([
+    ['after a hyphen', '-https://admin:hunter2@localhost/x', '-https://[credentials]@localhost/x'],
+    [
+      'with a scheme over 32 characters',
+      `${'x'.repeat(40)}://admin:hunter2@h`,
+      `${'x'.repeat(8)}${'x'.repeat(32)}://[credentials]@h`,
+    ],
+    [
+      'glued to a digit',
+      '1.postgres://owner:npg_SECRET@ep-x.neon.tech/db',
+      '1.postgres://[redacted]',
+    ],
+    [
+      'glued to a previous match',
+      'a@b.com.x@c.com and first@a.com-second@b.com',
+      '[email][email] and [email][email]',
+    ],
+  ])('still redacts a credential or address %s', (_label, text, expected) => {
+    expect(redactText(text)).toBe(expected);
+  });
+
   it('redacts a fragment on a relative path too — the shape a navigation breadcrumb records', () => {
     expect(redactText(`/early-access/manage#${FORBIDDEN.rawToken}`)).toBe(
       '/early-access/manage#[redacted]',
@@ -79,7 +111,7 @@ describe('redactText', () => {
     ['a long run of address characters', 'a'.repeat(100_000)],
     ['an "@" followed by a long run of hyphens', `a@${'-'.repeat(100_000)}`],
     ['a long run of scheme-like labels', 'a.'.repeat(50_000)],
-    ['a long run of path separators', '-/'.repeat(50_000)],
+    ['a scheme followed by a long run with no "@"', `x://${'a'.repeat(100_000)}`],
   ])('stays linear on %s (R-41)', (_label, text) => {
     const started = performance.now();
     redactText(text);
@@ -325,6 +357,7 @@ describe('scrubLog — Pino records', () => {
         operation: 'send_confirmation',
         signupId: 'uuid-1',
         customerNote: 'free text a logger attached',
+        'sentry.customerNote': 'a caller field named like SDK metadata',
         hostname: 'vm',
       },
     });
