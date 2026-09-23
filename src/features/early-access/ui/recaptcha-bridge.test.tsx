@@ -64,8 +64,20 @@ function stubGrecaptcha(overrides: {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
+
+/**
+ * `getRecaptchaToken` arms its timeout only after `await loadRecaptchaScript`
+ * settles, so the clock must not be advanced until that has happened. Bounded
+ * rather than a fixed tick count, so it does not silently depend on how many
+ * microtasks that await currently takes.
+ */
+async function waitForArmedTimeout(): Promise<void> {
+  for (let i = 0; i < 50 && vi.getTimerCount() === 0; i += 1) await Promise.resolve();
+  expect(vi.getTimerCount()).toBe(1);
+}
 
 describe('getRecaptchaToken — script injection', () => {
   it('creates the Enterprise script with the right id, src and async flag, then resolves after it loads', async () => {
@@ -183,6 +195,67 @@ describe('getRecaptchaToken — token derivation', () => {
 
     await expect(pending).resolves.toBe('derived-token');
     expect(execute).toHaveBeenCalledWith('site-key-123', { action: 'early_access_signup' });
+  });
+});
+
+describe('getRecaptchaToken — R-26: it never leaves the caller waiting forever', () => {
+  // Before this, the returned promise had no reject path at all: `execute`'s
+  // rejection was discarded by `void ... .then(resolve)` and `ready` never
+  // firing was not covered either. Because `signup-form.tsx` awaits this
+  // inside a try/catch and only calls `startTransition` afterwards, an
+  // unsettled promise meant the catch never ran, the pending state never
+  // appeared, and Join did nothing at all until the visitor reloaded.
+  it('rejects when Google refuses the assessment, instead of hanging', async () => {
+    const existingScript = new FakeScriptElement();
+    stubDom({ existingScript });
+    stubGrecaptcha({ execute: () => Promise.reject(new Error('quota exceeded')) });
+
+    await expect(getRecaptchaToken('site-key-123')).rejects.toThrow('CAPTCHA is unavailable');
+  });
+
+  it('does not carry the provider’s own rejection reason on the error it raises', async () => {
+    const existingScript = new FakeScriptElement();
+    stubDom({ existingScript });
+    stubGrecaptcha({
+      execute: () => Promise.reject(new Error('quota exceeded for project 1234')),
+    });
+
+    const error = await getRecaptchaToken('site-key-123').catch((reason: unknown) => reason);
+
+    // The threat model forbids provider response bodies reaching anywhere they
+    // could be logged, so neither the message nor `cause` may relay it.
+    expect(String(error)).not.toContain('quota exceeded');
+    expect(String(error)).not.toContain('1234');
+    expect((error as Error).cause).toBeUndefined();
+  });
+
+  it('rejects when grecaptcha.ready never invokes its callback', async () => {
+    vi.useFakeTimers();
+    const existingScript = new FakeScriptElement();
+    stubDom({ existingScript });
+    // A `ready` that accepts the callback and then does nothing with it: the
+    // shape of an SDK that loaded but never became usable.
+    stubGrecaptcha({ ready: () => undefined });
+
+    const pending = getRecaptchaToken('site-key-123');
+    const assertion = expect(pending).rejects.toThrow('CAPTCHA timed out');
+    await waitForArmedTimeout();
+    // Mirrors `tokenTimeoutMs` in the source; change both together.
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await assertion;
+  });
+
+  it('clears the timeout once a token arrives, so a later tick cannot reject a settled call', async () => {
+    vi.useFakeTimers();
+    const existingScript = new FakeScriptElement();
+    stubDom({ existingScript });
+    stubGrecaptcha({});
+
+    await expect(getRecaptchaToken('site-key-123')).resolves.toBe('recaptcha-token');
+
+    // Falsifiable: dropping `clearTimeout` from the success path leaves this at 1.
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 
