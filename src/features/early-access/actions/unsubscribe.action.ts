@@ -1,22 +1,15 @@
 'use server';
 
-import * as Sentry from '@sentry/nextjs';
-import { headers } from 'next/headers';
-import { getErrorReporter, getManagementUseCases } from '../early-access.wiring';
+import { getManagementUseCases } from '../early-access.wiring';
+import { runInstrumentedAction } from './instrumented-action';
 import { handleUnsubscribe, type UnsubscribeActionState } from './management.handlers';
 
+/** Span, reporting and the retry fallback: see `runInstrumentedAction`. */
 export async function unsubscribeAction(rawToken: string): Promise<UnsubscribeActionState> {
-  const reporter = getErrorReporter();
-  return Sentry.withServerActionInstrumentation(
+  return runInstrumentedAction<UnsubscribeActionState>(
     'unsubscribe',
-    { headers: await headers(), recordResponse: false },
-    async (): Promise<UnsubscribeActionState> => {
-      try {
-        return await handleUnsubscribe(getManagementUseCases().unsubscribe, rawToken, reporter);
-      } catch (error) {
-        reporter.captureException(error, { operation: 'unsubscribe', status: 'wiring' });
-        return { status: 'retry' };
-      }
-    },
+    'unsubscribe',
+    { status: 'retry' },
+    (reporter) => handleUnsubscribe(getManagementUseCases().unsubscribe, rawToken, reporter),
   );
 }

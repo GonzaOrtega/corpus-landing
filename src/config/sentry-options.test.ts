@@ -286,6 +286,33 @@ describe('scrubLog', () => {
   });
 });
 
+describe('scrubEvent and scrubLog on sparse input', () => {
+  it('leaves absent fields absent rather than inventing them', () => {
+    const scrubbed = scrubEvent({
+      request: { method: 'GET' },
+      breadcrumbs: [
+        { category: 'navigation' },
+        { category: 'navigation', data: { from: '/a?x=1', to: 7 } },
+      ],
+      exception: { values: [{ type: 'Error' }, { stacktrace: { frames: [{ lineno: 3 }] } }] },
+    });
+
+    expect(scrubbed.request).toEqual({ method: 'GET' });
+    expect(scrubbed.breadcrumbs).toEqual([
+      { category: 'navigation' },
+      { category: 'navigation', data: { from: '/a', to: 7 } },
+    ]);
+    expect(scrubbed.exception?.values).toEqual([
+      { type: 'Error' },
+      { stacktrace: { frames: [{ lineno: 3 }] } },
+    ]);
+    expect(scrubLog({ level: 'info', message: 'started' })).toEqual({
+      level: 'info',
+      message: 'started',
+    });
+  });
+});
+
 describe('scrubLog — Pino records', () => {
   it('keeps only allowlisted fields and SDK metadata from a Pino record, not merely non-denied ones (R-10)', () => {
     const scrubbed = scrubLog({

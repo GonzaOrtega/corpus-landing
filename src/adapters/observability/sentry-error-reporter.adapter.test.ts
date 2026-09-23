@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import type { EarlyAccessLogFields } from '../../core/ports/logger.port';
-import { NoopErrorReporterAdapter } from './noop-error-reporter.adapter';
 import { type SentryCapture, SentryErrorReporterAdapter } from './sentry-error-reporter.adapter';
 
 function recordingCapture() {
@@ -58,13 +57,5 @@ describe('SentryErrorReporterAdapter', () => {
       throw new Error('transport down');
     });
     expect(() => adapter.captureException(new Error('x'), { operation: 'op' })).not.toThrow();
-  });
-});
-
-describe('NoopErrorReporterAdapter', () => {
-  it('accepts anything and does nothing', () => {
-    expect(() =>
-      new NoopErrorReporterAdapter().captureException(new Error('x'), { operation: 'op' }),
-    ).not.toThrow();
   });
 });

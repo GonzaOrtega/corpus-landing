@@ -1,22 +1,15 @@
 'use server';
 
-import * as Sentry from '@sentry/nextjs';
-import { headers } from 'next/headers';
-import { getErrorReporter, getManagementUseCases } from '../early-access.wiring';
+import { getManagementUseCases } from '../early-access.wiring';
+import { runInstrumentedAction } from './instrumented-action';
 import { handleResolveManagement, type ManagementActionState } from './management.handlers';
 
+/** Span, reporting and the retry fallback: see `runInstrumentedAction`. */
 export async function resolveManagementAction(rawToken: string): Promise<ManagementActionState> {
-  const reporter = getErrorReporter();
-  return Sentry.withServerActionInstrumentation(
+  return runInstrumentedAction<ManagementActionState>(
     'resolveManagement',
-    { headers: await headers(), recordResponse: false },
-    async (): Promise<ManagementActionState> => {
-      try {
-        return await handleResolveManagement(getManagementUseCases().resolve, rawToken, reporter);
-      } catch (error) {
-        reporter.captureException(error, { operation: 'resolve_management', status: 'wiring' });
-        return { status: 'retry' };
-      }
-    },
+    'resolve_management',
+    { status: 'retry' },
+    (reporter) => handleResolveManagement(getManagementUseCases().resolve, rawToken, reporter),
   );
 }

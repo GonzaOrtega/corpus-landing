@@ -47,7 +47,15 @@ describe('POST /monitoring', () => {
     vi.restoreAllMocks();
   });
 
+  /** Vitest sets NODE_ENV=test and Actions sets CI; a deployment has neither. */
+  function stubDeployment(): void {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('CI', undefined);
+    vi.stubEnv('E2E_NEON_HTTP_ENDPOINT', undefined);
+  }
+
   it('passes the logger and this deployment own origin to the handler', async () => {
+    stubDeployment();
     vi.stubEnv('NEXT_PUBLIC_SENTRY_DSN', 'https://key@o1.ingest.sentry.io/2');
 
     await POST(request());
@@ -59,6 +67,24 @@ describe('POST /monitoring', () => {
     expect(deps.logger).toBe(logger);
     expect(deps.siteOrigin).toBe('https://corpus.example');
   });
+
+  it.each([
+    ['CI', 'CI', 'true'],
+    ['NODE_ENV=test', 'NODE_ENV', 'test'],
+    ['E2E_NEON_HTTP_ENDPOINT', 'E2E_NEON_HTTP_ENDPOINT', 'http://proxy:4444/sql'],
+  ])(
+    'hands the handler no DSN in a pipeline run (%s), so nothing is forwarded (R-27)',
+    async (_label, name, value) => {
+      stubDeployment();
+      vi.stubEnv('NEXT_PUBLIC_SENTRY_DSN', 'https://key@o1.ingest.sentry.io/2');
+      vi.stubEnv(name, value);
+
+      await POST(request());
+
+      const [, dsn] = firstCall();
+      expect(dsn).toBeUndefined();
+    },
+  );
 
   it('still forwards when server configuration fails, without logging or an origin', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});

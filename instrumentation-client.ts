@@ -61,12 +61,25 @@ function afterLoad(task: () => void): void {
   else window.addEventListener('load', idle, { once: true });
 }
 
-if (options.enabled) {
-  afterLoad(() => {
-    void loadSentry().catch((error: unknown) => {
-      console.error('Sentry failed to start after page load', error);
-    });
+/**
+ * One more attempt, half a minute after a failed start-up (R-07). On a
+ * single-page visit nothing else would ever call `loadSentry` again — no
+ * router transition, and an error boundary only renders once something has
+ * already gone wrong — so a single dropped chunk fetch would otherwise leave
+ * the whole visit unreported. Once, not a loop: a chunk that fails twice is
+ * a deploy problem, and the console line already says so.
+ */
+const START_RETRY_DELAY_MS = 30_000;
+
+function startAfterLoad(retriesLeft: number): void {
+  void loadSentry().catch((error: unknown) => {
+    console.error('Sentry failed to start after page load', error);
+    if (retriesLeft > 0) setTimeout(() => startAfterLoad(retriesLeft - 1), START_RETRY_DELAY_MS);
   });
+}
+
+if (options.enabled) {
+  afterLoad(() => startAfterLoad(1));
 }
 
 export function onRouterTransitionStart(

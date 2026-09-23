@@ -72,6 +72,40 @@ function declaredOversized(request: Request): boolean {
   return contentLength !== null && Number(contentLength) > MAX_ENVELOPE_BYTES;
 }
 
+/**
+ * The body, or null once it grows past the limit (R-46). Read chunk by chunk
+ * so a body that declares no size — chunked transfer encoding — is cut off
+ * at the limit instead of being buffered whole first: `arrayBuffer()` would
+ * hold everything a caller sends before any check could run. The stream is
+ * cancelled at the limit, so the rest is never read.
+ */
+async function readBounded(
+  request: Request,
+  limit: number,
+): Promise<Uint8Array<ArrayBuffer> | null> {
+  if (!request.body) return new Uint8Array(0);
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
+}
+
 export interface MonitoringTunnelDeps {
   /** The project's Logger port (spec §24 allowlist) — see `route.ts` for how it's obtained. Defaults to a no-op so existing call sites are unaffected. */
   logger?: Logger;
@@ -149,8 +183,8 @@ export async function handleMonitoringTunnelRequest(
       'Monitoring tunnel rejected an oversized envelope',
     );
   }
-  const body = await request.arrayBuffer();
-  if (body.byteLength > MAX_ENVELOPE_BYTES) {
+  const body = await readBounded(request, MAX_ENVELOPE_BYTES);
+  if (body === null) {
     return reject(
       logger,
       413,

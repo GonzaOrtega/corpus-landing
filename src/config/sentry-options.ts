@@ -256,7 +256,7 @@ function reduceRequestUrl(url: string | undefined): string | undefined {
 }
 
 function stripQueryAndFragment(url: string): string {
-  return url.split(/[?#]/, 1)[0] ?? '';
+  return url.replace(/[?#][\s\S]*$/, '');
 }
 
 type Breadcrumbs = NonNullable<Event['breadcrumbs']>;
