@@ -104,9 +104,19 @@ friends, so on its own this row would not fail (R-06). What actually
 prevents a new directory or root file from shipping unmeasured is
 `tests/unit/coverage-thresholds.test.ts`: it fails unless every top-level
 `src/` directory and every standalone file named in `coverage.include` has
-its own row in the table above, and unless every row still sits at or above
-the agreed target for its layer — so a later re-measure cannot quietly lower
-a gate instead of raising it.
+its own row in the table above; unless every threshold glob still matches a
+file that exists (a glob matching nothing reports full coverage and passes
+having measured nothing); unless every root-level source file is either
+measured or named there as tooling; and unless every enforced value still
+matches the pinned copy it keeps.
+
+That last one is what actually prevents a quiet lowering. Checking each row
+against its layer's agreed target is only a floor: `src/features/**` is
+enforced at 90 against a target of 80, so a target check alone would let it
+slide to 80 with everything still green. The pinned copy makes any change to
+an enforced number — up or down — fail until it is made deliberately in that
+file too. A raise belongs in the PR that earned it; a lowering additionally
+needs an entry in the threshold history below.
 
 ### Ratchet rule
 

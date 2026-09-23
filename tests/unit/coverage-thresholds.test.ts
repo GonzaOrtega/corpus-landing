@@ -110,6 +110,36 @@ function sourceFilesUnder(relative: string): string[] {
   return found;
 }
 
+/**
+ * The enforced values themselves, pinned (R-25). The agreed targets above are
+ * a floor, not a ratchet: `src/features/**` is enforced at 90 against a target
+ * of 80, so the target check alone would let it slide to 80 with everything
+ * still green — which is exactly the silent lowering the ratchet rule forbids
+ * and R-13 recorded as a problem.
+ *
+ * Changing a number here is changing what the project promises. A raise is
+ * ordinary and belongs in the PR that earned it; a lowering additionally needs
+ * an entry in docs/quality/testing.md ("Threshold history") saying why the
+ * code cannot be exercised. Either way it can no longer happen unnoticed.
+ */
+const ENFORCED: Record<string, [number, number, number, number]> = {
+  'src/core/**': [100, 100, 100, 100],
+  'src/adapters/**': [100, 92, 100, 99],
+  'src/composition/**': [98, 100, 93, 98],
+  'src/config/**': [99, 97, 100, 98],
+  'src/ops/**': [95, 90, 100, 95],
+  'src/features/**': [90, 90, 86, 88],
+  'src/components/**': [100, 100, 100, 100],
+  'app/**': [93, 94, 80, 93],
+  'proxy.ts': [100, 97, 100, 100],
+  'instrumentation.ts': [100, 100, 100, 100],
+  'instrumentation-client.ts': [100, 100, 100, 100],
+  'sentry.server.config.ts': [100, 100, 100, 100],
+  'sentry.edge.config.ts': [100, 100, 100, 100],
+  'next.config.ts': [100, 100, 100, 100],
+  'scripts/launch-email.ts': [86, 93, 100, 88],
+};
+
 function coverageConfig(): Record<string, unknown> {
   const coverage = vitestConfig.test?.coverage;
   if (!coverage || typeof coverage !== 'object') {
@@ -238,5 +268,18 @@ describe('coverage threshold globs (R-06)', () => {
         `threshold glob "${glob}" matches no source file: it passes vacuously, so delete it or fix the path`,
       ).toBeGreaterThan(0);
     }
+  });
+
+  it('cannot have an enforced value changed without changing this file too', () => {
+    const actual = Object.fromEntries(
+      Object.entries(specificThresholds()).map(([glob, m]) => [
+        glob,
+        [m.lines, m.branches, m.functions, m.statements],
+      ]),
+    );
+
+    // Deep equality both ways: a silent lowering, a silent raise, a dropped
+    // glob and an unreviewed new one all fail here.
+    expect(actual).toEqual(ENFORCED);
   });
 });
