@@ -1,0 +1,104 @@
+[
+  {
+    "file": "tests/unit/instrumentation-client.test.ts",
+    "line": 116,
+    "category": "correctness",
+    "severity": "important",
+    "summary": "The last test in the error-reporting suite permanently switches off a stand-in the whole file depends on, so any test added after it, or any run that does not keep the written order, fails.",
+    "requires": [
+      "a sixth test added to this file below the existing last one, or a run that does not use plain declaration order (shuffled, sharded, or a retried run)"
+    ],
+    "repro": "test",
+    "evidence": "The final test swaps the Sentry client module for a throwing one at runtime and then un-swaps it on the way out. Un-swapping also discards the file-level stand-in that every other test in the file relies on, and that discard is not undone. Running these two instrumentation suites with Vitest's ordering randomisation switched on makes three of the five client tests fail, one of them complaining that the real module has no router-transition function - i.e. the real Sentry client was loaded instead of the double. The suite is green today only by the accident of that test being declared last, which is exactly the fragility the PR's own instrumentation test comment says it fixed for the sibling file. Suggested fix: keep the throwing module scoped to the test (restore the original factory rather than removing the mock), or move the failure case into its own file."
+  },
+  {
+    "file": "src/features/early-access/ui/recaptcha-bridge.test.tsx",
+    "line": 165,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "The new anti-spam tests never try the case where Google's check fails after its script has loaded, and in that case the Join button silently does nothing, forever, with no error shown.",
+    "requires": [
+      "Google's reCAPTCHA check rejecting or never signalling readiness in production, the only environment where the real bridge runs"
+    ],
+    "repro": "test",
+    "evidence": "The token function wraps Google's call in a promise that has only a success path: no failure path and no time limit. If Google's check rejects (network blip, quota, misconfigured key) or never signals it is ready, the returned promise stays unfinished. The signup form waits on it inside a guard that is meant to fall back to an empty token, but nothing is ever thrown, so the guard never fires, no message is shown, the button never even enters its pending state, and the submission never starts. The six new tests around this function cover script creation, reuse of an existing script, both load-failure paths, the missing-client path and the happy path - and in every one of them Google's call succeeds. Because the success line does execute, the file reports at or near full coverage while the only failure the user can actually hit is unexercised. Suggested fix: add a test where the check rejects and one where readiness never arrives, and give the source a rejection path and a time limit."
+  },
+  {
+    "file": "tests/unit/coverage-thresholds.test.ts",
+    "line": 107,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "The safety net meant to stop a file quietly dropping out of measurement builds its checklist from the very setting it is checking, so deleting a file from that setting passes unnoticed.",
+    "requires": [
+      "a later change that removes one of the named root-file entries from the measured-file list, or adds a new top-level code folder outside src/"
+    ],
+    "repro": "test",
+    "evidence": "The check reads the list of measured root files out of the coverage settings and then asserts each one has a matching minimum. If someone deletes one of those entries - say the file that installs production error reporting - the list simply gets shorter and the check still passes. The leftover minimum does not save it either: a minimum whose pattern matches no measured file is reported as an unknown percentage, which never counts as a breach, so it passes silently at full marks. The parallel implementation that was dropped in the merge asserted the five root files by name, which would have caught precisely this; the merge kept its layer-target check but not this one. The same blind spot covers a brand-new top-level folder outside src/, which is neither enumerated nor required to be measured, although both the config comment and the testing document say this test is what prevents a new directory shipping unmeasured. Suggested fix: assert the expected root files by name, as the dropped version did, and state the residual limit for non-src folders."
+  },
+  {
+    "file": ".github/workflows/ci.yml",
+    "line": 108,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "Nothing checks that the pipeline still hands the throwaway database to the coverage run under the exact name the database tests look for, and the new loud-failure guard beside it does not check that name either.",
+    "requires": [
+      "a later edit that removes or renames the test-database entry on the coverage step while leaving the rest of the job intact"
+    ],
+    "repro": "test",
+    "evidence": "The database-backed repository is measured only when one specific variable name is present on the coverage step. If that single line is dropped, the coverage config quietly excludes that repository, prints a one-line notice into the log, and the job passes - the exact silent self-skip the new guard step was added to prevent. The guard checks the branch identifier and the two other connection variables, all read straight from the branch outputs, so it stays green in that scenario. This repository already has the habit of pinning workflow wiring in a test (the migration workflow's connection variables are asserted that way, and the package scripts are asserted line for line), but the step this whole change depends on got no equivalent pin. Suggested fix: extend the existing workflow conformance test to assert that the coverage step carries the test-database variable and that it resolves from a disposable branch output, or have the guard step check that variable too."
+  },
+  {
+    "file": "tests/unit/instrumentation-client.test.ts",
+    "line": 91,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The test for a failed error-reporting load would still pass if the retry behaviour it appears to protect were deleted.",
+    "requires": [],
+    "repro": "test",
+    "evidence": "The source deliberately forgets a failed load so a later attempt gets a fresh try instead of a permanently stuck one, and the source comment calls this out as the point of that code. The test drives one failure at page load and a second at a router transition, but both produce the same visible result whether or not the forgetting happens: with the failure remembered, the second attempt reuses the old failure and logs the same message the test asserts. So removing the reset - which would leave error reporting off for the rest of the visit after a single failed chunk fetch - keeps this test green. Suggested fix: count how many times the client module is actually requested, and assert the second attempt is a fresh one."
+  },
+  {
+    "file": "src/features/early-access/ui/recaptcha-bridge.test.tsx",
+    "line": 190,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The test for the small component that pre-loads Google's script checks only that it draws nothing on screen; the pre-loading itself, which is the component's entire reason to exist, never runs.",
+    "requires": [],
+    "repro": "test",
+    "evidence": "The test renders the component to static markup and asserts the markup is empty. Static rendering never runs browser-side setup work, so the one line that actually starts the pre-load, and the deliberate decision to swallow a pre-load failure there, are not executed - the coverage report confirms that line is the file's only uncovered line. The test's own name says the component 'only exists to trigger the load effect', which is the part it does not test. The practical impact is limited, because the token path loads the script itself if the pre-load did not happen, so a broken pre-load costs the first user some latency rather than correctness. Suggested fix: call the effect body directly with the stubbed globals this file already builds, and assert the script is requested once per site key."
+  },
+  {
+    "file": "tests/unit/next-config-headers.test.ts",
+    "line": 27,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "Two of the six security headers the site sends on every page have their values checked by nothing, although the file that produces them is now advertised as fully covered.",
+    "requires": [
+      "a later change that weakens one of those two header values rather than deleting the header outright"
+    ],
+    "repro": "test",
+    "evidence": "The new test asserts four of the six headers on the catch-all rule. The referrer policy and the camera/microphone/location policy are read but never asserted, while the file they live in is now enforced at full marks on all four coverage measures, because a list literal counts as executed whatever it contains. The separate repository conformance tool checks only that those two header names appear somewhere in the config, not what they are set to, so weakening a value - for example relaxing the referrer policy - passes every gate in this change. Suggested fix: assert the value of all six headers in the same test, as it already does for the other four."
+  },
+  {
+    "file": "vitest.config.ts",
+    "line": 170,
+    "category": "docs",
+    "severity": "minor",
+    "summary": "One comment block states two different agreed minimums for the same newly measured files, eighty in one paragraph and one hundred a few lines later.",
+    "requires": [],
+    "repro": "none",
+    "evidence": "The summary line lists the agreed minimum for the root runtime files as eighty, the published testing table lists eighty, and the new conformance test encodes eighty. Twenty lines further down the same comment says their 'target is the same 100 the rest of the runtime bootstrap gets'. The same summary line also omits two of the newly added files from its enumeration even though both now carry their own minimum. Since the ratchet rule is stated in terms of agreed minimums versus measured values, and this change's whole point is to make that rule auditable, the contradictory number is worth removing. Suggested fix: keep one wording - the agreed minimum is eighty, the enforced value is the measurement - and list all the newly added files in the summary line."
+  },
+  {
+    "file": "tests/unit/next-config-headers.test.ts",
+    "line": 74,
+    "category": "style",
+    "severity": "minor",
+    "summary": "One test pins the six documentation-discovery pages by their position in a list, so merely reordering that list fails the test although the site behaves identically.",
+    "requires": [
+      "a later change that reorders the discovery route list without changing which pages are in it"
+    ],
+    "repro": "test",
+    "evidence": "The test drops the first rule by position and then compares the remaining page paths to a literal list in order. Reordering the source list - a harmless edit, for instance to keep the paths alphabetical - fails it, and the honest fix is to edit the test, which teaches contributors to treat test failures as bookkeeping. This is the same brittleness class the previous round flagged on the proxy tests, now reintroduced in a new file. Suggested fix: compare the set of page paths rather than their order, and find the catch-all rule by its pattern instead of by being first."
+  }
+]

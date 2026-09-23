@@ -1,6 +1,6 @@
 version: 1
 pr: 21
-status: fixing
+status: awaiting-triage
 rounds:
   - "n": 1
     head: 746bb0781414b224ddf374a3e6cbda1c665d8fd5
@@ -27,6 +27,34 @@ rounds:
       - R-15
       - R-16
       - R-17
+  - "n": 2
+    head: da14cba5882d2c95e7bb826db0a6d518919919a3
+    scope: fix-diff
+    reviewers:
+      - pr-review-toolkit:code-reviewer
+      - pr-review-toolkit:silent-failure-hunter
+      - pr-review-toolkit:pr-test-analyzer
+      - github
+    findings:
+      - R-18
+      - R-19
+      - R-20
+      - R-21
+      - R-22
+      - R-23
+      - R-24
+      - R-25
+      - R-26
+      - R-27
+      - R-28
+      - R-29
+      - R-30
+      - R-31
+      - R-32
+      - R-33
+      - R-07
+      - R-34
+      - R-35
 findings:
   - id: R-01
     round: 1
@@ -200,6 +228,7 @@ findings:
     requires:
       - the disposable-branch step finishing without producing a connection string (an outcome the workflow already anticipates)
       - the Neon create-branch action returns an empty branch id on a same-repository run; fork pull requests already exit 1 at the earlier fail-closed step
+      - a later edit that removes or renames the test-database entry on the coverage step while leaving the rest of the job intact
     repro: test
     scope: in
     threat: in
@@ -209,8 +238,13 @@ findings:
         author: null
         association: null
         url: null
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
     verdict: fix
-    verdict_by: human
+    verdict_by: auto
     reason: "In scope, in the threat model, important"
     fix_commits:
       - 0f393f72f8abedb975d3d3d1f26f779230b1bafe
@@ -465,6 +499,468 @@ findings:
     fix_commits:
       []
     issue: null
+  - id: R-18
+    round: 2
+    fingerprint: fd1b2d843ac1bfd5
+    file: vitest.config.ts
+    line: 140
+    category: test-gap
+    severity: important
+    summary: "The new safety net is said to stop any new folder or any new file at the top of the project from shipping unmeasured, but for files it only checks the ones already on the measured list, so a newly added top-level file (or a new folder outside src/) is still invisible to the gate and nothing turns red."
+    requires:
+      - "a later change adds a new file at the repository root, or a new top-level directory other than src/ and app/, without also adding it to coverage.include"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-19
+    round: 2
+    fingerprint: ad82fcaf2b82f0a7
+    file: src/adapters/db/drizzle-early-access-signup.repository.integration.test.ts
+    line: 20
+    category: security
+    severity: important
+    summary: "The destructive test suite was moved onto a separate database setting so an ordinary developer database can never be wiped, and the README and testing guide now warn about it, but the template file developers actually copy their settings from still lists that setting next to the ordinary ones with no warning at all."
+    requires:
+      - "a developer fills DATABASE_URL_TEST in .env.local from the .env.example template with a shared (for example the Neon development) branch instead of a throwaway database, then runs bun run check or bun run test"
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-20
+    round: 2
+    fingerprint: 0c6a53fd7890c485
+    file: vitest.config.ts
+    line: 112
+    category: docs
+    severity: minor
+    summary: "The summary comment above the coverage numbers was not refreshed after the two parallel fix lines were merged: it lists only some of the top-level files now being measured, and it still says three of the numbers below were pushed down by the merge when one of them has since been pushed back up."
+    requires:
+      []
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-21
+    round: 2
+    fingerprint: 651f4c925d5f4d8f
+    file: vitest.config.ts
+    line: 36
+    category: docs
+    severity: minor
+    summary: "The reason given for measuring the anti-spam bridge with unit tests instead of browser tests names the wrong switch: it says the fake-CAPTCHA flag is what leaves the site key empty, when the site key is actually decided by whether the deployment is production."
+    requires:
+      []
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-22
+    round: 2
+    fingerprint: b920115910483dd9
+    file: .github/workflows/ci.yml
+    line: 99
+    category: test-gap
+    severity: important
+    summary: "The new step that is supposed to stop the pipeline when the throwaway database is missing checks the old settings names and not the new one, so if the new name ever stops reaching the coverage run the pipeline still reports success while quietly measuring none of the database code it exists to measure."
+    requires:
+      - "a later edit to the workflow that drops, renames or mistypes DATABASE_URL_TEST on the coverage step while the Neon branch outputs stay populated"
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-23
+    round: 2
+    fingerprint: 937b782bc9a4bee2
+    file: tests/unit/coverage-thresholds.test.ts
+    line: 107
+    category: test-gap
+    severity: important
+    summary: "The new safety net proves every measured file has a rule, but nothing proves the reverse: a rule pointing at a file that no longer exists scores as perfectly covered and passes silently."
+    requires:
+      - "a later change that renames, moves or deletes one of the single-file entries (for example the proxy file, a runtime bootstrap file or the ops script) without updating both lists"
+      - "a later change that removes one of the named root-file entries from the measured-file list, or adds a new top-level code folder outside src/"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-24
+    round: 2
+    fingerprint: 261b870abbec187e
+    file: tests/unit/instrumentation.test.ts
+    line: 27
+    category: test-gap
+    severity: important
+    summary: "Three of the four checks in the new error-reporting test cannot fail: the stand-in modules record that they were loaded only the first time in the whole file, so the later \"was not loaded\" checks would stay green even if the code loaded them."
+    requires:
+      - no precondition; this is how the file behaves on every run
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-25
+    round: 2
+    fingerprint: 5c0ffd0c13804e85
+    file: docs/quality/testing.md
+    line: 107
+    category: docs
+    severity: important
+    summary: "The testing guide says the new automated check makes it impossible to quietly lower a coverage number, but the check only refuses numbers below each layer's agreed minimum, so a number can still slide a long way down without anything objecting."
+    requires:
+      - "a future change that re-measures and writes a lower enforced number that is still at or above the layer's agreed minimum"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-26
+    round: 2
+    fingerprint: d04885ddddf7955c
+    file: src/features/early-access/ui/recaptcha-bridge.test.tsx
+    line: 165
+    category: test-gap
+    severity: important
+    summary: "The new anti-spam tests are what justified bringing this file into the measurement and raising its layer's number, yet they skip the one path where a failure is truly invisible: if Google's check refuses, the signup button silently does nothing forever, with no message and no error."
+    requires:
+      - "production, where a real anti-spam key is configured, and Google's token call refuses (quota exhausted, restricted key, network failure)"
+      - "Google's reCAPTCHA check rejecting or never signalling readiness in production, the only environment where the real bridge runs"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-27
+    round: 2
+    fingerprint: c8e24dace2ff256c
+    file: docs/verification/definition-of-done.md
+    line: 30
+    category: docs
+    severity: minor
+    summary: "The evidence row for the coverage gate mixes a fresh run without a database with a much older run that did have one, and presents both as current proof, even though the older run predates this round's new test files and the change of which setting turns the database suite on."
+    requires:
+      - a reader treating the row as the record that the database-backed measurement still holds
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-28
+    round: 2
+    fingerprint: b10bc068784be3fe
+    file: tests/unit/instrumentation-client.test.ts
+    line: 116
+    category: correctness
+    severity: important
+    summary: "The last test in the error-reporting suite permanently switches off a stand-in the whole file depends on, so any test added after it, or any run that does not keep the written order, fails."
+    requires:
+      - "a sixth test added to this file below the existing last one, or a run that does not use plain declaration order (shuffled, sharded, or a retried run)"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-29
+    round: 2
+    fingerprint: 0034b9ceefbb458f
+    file: tests/unit/instrumentation-client.test.ts
+    line: 91
+    category: test-gap
+    severity: minor
+    summary: The test for a failed error-reporting load would still pass if the retry behaviour it appears to protect were deleted.
+    requires:
+      []
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-30
+    round: 2
+    fingerprint: 90cd7716b6c3fc81
+    file: src/features/early-access/ui/recaptcha-bridge.test.tsx
+    line: 190
+    category: test-gap
+    severity: minor
+    summary: "The test for the small component that pre-loads Google's script checks only that it draws nothing on screen; the pre-loading itself, which is the component's entire reason to exist, never runs."
+    requires:
+      []
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-31
+    round: 2
+    fingerprint: c17838374501638b
+    file: tests/unit/next-config-headers.test.ts
+    line: 27
+    category: test-gap
+    severity: minor
+    summary: "Two of the six security headers the site sends on every page have their values checked by nothing, although the file that produces them is now advertised as fully covered."
+    requires:
+      - a later change that weakens one of those two header values rather than deleting the header outright
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-32
+    round: 2
+    fingerprint: 676f8a9ca0c3515a
+    file: vitest.config.ts
+    line: 170
+    category: docs
+    severity: minor
+    summary: "One comment block states two different agreed minimums for the same newly measured files, eighty in one paragraph and one hundred a few lines later."
+    requires:
+      []
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-33
+    round: 2
+    fingerprint: 329fc053bf2af025
+    file: tests/unit/next-config-headers.test.ts
+    line: 74
+    category: style
+    severity: minor
+    summary: "One test pins the six documentation-discovery pages by their position in a list, so merely reordering that list fails the test although the site behaves identically."
+    requires:
+      - a later change that reorders the discovery route list without changing which pages are in it
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-34
+    round: 2
+    fingerprint: 278981eb6449a573
+    file: PR
+    line: null
+    category: other
+    severity: important
+    summary: "Status on the round-1 fix-now findings, per the author's triage (R-12 rated later; the remaining \"later\" items untouched). Pushed as `f4d19b9`."
+    requires:
+      []
+    repro: none
+    scope: out
+    threat: in
+    sources:
+      - kind: issue_comment
+        name: null
+        author: GonzaOrtega
+        association: OWNER
+        url: "https://github.com/GonzaOrtega/corpus-landing/pull/21#issuecomment-5784084370"
+    verdict: later
+    verdict_by: auto
+    reason: "Outside the gate's scope"
+    fix_commits:
+      []
+    issue: null
+  - id: R-35
+    round: 2
+    fingerprint: 4978cefdbc1af98b
+    file: PR
+    line: null
+    category: other
+    severity: important
+    summary: "**`e2e` red on `f4d19b9`, not this PR's change.** One of 67 Playwright tests failed on both attempts: `tests/e2e/living-lexicon.spec.ts:28` (autoplay ping-pongs through the whole Lexicon while visible"
+    requires:
+      []
+    repro: none
+    scope: out
+    threat: in
+    sources:
+      - kind: issue_comment
+        name: null
+        author: GonzaOrtega
+        association: OWNER
+        url: "https://github.com/GonzaOrtega/corpus-landing/pull/21#issuecomment-5784141004"
+    verdict: later
+    verdict_by: auto
+    reason: "Outside the gate's scope"
+    fix_commits:
+      []
+    issue: null
 evidence:
   []
 waivers:
@@ -472,4 +968,6 @@ waivers:
 eli5:
   - round: 1
     text: "This change was supposed to do two things: write a lot of missing tests, and put a\nrule in place that says \"if any part of the code stops being tested enough, stop\nthe build\". The tests themselves came out well. Three reviewers read them and\nagreed: they check that the code behaves correctly, not just that it runs, and\nseveral of them lock in promises that matter, like never writing a subscriber's\nemail address into an error report.\n\nThe rule is the part with problems. Seventeen were found, seven of them worth\nyour attention, and they fall into one pattern: the rule reports that everything\nis fine while checking less than it says it checks.\n\nThree examples. The safety net meant to catch a brand-new untested folder does\nnot work the way its own comment describes, because the tool averages everything\ntogether instead of looking at that folder on its own; roughly two hundred\ncompletely untested lines could be added before anything complains. The one file\nthat forwards crash reports to the monitoring service is outside the measured\narea entirely, so deleting it would silently switch off error reporting with\nnothing turning red. And the file that connects the site to Google's anti-spam\ncheck is deliberately skipped on the grounds that a browser test covers it, but\nthat browser test always runs with a fake anti-spam check, so nothing exercises\nthe real one.\n\nThere is also one thing that is not about measurement at all, and it is the\nreason to stop before running anything. The command you type before pushing,\n`bun run check`, now runs the whole test suite. One of those tests empties the\nsignup table whenever a database address is configured, and it does not check\nwhether that database is a throwaway one. If your local settings file points at\nthe shared development database, typing that command deletes its rows. I have\nnot run it anywhere that could reach a real database, and I have not fixed\nanything yet, because the process here is that you decide what gets fixed before\nI touch it.\n\nWhat you have to decide: for each of the seventeen findings, whether it gets\nfixed now, deferred to a ticket, or dismissed. The reply format is in the\ndigest below.\n"
+  - round: 2
+    text: "Round one asked for seven fixes. While those were being made, a second helper\nwas fixing the same list independently, and its work reached the shared copy\nfirst. Rather than throw either away, both were combined: each had found\nsomething the other missed. The combined result passes every check, including\nthe one that runs against a real database, where nothing was skipped.\n\nRound two then read the combined result. The good news is that the tests hold\nup under scrutiny. Reviewers re-checked the two claims this change leans on\nhardest and both are true, and the one test file that was dropped as a\nduplicate really was covered by the one that was kept.\n\nNine things still need fixing, and eight of them are one idea repeated: the\nrule still says it checks more than it checks.\n\nThe clearest example is in the build pipeline. There is a step whose whole job\nis to stop everything if the throwaway database is missing. It watches the old\nsetting name. The setting that actually decides whether the database code gets\nmeasured was renamed during the first round, and nothing watches the new one.\nSo if that name ever stops arriving, the database code is quietly dropped from\nthe measurement, everything else scores full marks, and the build goes green\nhaving measured none of the thing that job exists to measure.\n\nTwo more of the same shape: the safety net that is supposed to catch a brand\nnew untested file only looks at a list that a person has to remember to update,\nand three of the four checks in one new test cannot fail no matter what breaks,\nbecause of a detail in how the test tool reuses stand-ins. That last one is my\nerror: I wrote a comment claiming a particular line made those checks reliable,\nand it does not.\n\nThe ninth is different, and it is the one worth your attention. It is not a\ntesting problem, it is a real fault on the public signup form, and it was found\nonly because this change finally put that file under measurement. If Google's\nanti-spam service refuses a request - which happens when the free quota runs\nout, exactly the abuse the threat model anticipates - the code waits forever\ninstead of giving up. The visitor clicks Join and nothing happens at all. No\nerror message, no spinner, no submission. The button is simply dead until they\nreload the page. This fault already exists on the live site; this change did\nnot cause it.\n\nWhat you need to decide: whether that signup fault gets fixed here or in its\nown separate change. Fixing it here means this pull request stops being only\nabout tests and starts changing what visitors experience. Fixing it separately\nkeeps this change clean but leaves the live site broken in that case for\nlonger. Everything else on the list is repair work to the rule itself, which\nbelongs here.\n"
 comment_id: 5783881003

@@ -1,0 +1,46 @@
+[
+  {
+    "file": "vitest.config.ts",
+    "line": 140,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "The new safety net is said to stop any new folder or any new file at the top of the project from shipping unmeasured, but for files it only checks the ones already on the measured list, so a newly added top-level file (or a new folder outside src/) is still invisible to the gate and nothing turns red.",
+    "requires": [
+      "a later change adds a new file at the repository root, or a new top-level directory other than src/ and app/, without also adding it to coverage.include"
+    ],
+    "repro": "test",
+    "evidence": "vitest.config.ts:140-144 and docs/quality/testing.md:103-107 both claim tests/unit/coverage-thresholds.test.ts is what keeps a new directory or root file from shipping unmeasured. That test enumerates real directories only for src/ (readdirSync of src/); for files it iterates coverage.include itself, so a root file absent from coverage.include is never named, never measured, and never fails a threshold. This is the same shape as round-1 R-06: the mechanism is narrower than the comment that describes it. The src/ half of the claim does hold."
+  },
+  {
+    "file": "src/adapters/db/drizzle-early-access-signup.repository.integration.test.ts",
+    "line": 20,
+    "category": "security",
+    "severity": "important",
+    "summary": "The destructive test suite was moved onto a separate database setting so an ordinary developer database can never be wiped, and the README and testing guide now warn about it, but the template file developers actually copy their settings from still lists that setting next to the ordinary ones with no warning at all.",
+    "requires": [
+      "a developer fills DATABASE_URL_TEST in .env.local from the .env.example template with a shared (for example the Neon development) branch instead of a throwaway database, then runs bun run check or bun run test"
+    ],
+    "repro": "none",
+    "evidence": ".env.example:15-18 groups DATABASE_URL_TEST with DATABASE_URL and DATABASE_URL_UNPOOLED under a single instruction to supply approved non-production Neon connections, unchanged by this diff, while README.md:110 and docs/quality/testing.md now say it must never point at a shared branch because the suite truncates the signup table before every test. The comment added here calls the arrangement opt-in by construction rather than by discipline, which holds only while the template does not invite the opt-in."
+  },
+  {
+    "file": "vitest.config.ts",
+    "line": 112,
+    "category": "docs",
+    "severity": "minor",
+    "summary": "The summary comment above the coverage numbers was not refreshed after the two parallel fix lines were merged: it lists only some of the top-level files now being measured, and it still says three of the numbers below were pushed down by the merge when one of them has since been pushed back up.",
+    "requires": [],
+    "repro": "none",
+    "evidence": "vitest.config.ts:112-115 enumerates the measured root runtime files as instrumentation.ts plus the two Sentry runtime configs, omitting instrumentation-client.ts and next.config.ts, which the second fix line added and which the R-15 comment at lines 156-171 does list. vitest.config.ts:119-123 says re-measuring after the main merge moved src/config, src/features and app down to the values below, but src/features was subsequently raised to 90/90/86/88 by the R-11 work, so the values below are no longer the merge measurement for that glob. docs/quality/testing.md's threshold history records both movements correctly."
+  },
+  {
+    "file": "vitest.config.ts",
+    "line": 36,
+    "category": "docs",
+    "severity": "minor",
+    "summary": "The reason given for measuring the anti-spam bridge with unit tests instead of browser tests names the wrong switch: it says the fake-CAPTCHA flag is what leaves the site key empty, when the site key is actually decided by whether the deployment is production.",
+    "requires": [],
+    "repro": "none",
+    "evidence": "productionRecaptchaSiteKey (src/config/public-env.ts:26-32) returns null purely on deploymentEnvironment !== 'production', and app/page.tsx:8 passes VERCEL_ENV; CORPUS_FAKE_CAPTCHA is read only by src/composition/capabilities/external-api.ts to pick the server-side verifier. The conclusion the comment draws is still right for the suite as configured, but the stated cause is wrong in three places that repeat it: vitest.config.ts:36-38, docs/quality/testing.md:175-178 and src/features/early-access/ui/recaptcha-bridge.test.tsx:9-11."
+  }
+]
