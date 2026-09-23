@@ -1,6 +1,6 @@
 import { withSentryConfig } from '@sentry/nextjs/config';
 import type { NextConfig } from 'next';
-import { buildSentryBuildOptions } from './src/config/sentry-options';
+import { buildSentryBuildOptions, warnOnDsnProblem } from './src/config/sentry-options';
 
 /**
  * Verified against Google's reCAPTCHA CSP guidance
@@ -112,6 +112,8 @@ const nextConfig: NextConfig = {
  * same-origin tunnel instead, so the CSP above stays at `connect-src 'self'`.
  * The decisions are in `buildSentryBuildOptions`, with its tests.
  */
+warnOnDsnProblem(process.env.NEXT_PUBLIC_SENTRY_DSN);
+
 export default withSentryConfig(
   nextConfig,
   buildSentryBuildOptions({
