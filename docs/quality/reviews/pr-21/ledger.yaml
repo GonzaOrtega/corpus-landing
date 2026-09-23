@@ -968,7 +968,26 @@ findings:
       []
     issue: null
 evidence:
-  []
+  - done: check
+    sha: f83458e37c3d76c2f59902cdabd6294107fa2d5b
+    result: pass
+    note: "bun run check exit 0: typecheck, Biome (285 files), stack conformance, and the per-glob coverage gate at 605 tests across 99 files, 1 skipped (the Drizzle integration suite, which needs DATABASE_URL_TEST)"
+  - done: depcruise
+    sha: f83458e37c3d76c2f59902cdabd6294107fa2d5b
+    result: pass
+    note: "bunx depcruise --output-type err exit 0: no dependency violations across 256 modules and 524 dependencies"
+  - done: coverage-with-db
+    sha: f83458e37c3d76c2f59902cdabd6294107fa2d5b
+    result: pass
+    note: "bun run test:coverage against the containerized Postgres 17 behind the local Neon HTTP proxy, exit 0: 616 tests across 100 files with no skips (the DB-free run skips one), the self-skip notice never printed, and src/adapters/db measured at 98.38/92.68/100/100 — the same figure the CI test job reports against its disposable Neon branch"
+  - done: e2e
+    sha: f83458e37c3d76c2f59902cdabd6294107fa2d5b
+    result: pass
+    note: "bun run test:e2e exit 0: 67 Playwright tests passed in 48.3s across the full browser matrix including the axe pass; living-lexicon.spec.ts, which R-35 reported failing on the parallel branch, passes here"
+  - done: lighthouse
+    sha: f83458e37c3d76c2f59902cdabd6294107fa2d5b
+    result: pass
+    note: "the lighthouse job passed in 1m3s against the deployed Preview for this head, first attempt, no re-run; all four category thresholds met"
 waivers:
   []
 eli5:
