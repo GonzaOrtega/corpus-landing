@@ -33,6 +33,20 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  // Restores the console.error spy the failure test installs.
+  vi.restoreAllMocks();
+  /**
+   * R-28: the failure test below swaps in a throwing `sentry-client` with
+   * `vi.doMock`. It used to undo that with `vi.doUnmock`, which does not
+   * restore this file's own hoisted `vi.mock` — it removes the registration
+   * outright, so every later test received the real module and the suite
+   * only passed because that test happened to be declared last. Re-register
+   * the stub instead, unconditionally, so no test's position matters.
+   */
+  vi.doMock('../../src/config/sentry-client', () => ({
+    ensureSentryStarted,
+    captureRouterTransitionStart,
+  }));
   vi.resetModules();
 });
 
@@ -112,7 +126,20 @@ describe('instrumentation-client', () => {
       ),
     );
     expect(ensureSentryStarted).not.toHaveBeenCalled();
-    consoleError.mockRestore();
-    vi.doUnmock('../../src/config/sentry-client');
+  });
+
+  /**
+   * Declared immediately after the failure test on purpose: it is the case
+   * that used to break. If the throwing `vi.doMock` above is ever undone with
+   * `vi.doUnmock` again, this test receives the real `sentry-client` module
+   * instead of the stub and fails, naming the leak.
+   */
+  it('still sees the stubbed client after the failure test, whatever the order', async () => {
+    buildClientSentryOptions.mockReturnValue({ enabled: true });
+    stubCompletedPageLoad();
+
+    await import('../../instrumentation-client');
+
+    await vi.waitFor(() => expect(ensureSentryStarted).toHaveBeenCalledTimes(1));
   });
 });
