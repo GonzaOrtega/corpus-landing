@@ -70,4 +70,49 @@ describe('instrumentation-client', () => {
       expect(captureRouterTransitionStart).toHaveBeenCalledWith('/next', 'push'),
     );
   });
+
+  it('waits for the load event and falls back to a timer when the browser has no idle callback', async () => {
+    buildClientSentryOptions.mockReturnValue({ enabled: true });
+    const listeners: Record<string, () => void> = {};
+    vi.stubGlobal('document', { readyState: 'loading' });
+    vi.stubGlobal('window', {
+      addEventListener: (type: string, listener: () => void) => {
+        listeners[type] = listener;
+      },
+    });
+
+    await import('../../instrumentation-client');
+    expect(ensureSentryStarted).not.toHaveBeenCalled();
+    listeners.load?.();
+
+    await vi.waitFor(() => expect(ensureSentryStarted).toHaveBeenCalledTimes(1));
+  });
+
+  it('reports a client that fails to load, on page load and on a router transition', async () => {
+    buildClientSentryOptions.mockReturnValue({ enabled: true });
+    stubCompletedPageLoad();
+    vi.doMock('../../src/config/sentry-client', () => {
+      throw new Error('chunk fetch failed');
+    });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const sentry = await import('../../instrumentation-client');
+    await vi.waitFor(() =>
+      expect(consoleError).toHaveBeenCalledWith(
+        'Sentry failed to start after page load',
+        expect.any(Error),
+      ),
+    );
+
+    sentry.onRouterTransitionStart('/next', 'push');
+    await vi.waitFor(() =>
+      expect(consoleError).toHaveBeenCalledWith(
+        'Sentry failed to record a router transition',
+        expect.any(Error),
+      ),
+    );
+    expect(ensureSentryStarted).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+    vi.doUnmock('../../src/config/sentry-client');
+  });
 });

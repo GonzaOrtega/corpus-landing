@@ -12,14 +12,14 @@ manual for meeting them.
 | Domain and use cases | `src/core/**/*.test.ts` | Every branch of the seven use cases and the entity, against the port contracts | `InMemoryEarlyAccessSignupRepository`, `FixedClockAdapter`, `DeterministicTokenAdapter`, `buildSignup`/`buildSignupProps` (`src/core/testing/`) |
 | Repository contract | `src/core/testing/early-access-signup-repository.contract.ts` | One suite run unchanged against the in-memory double and the real Drizzle adapter, so both enforce §9.2 identically | — |
 | Adapters | `src/adapters/**/*.test.ts` | Provider outcome mapping, PII-free diagnostics, hashing and token derivation, Drizzle error translation with a chainable stand-in | Recording senders/loggers, structural `Database` stub |
-| Repository integration | `src/adapters/db/*.integration.test.ts` | The SQL, the partial unique index and the driver, against real Postgres | Disposable Neon branch in CI; skipped locally without `DATABASE_URL_TEST` |
+| Repository integration | `src/adapters/db/*.integration.test.ts` | The SQL, the partial unique index and the driver, against real Postgres | Disposable Neon branch in CI, handed over as `DATABASE_URL_TEST`; skipped locally unless that variable points at a throwaway database |
 | Composition and wiring | `src/composition/**/*.test.ts`, `src/features/**/*.wiring.test.ts` | Capability selection by environment, fail-closed production rules, and that each wiring file assembles a working object graph | `vi.stubEnv`; `vi.mock` of `capabilities/persistence` to inject the in-memory repository |
 | Delivery: Server Actions, routes, pages, proxy | `src/features/**/actions/*.test.ts`, `app/**/*.test.ts(x)`, `proxy.test.ts` | Validation, error mapping, response shaping, metadata, and server-rendered markup via `renderToStaticMarkup` | `vi.mock` of wiring modules and Next-only modules (`next/font/*`, `next/og`, `next/script`) |
 | Runtime bootstrap | `tests/unit/instrumentation.test.ts`, `src/config/sentry-runtime-configs.test.ts` | `register()` loads the right Sentry runtime config for `NEXT_RUNTIME`, `onRequestError` is still `Sentry.captureRequestError` (the hook Next calls on every uncaught RSC/route/Server Action failure), and both `sentry.*.config.ts` forward `buildServerSentryOptions`'s output intact | `vi.mock` of `@sentry/nextjs`, `./sentry-options`, and (for the instrumentation test) both `sentry.*.config.ts` modules |
 | Ops script | `scripts/launch-email.test.ts` | Argument parsing and dispatch to `dry-run`/`production`, exhaustively; the `import.meta.main` entry body is 2 lines and untestable in-process (true only for the real process entry) | `vi.mock` of `src/composition/ops/launch.wiring` — `getLaunchOperations` itself is covered by `launch.wiring.test.ts` |
 | reCAPTCHA bridge | `src/features/early-access/ui/recaptcha-bridge.test.tsx` | Script injection, reuse of an already-present script tag, the load/error handlers, and the "CAPTCHA is unavailable" failure path — asserted directly rather than through Playwright, since the browser suite always runs with the fake CAPTCHA switch on and so never mounts this component (see the exclusions table) | Hand-stubbed `document`/`window` globals, no jsdom — same technique as `tests/unit/instrumentation-client.test.ts` |
 | Browser behaviour | `tests/e2e/*.spec.ts` (Playwright) | Motion, the Living Lexicon, signup and management journeys, axe, prototype parity | Local Postgres behind a Neon HTTP proxy, fake CAPTCHA and email |
-| Configuration regressions | `tests/unit/*.test.ts` | Workflow, compose, Lighthouse and font-asset invariants; that every top-level `src/` directory and every standalone root file in `coverage.include` has its own coverage threshold glob (R-06) | — |
+| Configuration regressions | `tests/unit/*.test.ts` | Workflow, compose, Lighthouse and font-asset invariants; that every top-level `src/` directory and every standalone root file in `coverage.include` has its own coverage threshold glob, and that no glob is enforced below its layer's agreed target (R-06) | — |
 
 There is deliberately no jsdom or testing-library layer. Server components are
 asserted on their static markup; behaviour that only exists in effects or GSAP
@@ -50,14 +50,16 @@ it is the only place the Drizzle repository is measured instead of excluded.
 
 ## Coverage gate
 
-Provider: `@vitest/coverage-v8` (pinned to the Vitest major). Measured files:
-`src/**`, `app/**`, `proxy.ts`, `instrumentation.ts`, `sentry.server.config.ts`,
-`sentry.edge.config.ts`, `scripts/launch-email.ts` — the root runtime files
-Next calls directly, plus the one ops script, each with its own threshold
-entry rather than the catch-all below. The rest of `scripts/` (the
-stack-conformance tool) is not part of the measured set. Thresholds are per
-glob and evaluated on every `test:coverage` run; the build fails below any of
-them.
+Provider: `@vitest/coverage-v8`, exact-pinned at `5.0.0` against `vitest`'s
+`^5.0.0`; it must track the Vitest **major**, so bump the pair together.
+Measured files: `src/**`, `app/**`, `proxy.ts`, `instrumentation.ts`,
+`instrumentation-client.ts`, `sentry.server.config.ts`,
+`sentry.edge.config.ts`, `next.config.ts`, `scripts/launch-email.ts` — the
+root runtime modules Next calls directly, plus the one ops script, each with
+its own threshold entry rather than the catch-all below. The rest of
+`scripts/` (the stack-conformance tool) is not part of the measured set.
+Thresholds are per glob and evaluated on every `test:coverage` run; the build
+fails below any of them.
 
 | Glob | Target | Enforced (lines / branches / functions / statements) |
 | --- | --- | --- |
@@ -71,8 +73,10 @@ them.
 | `app/**` | 80 | 93 / 94 / 80 / 93 |
 | `proxy.ts` | 80 | 100 / 97 / 100 / 100 |
 | `instrumentation.ts` | 80 | 100 / 100 / 100 / 100 |
+| `instrumentation-client.ts` | 80 | 100 / 100 / 100 / 100 |
 | `sentry.server.config.ts` | 80 | 100 / 100 / 100 / 100 |
 | `sentry.edge.config.ts` | 80 | 100 / 100 / 100 / 100 |
+| `next.config.ts` | 80 | 100 / 100 / 100 / 100 |
 | `scripts/launch-email.ts` | 80 | 86 / 93 / 100 / 88 |
 | anything else | 80 | 80 / 80 / 80 / 80 (a floor under every measured file — see below, it is not what protects a new directory) |
 
@@ -86,7 +90,8 @@ that same 2026-09-22 date once `recaptcha-bridge.tsx` became measured
 (R-11). The adapters row accounts for the Drizzle repository, which only CI
 measures: its unit suite alone leaves it at 100 / 85 / 100 / 98, and the
 aggregate with that lower bound is 100 / 92 / 100 / 99. CI adds the
-integration suite on top, so CI can only measure higher.
+integration suite on top, so CI can only measure higher — measured there at
+98 / 93 / 100 / 100 against a disposable Neon branch.
 
 The bare `lines`/`branches`/`functions`/`statements` keys are **not** scoped
 to files the glob rows above leave unclaimed: Vitest's threshold resolver
@@ -99,7 +104,9 @@ friends, so on its own this row would not fail (R-06). What actually
 prevents a new directory or root file from shipping unmeasured is
 `tests/unit/coverage-thresholds.test.ts`: it fails unless every top-level
 `src/` directory and every standalone file named in `coverage.include` has
-its own row in the table above.
+its own row in the table above, and unless every row still sits at or above
+the agreed target for its layer — so a later re-measure cannot quietly lower
+a gate instead of raising it.
 
 ### Ratchet rule
 
@@ -114,28 +121,40 @@ its own row in the table above.
   covered through a structural stub (see the resolve/unsubscribe and purge use
   case tests) or removed with a comment.
 
-**Recorded lowering — 2026-09-22.** This branch forked before `main`'s Sentry
-observability work existed, so merging `main` in was the first time this
-gate ever measured that code. Two files conflicted and four tests failed on
-contact; three globs needed re-measuring afterward and moved down (562 tests,
-up from 454 at introduction on 2026-09-20):
+### Threshold history
 
-| Glob | Before (2026-09-20) | After (2026-09-22) |
-| --- | --- | --- |
-| `src/config/**` | 100 / 100 / 100 / 100 | 99 / 97 / 100 / 98 |
-| `src/features/**` | 88 / 89 / 87 / 87 | 88 / 89 / 86 / 87 |
-| `app/**` | 100 / 100 / 100 / 100 | 93 / 94 / 80 / 93 |
+Every change to an enforced value is recorded here, including the ones that
+moved down. The ratchet rule above is only auditable if raises and lowerings
+are both written down.
 
-Every agreed target above is still met; what moved is the surplus the
-ratchet had banked against a codebase without Sentry in it.
-`app/error.tsx` and `app/global-error.tsx` (50% each) are half of the
-`app/**` drop, and are left measured rather than excluded: they render on
-the server but act only in the browser, and the `browserOnly` exclusion list
-in `vitest.config.ts` requires a Playwright spec per entry, but no spec
-exercises the error boundary — an honest lower number beats a quiet
-exclusion. `src/features/**` moved again, upward, later the same day —
-88/89/86/87 → 90/90/86/88 — once `recaptcha-bridge.tsx` became measured
-(R-11); that move is a raise, not a lowering, so it needs no entry here.
+- **2026-09-20** — gate introduced at 454 tests. Floors set from that
+  measurement: core 100/100/100/100; adapters 100/92/100/99; composition
+  98/100/93/98; config 100/100/100/100; ops 95/90/100/95; features
+  88/89/87/87; components and app 100/100/100/100; proxy 100/97/100/100.
+- **2026-09-22 — recorded lowering.** This branch forked before `main`'s
+  Sentry observability work existed, so merging `main` in was the first time
+  the gate ever measured that code. Two files conflicted and four tests failed
+  on contact. Re-measured at 562 tests: config 100/100/100/100 →
+  99/97/100/98; features 88/89/87/87 → 88/89/86/87; app 100/100/100/100 →
+  93/94/80/93. Not a lowering to buy green — every agreed target is still met;
+  what moved is the surplus the ratchet had banked against a codebase with no
+  Sentry in it. `app/error.tsx` and `app/global-error.tsx` are half of the
+  `app/**` drop at 50% each: they render on the server but act only in the
+  browser, and the `browserOnly` exclusion list requires a Playwright spec per
+  entry while no spec exercises the error boundary. They stay measured — an
+  honest lower number beats a quiet exclusion.
+- **2026-09-22 — review round (raises).** `recaptcha-bridge.tsx` moved from
+  excluded to measured (R-11, unit-tested with a stubbed document), the root
+  runtime modules and `scripts/launch-email.ts` joined the measured set
+  (R-15), and the integration suite moved to `DATABASE_URL_TEST` (R-01).
+  Re-measured: features 88/89/86/87 → 90/90/86/88; root modules
+  100/100/100/100; `scripts/launch-email.ts` 86/93/100/88.
+- **2026-09-23 — branch reconciliation.** A second line of work fixed the same
+  findings in parallel; merging it added `instrumentation-client.ts` and
+  `next.config.ts` to the measured set with the tests that cover them
+  (`tests/unit/instrumentation-client.test.ts`,
+  `tests/unit/next-config-headers.test.ts`), both at 100/100/100/100. No
+  enforced value moved down.
 
 ### Exclusions and why
 
@@ -186,7 +205,8 @@ exclusion is the one gap between a developer machine and the CI `test` job,
 which always provisions a Neon branch and sets `DATABASE_URL_TEST` explicitly.
 To close it locally, start the E2E database and point the driver at the local
 proxy, exactly as `docs/verification/definition-of-done.md` documents for the
-integration suite:
+integration suite. Only ever point `DATABASE_URL_TEST` at a throwaway
+database — the suite truncates the signup table before every test:
 
 ```sh
 docker compose up -d db proxy

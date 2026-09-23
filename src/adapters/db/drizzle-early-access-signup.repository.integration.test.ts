@@ -6,10 +6,9 @@ import { createNeonDatabase } from './neon-database.adapter';
 import { earlyAccessSignups } from './schema';
 
 /**
- * Runs against a real Neon Postgres branch, never in-memory — proves the
+ * Runs against a real Postgres database, never in-memory — proves the
  * partial unique index (§9.2) and Drizzle mapping actually work, not just
- * the in-memory mirror of them. Skips when no disposable DB is wired (e.g.
- * CI before Task 19 provisions per-run branches) rather than failing.
+ * the in-memory mirror of them.
  *
  * Reads DATABASE_URL_TEST, deliberately never DATABASE_URL: the `beforeEach`
  * below unconditionally deletes every row, and DATABASE_URL is the variable
@@ -20,6 +19,11 @@ import { earlyAccessSignups } from './schema';
  * this delete no matter what runs `bun run check`/`test`/`test:coverage`;
  * only a connection someone explicitly assigned to DATABASE_URL_TEST is at
  * risk, which is opt-in by construction rather than by discipline.
+ *
+ * The CI `test` job hands its disposable per-run Neon branch over under this
+ * name; to run the suite locally, follow docs/quality/testing.md
+ * ("Measuring the Drizzle repository"). Without the variable the suite skips
+ * rather than failing.
  */
 const connectionString = process.env.DATABASE_URL_TEST;
 

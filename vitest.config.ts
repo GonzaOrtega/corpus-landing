@@ -63,6 +63,20 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    /**
+     * Above Vitest's 5s default because this suite runs one isolated worker
+     * per file — a hundred of them — which oversubscribes a developer machine
+     * and starves individually-fast tests. Two of them boot heavy third-party
+     * config systems (`lighthouse-config.test.ts` initialises Lighthouse's
+     * real config twice) and were being killed at ~5.0s while completing in
+     * ~1.2s when run alone, with a different file losing the race on each
+     * run. The 5s was measuring contention, not the code.
+     *
+     * This costs nothing on a green run, since a timeout only applies to a
+     * test that is already failing, and it still catches a genuine hang —
+     * `recaptcha-bridge.test.tsx` relies on exactly that.
+     */
+    testTimeout: 15_000,
     include: [
       'tests/unit/**/*.test.ts',
       'src/**/*.test.ts',
@@ -84,8 +98,10 @@ export default defineConfig({
         'app/**/*.{ts,tsx}',
         'proxy.ts',
         'instrumentation.ts',
+        'instrumentation-client.ts',
         'sentry.server.config.ts',
         'sentry.edge.config.ts',
+        'next.config.ts',
         'scripts/launch-email.ts',
       ],
       exclude: [
@@ -159,17 +175,25 @@ export default defineConfig({
         'src/components/**': { lines: 100, branches: 100, functions: 100, statements: 100 },
         'app/**': { lines: 93, branches: 94, functions: 80, statements: 93 },
         'proxy.ts': { lines: 100, branches: 97, functions: 100, statements: 100 },
-        // R-15: instrumentation.ts and the two Sentry runtime configs are
-        // fully exercised (tests/unit/instrumentation.test.ts and the
-        // existing src/config/sentry-runtime-configs.test.ts), so their
+        // R-15: the root runtime files are fully exercised —
+        // instrumentation.ts and instrumentation-client.ts by
+        // tests/unit/instrumentation.test.ts and
+        // tests/unit/instrumentation-client.test.ts, the two Sentry configs by
+        // the existing src/config/sentry-runtime-configs.test.ts, and
+        // next.config.ts by tests/unit/next-config-headers.test.ts — so their
         // target is the same 100 the rest of the runtime bootstrap gets.
+        // Each gets its own key rather than one brace glob: the conformance
+        // net below asserts per-file entries, and launch-email.ts proves the
+        // set is not uniformly 100.
         // scripts/launch-email.ts's only uncovered lines are the
         // `import.meta.main` entry body — true only for the actual process
         // entry, so it cannot run under an `import()` from a test; the
         // floor below is `floor(measured)` for the rest of the file.
         'instrumentation.ts': { lines: 100, branches: 100, functions: 100, statements: 100 },
+        'instrumentation-client.ts': { lines: 100, branches: 100, functions: 100, statements: 100 },
         'sentry.server.config.ts': { lines: 100, branches: 100, functions: 100, statements: 100 },
         'sentry.edge.config.ts': { lines: 100, branches: 100, functions: 100, statements: 100 },
+        'next.config.ts': { lines: 100, branches: 100, functions: 100, statements: 100 },
         'scripts/launch-email.ts': { lines: 86, branches: 93, functions: 100, statements: 88 },
       },
     },
