@@ -38,6 +38,17 @@ vi.mock('@sentry/nextjs', () => ({
 
 let reporter: RecordingErrorReporterAdapter;
 
+/**
+ * Every place a secret could hide in a report, including the parts of an
+ * Error that `JSON.stringify` leaves out (R-21).
+ */
+function expectNoSecretIn(report: { error: unknown; fields: unknown } | undefined, secret: string) {
+  const error = report?.error;
+  const parts = [JSON.stringify(report?.fields), JSON.stringify(error)];
+  if (error instanceof Error) parts.push(error.message, error.stack ?? '', String(error.cause));
+  for (const part of parts) expect(part).not.toContain(secret);
+}
+
 describe('management action mapping', () => {
   beforeEach(() => {
     reporter = new RecordingErrorReporterAdapter();
@@ -70,22 +81,20 @@ describe('management action mapping', () => {
       ),
     ).resolves.toEqual({ status: 'invalid' });
 
-    // A distinctive secret, not the word "token" — the earlier version of
-    // this test passed the literal string 'token' as the raw token and then
-    // asserted the reported fields didn't contain the substring 'token'.
-    // Since `fields` is pinned to `{ operation: 'resolve_management' }` by
-    // the exact `toEqual` below, neither of those strings can ever appear in
-    // it regardless of what the secret's value is — that assertion could
-    // never fail. Using a real-shaped secret and checking the *whole*
-    // reported entry (error included, where `objectContaining` below leaves
-    // room for extra properties) makes the check independently falsifiable:
-    // see the temporarily-flipped-handler run in the QA report for proof.
+    // A distinctive secret, not the word "token", and a check that can
+    // actually fail (R-21). `fields` is pinned exactly by `toEqual`, and
+    // `JSON.stringify` of an Error is `{}` — message, stack and cause are
+    // not enumerable — so stringifying the report could never see a secret
+    // the handler wrapped into a new error. Instead: the reported error is
+    // the very object the use case threw (so nothing was added to it), and
+    // the parts JSON.stringify skips are swept explicitly.
     const secretToken = 'placeholder-management-secret-9f2c';
+    const thrown = new Error('database body with sensitive details');
     await expect(
       handleResolveManagement(
         {
           execute: vi.fn(async () => {
-            throw new Error('database body with sensitive details');
+            throw thrown;
           }),
         },
         secretToken,
@@ -93,12 +102,10 @@ describe('management action mapping', () => {
       ),
     ).resolves.toEqual({ status: 'retry' });
     expect(reporter.reports).toEqual([
-      {
-        error: expect.objectContaining({ message: 'database body with sensitive details' }),
-        fields: { operation: 'resolve_management' },
-      },
+      { error: thrown, fields: { operation: 'resolve_management' } },
     ]);
-    expect(JSON.stringify(reporter.reports[0])).not.toContain(secretToken);
+    expect(reporter.reports[0]?.error).toBe(thrown);
+    expectNoSecretIn(reporter.reports[0], secretToken);
   });
 
   it('only invokes unsubscribe through its explicit action and maps failures generically', async () => {
@@ -115,11 +122,12 @@ describe('management action mapping', () => {
             throw new Error('private failure');
           }),
         },
-        'token',
+        'placeholder-unsubscribe-secret-41ab',
         reporter,
       ),
     ).resolves.toEqual({ status: 'retry' });
     expect(reporter.reports.map((report) => report.fields)).toEqual([{ operation: 'unsubscribe' }]);
+    expectNoSecretIn(reporter.reports[0], 'placeholder-unsubscribe-secret-41ab');
   });
 });
 

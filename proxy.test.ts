@@ -1,5 +1,7 @@
+import { existsSync } from 'node:fs';
 import { NextRequest } from 'next/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SENTRY_TUNNEL_ROUTE } from '@/src/config/sentry-options';
 import { buildMarkdownNotFound, renderMarkdownPage } from '@/src/features/agent-readiness/content';
 import { config, proxy } from './proxy';
 
@@ -203,6 +205,29 @@ describe('proxy', () => {
         source: `/((?!${excluded}).*)`,
         missing: [{ type: 'header', key: 'sec-fetch-mode', value: 'navigate' }],
       });
+    });
+
+    /**
+     * R-18: the tunnel path is spelled three times — `SENTRY_TUNNEL_ROUTE`
+     * (what the browser SDK posts to), the matcher literals above (Next.js
+     * reads `config.matcher` statically, so they cannot import the
+     * constant), and the route folder. This ties all three together, so a
+     * rename of any one fails here instead of silently sending envelopes
+     * through content negotiation or to a 404.
+     */
+    it('excludes the Sentry tunnel route the browser SDK posts to, which exists as a route', () => {
+      const patterns = config.matcher.flatMap((entry) =>
+        typeof entry === 'string' ? [] : [new RegExp(`^${entry.source}$`)],
+      );
+
+      expect(patterns.length).toBeGreaterThan(0);
+      for (const pattern of patterns) {
+        expect(pattern.test(SENTRY_TUNNEL_ROUTE), pattern.source).toBe(false);
+        expect(pattern.test('/about'), pattern.source).toBe(true);
+      }
+      expect(existsSync(new URL(`./app${SENTRY_TUNNEL_ROUTE}/route.ts`, import.meta.url))).toBe(
+        true,
+      );
     });
   });
 });

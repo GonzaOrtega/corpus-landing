@@ -136,12 +136,10 @@ export default defineConfig({
       // observability work existed, and re-measuring after that merge moved
       // them down to the values below. Every agreed target above is still
       // met; what moved is the bonus the ratchet had banked. `app/error.tsx`
-      // and `app/global-error.tsx` are the bulk of the app drop, at 50% each:
-      // the uncovered half is the JSX body of a client component, and
-      // rendering it needs the jsdom/testing-library layer this repo declined.
-      // They are deliberately NOT added to `browserOnly` above, because that
-      // list requires an e2e spec per entry and no spec exercises the error
-      // boundary — an honest lower number beats a quiet exclusion.
+      // and `app/global-error.tsx` were the bulk of the app drop; since
+      // issue #20 they are rendered as plain functions with a synchronous
+      // `useEffect` (no jsdom needed) and `app/**` is back up — see the
+      // threshold history in docs/quality/testing.md.
       thresholds: {
         // These four bare keys are NOT scoped to files the more specific
         // globs below leave unclaimed: Vitest's threshold resolver builds
@@ -164,16 +162,16 @@ export default defineConfig({
         statements: 80,
         'src/core/**': { lines: 100, branches: 100, functions: 100, statements: 100 },
         'src/adapters/**': { lines: 100, branches: 92, functions: 100, statements: 99 },
-        'src/composition/**': { lines: 98, branches: 100, functions: 93, statements: 98 },
-        'src/config/**': { lines: 99, branches: 97, functions: 100, statements: 98 },
+        'src/composition/**': { lines: 98, branches: 100, functions: 94, statements: 98 },
+        'src/config/**': { lines: 99, branches: 99, functions: 100, statements: 99 },
         'src/ops/**': { lines: 95, branches: 90, functions: 100, statements: 95 },
         // R-11: recaptcha-bridge.tsx is now measured (see browserOnly's
         // comment above) and mostly covered, which raised this glob's floor.
         // Ratchet rule: raised to floor(measured) — 90 / 90 / 86 / 88 — in
         // this same PR rather than left at the old, now-stale 88 / 89 / 86 / 87.
-        'src/features/**': { lines: 90, branches: 90, functions: 86, statements: 88 },
+        'src/features/**': { lines: 90, branches: 90, functions: 87, statements: 88 },
         'src/components/**': { lines: 100, branches: 100, functions: 100, statements: 100 },
-        'app/**': { lines: 93, branches: 94, functions: 80, statements: 93 },
+        'app/**': { lines: 100, branches: 97, functions: 93, statements: 100 },
         'proxy.ts': { lines: 100, branches: 97, functions: 100, statements: 100 },
         // R-15: the root runtime files are fully exercised —
         // instrumentation.ts and instrumentation-client.ts by
