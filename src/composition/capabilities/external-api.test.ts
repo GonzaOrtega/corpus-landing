@@ -4,8 +4,6 @@ import { GoogleRecaptchaAdapter } from '../../adapters/captcha/google-recaptcha.
 import { loadServerConfig } from '../../config/server-env';
 import { provideExternalApi } from './external-api';
 
-vi.mock('server-only', () => ({}));
-
 const baseEnv: Record<string, string> = {
   SITE_URL: 'https://corpus.example',
   DATABASE_URL: 'postgres://user:pass@host/db',

@@ -1,0 +1,68 @@
+[
+  {
+    "file": "vitest.config.ts",
+    "line": 98,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "The \"catch-all\" coverage floor does not do what its comment and the testing guide promise: it is a whole-repository average, not a net under directories the named rules miss, so a brand-new folder with no tests at all can ship green.",
+    "requires": [
+      "a new source directory under src/ or app/ that none of the per-glob thresholds names"
+    ],
+    "repro": "test",
+    "evidence": "The bare lines/branches/functions/statements keys are evaluated by the test runner over every measured file, not over the files the globs leave unclaimed - the runner's own source says as much where it builds the global set. A new directory's uncovered lines are therefore averaged against the whole of src/** and app/**, which sit far above 80, so the floor is not reached and no rule fires. The same claim is repeated in the threshold table of docs/quality/testing.md line 65. Either add a per-glob rule when a directory is added, or make the intent real (for example a conformance test asserting every top-level source directory is named by a threshold glob)."
+  },
+  {
+    "file": ".github/workflows/ci.yml",
+    "line": 86,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "The one job this change designates as the complete coverage measurement still reports success when the disposable database never appeared - it quietly measures less instead of failing.",
+    "requires": [
+      "the disposable-branch step finishing without producing a connection string (an outcome the workflow already anticipates)"
+    ],
+    "repro": "test",
+    "evidence": "The migrate step and the cleanup step are both guarded on a non-empty branch id, so an empty one is a state the workflow expects to survive; the new coverage step has no such guard and runs with empty database variables. In that state the repository integration suite self-skips by design and vitest.config.ts drops the Drizzle repository from the measured set entirely, so the required database-validation check passes having validated no database and having measured the adapter it exists to measure. The only signal is a console warning printed from the config file, which cannot fail a run. Guard the coverage step on the same branch id the neighbouring steps use, or assert the database variable is present before running it."
+  },
+  {
+    "file": "src/adapters/db/drizzle-early-access-signup.repository.test.ts",
+    "line": 19,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The stand-in database accepts any sequence of query calls, so the new repository tests raise that file's coverage without checking a single thing about the queries it builds.",
+    "requires": ["a change to a filter, ordering or paging clause in the repository"],
+    "repro": "test",
+    "evidence": "The stand-in is a proxy whose every method returns itself and which settles with a scripted result, so a wrong filter, a dropped ordering or an ignored cursor is indistinguishable from a correct one - the new cursor-paging assertion passes without the cursor being applied at all. That is a reasonable way to reach the error-translation branches, and the real-database suite covers the SQL, but it means the adapters coverage number for this file would stay satisfied even if the real-database suite were removed. Worth stating in docs/quality/testing.md so nobody later reads that number as evidence the SQL is exercised."
+  },
+  {
+    "file": "src/composition/capabilities/config-secrets.test.ts",
+    "line": 35,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "Several new \"fails closed\" tests accept any error whatsoever, so they would still pass if the code broke earlier and for an entirely unrelated reason.",
+    "requires": [
+      "a refactor that throws before, or instead of, the validation the test is named for"
+    ],
+    "repro": "test",
+    "evidence": "Bare expectations that something throws, with no message and no type, at this line and at src/composition/capabilities/persistence.test.ts line 23, src/adapters/db/neon-database.adapter.test.ts line 26 and proxy.test.ts line 177. The first of these is the fail-closed rule for a missing database connection string, which is the kind of assertion that should name what it expects. Other tests added in this same change (the launch wiring tests, the token deriver tests) do pin the message, so the stricter pattern is already house style here."
+  },
+  {
+    "file": "app/about/page.test.tsx",
+    "line": 11,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "Three new page tests say they check that every published section is rendered, but they walk a list nothing requires to be non-empty, so emptying the page's content would leave them green.",
+    "requires": ["the section list for a page shrinking or being emptied"],
+    "repro": "test",
+    "evidence": "The same unguarded loop appears in app/contact/page.test.tsx line 26, app/developers/page.test.tsx line 11 and, for the landing navigation anchors, src/features/landing/content/landing-content.test.ts line 23. The legal equivalent added in this change does guard the list length before looping; the about, contact and developer section lists are not asserted non-empty by any test in the repository. One length assertion per loop restores the meaning of the test name."
+  },
+  {
+    "file": "CLAUDE.md",
+    "line": 33,
+    "category": "docs",
+    "severity": "minor",
+    "summary": "The command named \"check\" and the required pull-request check named \"check\" now differ by an entire test run, which is the same kind of drift this change set out to remove.",
+    "requires": [],
+    "repro": "none",
+    "evidence": "The package script called check now ends with the coverage run, while the pull-request job of the same name runs a hand-listed subset (types, lint, one configuration test, dependency rules, stack conformance) and never invokes the script. Within this file, line 33 still describes check as types plus lint plus stack conformance while line 36 says coverage is part of it. The README paragraph added here (\"inside bun run check\") reads naturally as the job of that name to anyone auditing which checks enforce the gate."
+  }
+]

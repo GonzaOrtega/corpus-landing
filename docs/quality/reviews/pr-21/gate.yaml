@@ -1,0 +1,45 @@
+# review-gate gate. Human-owned: the CLI reads this and never writes it back.
+version: 1
+pr: 21
+branch: "claude/epic-lovelace-tuez7o"
+base: "main"
+intake_sha: a35ef7902aac091314761f7697a73046c9d7134e   # commits at or before this SHA are exempt from trailer rules
+spec: "docs/superpowers/specs/2026-09-06-corpus-landing-design.md"
+about:
+  project: |
+    corpus-landing is the public early-access landing page for Corpus, an Android-first language-learning product. It explains the product, collects and confirms email signups, lets a subscriber manage or cancel their own signup through a tokenised link, sends one launch notification, and then flips the whole site into "Get Corpus" mode. It is a Next.js App Router site on Vercel with a Neon Postgres database reached through Drizzle, Resend for email, and a strict hexagonal layout in which the core declares ports, adapters implement them, and only the composition root is allowed to build an adapter. The repository is public, so its history and its documents are part of what it ships.
+  feature: |
+    This pull request turns an existing but unmeasured test suite into a measured and enforced one. It adds a coverage provider, sets a hard threshold for each layer, writes thirty-three new test files and extends fifteen more so those thresholds are honest, and documents the whole scheme. Three things happened after it was first opened. Merging main brought the Sentry observability work inside the measured globs for the first time, which broke four tests and lowered three thresholds. An audit found that seven documents claimed continuous integration enforced this gate when no workflow ran it at all. The gate is now wired for real, both into the continuous integration test job, which is the only job with a database and therefore the only complete measurement, and into the local check command so a breach fails before a push.
+scope:                       # globs; findings outside them are deferred to issues
+  - "src/**"
+  - "app/**"
+  - "tests/**"
+  - "proxy.test.ts"
+  - "vitest.config.ts"
+  - "package.json"
+  - ".github/workflows/ci.yml"
+  - "README.md"
+  - "CLAUDE.md"
+  - "CONTRIBUTING.md"
+  - "docs/quality/testing.md"
+  - "docs/operations/preview-ci.md"
+  - "docs/verification/definition-of-done.md"
+round_cap: 2
+severity_floor: important    # findings below this become "later"
+reviewers:
+  - "pr-review-toolkit:code-reviewer"
+  - "pr-review-toolkit:silent-failure-hunter"
+  - "pr-review-toolkit:pr-test-analyzer"
+done:                        # evidence the ledger must carry on a fresh SHA before merge
+  - id: "check"
+    how: "bun run check (typecheck + Biome + stack conformance + the per-glob coverage gate; spec §39 items 1, 2, 3, 5)"
+  - id: "depcruise"
+    how: "bunx depcruise --config .dependency-cruiser.json src app --output-type err (spec §39 item 4, hexagonal boundaries)"
+  - id: "coverage-with-db"
+    how: "docker compose up -d db proxy; docker compose run --rm --no-deps e2e sh -c \"bun tests/e2e/support/migrate.mjs\"; then run bun run test:coverage with DATABASE_URL_TEST (the variable the integration suite reads since R-01; without it the suite self-skips and this evidence would be false), plus DATABASE_URL, DATABASE_URL_UNPOOLED, E2E_NEON_HTTP_ENDPOINT and the NODE_OPTIONS shim, all set per docs/quality/testing.md 'Measuring the Drizzle repository' (spec §39 item 6)"
+  - id: "e2e"
+    how: "bun run test:e2e (containerized Playwright including the axe pass; spec §39 items 7, 8)"
+  - id: "lighthouse"
+    how: "the lighthouse job on the pull request, against the deployed Preview (spec §39 item 9)"
+mirror: pr-comment           # pr-comment | none
+threat_model: docs/quality/reviews/threat-model.md

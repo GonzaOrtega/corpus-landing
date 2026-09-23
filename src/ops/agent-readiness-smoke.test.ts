@@ -150,4 +150,29 @@ describe('agent-readiness production smoke', () => {
       'Agent-readiness smoke request failed or timed out',
     );
   });
+
+  it('fails when the home response carries no discovery Link header at all', async () => {
+    await expect(
+      runAgentReadinessSmoke({
+        ...options,
+        home: { ...options.home, headers: new Headers({ vary: 'Accept' }) },
+      }),
+    ).rejects.toThrow('Markdown alternate discovery missing');
+  });
+
+  it.each([
+    ['is not JSON', '<script type="application/ld+json">{not json</script>', 'JSON-LD is invalid'],
+    [
+      'has no graph',
+      '<script type="application/ld+json">{"@context":"https://schema.org"}</script>',
+      'SoftwareApplication JSON-LD missing',
+    ],
+  ])('fails when the JSON-LD %s', async (_label, script, message) => {
+    await expect(
+      runAgentReadinessSmoke(
+        { ...options, home: { headers: homeHeaders, body: `<html><head>${script}</head></html>` } },
+        fetcher(),
+      ),
+    ).rejects.toThrow(message);
+  });
 });

@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   MAINTENANCE_CRON_SCHEDULE,
   MAINTENANCE_MONITOR_CONFIG,
@@ -26,7 +26,16 @@ vi.mock('@sentry/nextjs', () => ({
   flush: sentry.flush,
 }));
 
-const { monitoredMaintenanceRun } = await import('./route');
+const maintenance = vi.hoisted(() => ({
+  cronSecret: 'cron-secret-value',
+  execute: vi.fn(),
+}));
+
+vi.mock('../../../../src/composition/server/maintenance.wiring', () => ({
+  getMaintenanceOperation: () => maintenance,
+}));
+
+const { GET, monitoredMaintenanceRun } = await import('./route');
 
 const result = {
   confirmationRetriesProcessed: 1,
@@ -34,6 +43,12 @@ const result = {
   unsubscribedAnonymized: 0,
   launchedAnonymized: 0,
 };
+
+beforeEach(() => {
+  sentry.monitors.length = 0;
+  sentry.spans.length = 0;
+  sentry.flush.mockClear();
+});
 
 describe('maintenance cron monitor', () => {
   it('upserts the Sentry monitor with the schedule Vercel actually runs', () => {
@@ -51,10 +66,6 @@ describe('maintenance cron monitor', () => {
   });
 
   it('runs inside a check-in and a cron span, then flushes before the function freezes', async () => {
-    sentry.monitors.length = 0;
-    sentry.spans.length = 0;
-    sentry.flush.mockClear();
-
     await expect(monitoredMaintenanceRun(async () => result)).resolves.toEqual(result);
 
     expect(sentry.monitors).toEqual([
@@ -65,8 +76,6 @@ describe('maintenance cron monitor', () => {
   });
 
   it('keeps propagating failures (the 500 contract) and still flushes', async () => {
-    sentry.flush.mockClear();
-
     await expect(
       monitoredMaintenanceRun(async () => {
         throw new Error('DATABASE_URL is not configured');
@@ -74,5 +83,58 @@ describe('maintenance cron monitor', () => {
     ).rejects.toThrow('DATABASE_URL is not configured');
 
     expect(sentry.flush).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('GET /api/cron/maintenance', () => {
+  beforeEach(() => {
+    maintenance.execute.mockReset().mockResolvedValue({
+      confirmationRetriesProcessed: 2,
+      confirmationExhausted: 1,
+      unsubscribedAnonymized: 3,
+      launchedAnonymized: 0,
+    });
+  });
+
+  it('runs maintenance and returns its result for the exact bearer secret', async () => {
+    const response = await GET(
+      new Request('https://corpus.example/api/cron/maintenance', {
+        headers: { authorization: 'Bearer cron-secret-value' },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      confirmationRetriesProcessed: 2,
+      confirmationExhausted: 1,
+      unsubscribedAnonymized: 3,
+      launchedAnonymized: 0,
+    });
+    expect(maintenance.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('wraps the authorised run in the same check-in the monitor test asserts', async () => {
+    await GET(
+      new Request('https://corpus.example/api/cron/maintenance', {
+        headers: { authorization: 'Bearer cron-secret-value' },
+      }),
+    );
+
+    expect(sentry.monitors).toEqual([
+      { slug: MAINTENANCE_MONITOR_SLUG, config: MAINTENANCE_MONITOR_CONFIG },
+    ]);
+    expect(sentry.flush).toHaveBeenCalledWith(2000);
+  });
+
+  it('rejects any other credential without running anything', async () => {
+    const response = await GET(
+      new Request('https://corpus.example/api/cron/maintenance', {
+        headers: { authorization: 'Bearer wrong' },
+      }),
+    );
+
+    expect(response.status).toBe(401);
+    expect(maintenance.execute).not.toHaveBeenCalled();
+    expect(sentry.monitors).toEqual([]);
   });
 });

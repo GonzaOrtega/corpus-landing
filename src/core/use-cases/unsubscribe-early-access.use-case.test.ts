@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { EarlyAccessSignup } from '../entities/early-access-signup';
+import { buildSignup } from '../testing/early-access-signup.factory';
 import { FixedClockAdapter } from '../testing/fixed-clock.adapter';
 import { InMemoryEarlyAccessSignupRepository } from '../testing/in-memory-early-access-signup.repository';
 import { UnsubscribeEarlyAccessUseCase } from './unsubscribe-early-access.use-case';
@@ -50,5 +51,41 @@ describe('UnsubscribeEarlyAccessUseCase', () => {
     const { useCase } = await setup();
 
     await expect(useCase.execute('wrong-token')).resolves.toEqual({ status: 'invalid' });
+  });
+
+  it('does not touch the repository for an empty token', async () => {
+    const repository = new InMemoryEarlyAccessSignupRepository();
+    const lookup = vi.spyOn(repository, 'findByManageTokenHash');
+    const useCase = new UnsubscribeEarlyAccessUseCase(
+      repository,
+      { hash: (token) => `hash:${token}` },
+      new FixedClockAdapter(NOW),
+    );
+
+    await expect(useCase.execute('')).resolves.toEqual({ status: 'invalid' });
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['anonymized but still carrying a token hash', { anonymizedAt: NOW }],
+    ['missing its token hash', { manageTokenHash: null }],
+  ] as const)('never unsubscribes a row that is %s', async (_label, overrides) => {
+    const row = buildSignup({ manageTokenHash: 'hash:valid-token', ...overrides });
+    const saved: EarlyAccessSignup[] = [];
+    const repository = Object.assign(new InMemoryEarlyAccessSignupRepository(), {
+      findByManageTokenHash: async () => row,
+      save: async (signup: EarlyAccessSignup) => {
+        saved.push(signup);
+        return signup;
+      },
+    });
+    const useCase = new UnsubscribeEarlyAccessUseCase(
+      repository,
+      { hash: (token) => `hash:${token}` },
+      new FixedClockAdapter(NOW),
+    );
+
+    await expect(useCase.execute('valid-token')).resolves.toEqual({ status: 'invalid' });
+    expect(saved).toHaveLength(0);
   });
 });

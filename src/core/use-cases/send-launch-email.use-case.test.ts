@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EarlyAccessSignup } from '../entities/early-access-signup';
+import { EarlyAccessSignup, type EarlyAccessSignupProps } from '../entities/early-access-signup';
 import type { EmailDeliveryOutcome, EmailMessage, EmailSender } from '../ports/email-sender.port';
 import { FixedClockAdapter } from '../testing/fixed-clock.adapter';
 import { InMemoryEarlyAccessSignupRepository } from '../testing/in-memory-early-access-signup.repository';
@@ -102,5 +102,84 @@ describe('SendLaunchEmailUseCase', () => {
 
     expect((await repository.findById(signup.id))?.toProps().launchStatus).toBe('manual_review');
     expect(messages).toHaveLength(0);
+  });
+
+  it.each([
+    ['is unknown', (props: EarlyAccessSignupProps) => ({ ...props, id: 'missing' })],
+    ['has no email', (props: EarlyAccessSignupProps) => ({ ...props, emailOriginal: null })],
+    ['is anonymized', (props: EarlyAccessSignupProps) => ({ ...props, anonymizedAt: NOW })],
+    ['is unsubscribed', (props: EarlyAccessSignupProps) => ({ ...props, unsubscribedAt: NOW })],
+    [
+      'was already sent',
+      (props: EarlyAccessSignupProps) => ({ ...props, launchStatus: 'sent' as const }),
+    ],
+    [
+      'is under manual review',
+      (props: EarlyAccessSignupProps) => ({ ...props, launchStatus: 'manual_review' as const }),
+    ],
+  ])('never calls the provider when the signup %s', async (_label, mutate) => {
+    const { repository, signup, messages, useCase } = await setup('accepted');
+    const stored = mutate(signup.toProps());
+    if (stored.id === signup.id) await repository.save(EarlyAccessSignup.fromProps(stored));
+
+    await useCase.execute({ signupId: stored.id, managementUrl: 'https://x.example/#t', input });
+
+    expect(messages).toHaveLength(0);
+    if (stored.id === signup.id) {
+      expect((await repository.findById(signup.id))?.toProps()).toEqual(stored);
+    }
+  });
+
+  it('retries a sending row that has no recorded attempt instead of stalling it', async () => {
+    const { repository, signup, messages, useCase } = await setup('accepted');
+    await repository.save(
+      EarlyAccessSignup.fromProps({
+        ...signup.toProps(),
+        launchStatus: 'sending',
+        launchLastAttemptAt: null,
+      }),
+    );
+
+    await useCase.execute({ signupId: signup.id, managementUrl: 'https://x.example/#t', input });
+
+    expect(messages).toHaveLength(1);
+    expect((await repository.findById(signup.id))?.toProps().launchStatus).toBe('sent');
+  });
+
+  it('treats a provider that throws as an ambiguous outcome and keeps the row sending', async () => {
+    const repository = new InMemoryEarlyAccessSignupRepository();
+    const signup = await repository.create({
+      emailOriginal: 'person@example.com',
+      emailNormalized: 'person@example.com',
+      consentVersion: 'v1',
+      consentedAt: NOW,
+      manageTokenHash: 'hash',
+    });
+    const sender: EmailSender = {
+      send: async () => {
+        throw new Error('socket hang up');
+      },
+    };
+    const useCase = new SendLaunchEmailUseCase(repository, sender, new FixedClockAdapter(NOW));
+
+    await useCase.execute({ signupId: signup.id, managementUrl: 'https://x.example/#t', input });
+
+    expect((await repository.findById(signup.id))?.toProps()).toMatchObject({
+      launchStatus: 'sending',
+      launchAttemptCount: 1,
+      launchLastAttemptAt: NOW,
+      launchSentAt: null,
+    });
+  });
+
+  it('never records a sent timestamp for a failed delivery', async () => {
+    const { repository, signup, useCase } = await setup('known_terminal_failure');
+
+    await useCase.execute({ signupId: signup.id, managementUrl: 'https://x.example/#t', input });
+
+    expect((await repository.findById(signup.id))?.toProps()).toMatchObject({
+      launchStatus: 'failed',
+      launchSentAt: null,
+    });
   });
 });

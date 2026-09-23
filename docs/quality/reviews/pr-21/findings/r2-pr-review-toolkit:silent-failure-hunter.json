@@ -1,0 +1,72 @@
+[
+  {
+    "file": ".github/workflows/ci.yml",
+    "line": 99,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "The new step that is supposed to stop the pipeline when the throwaway database is missing checks the old settings names and not the new one, so if the new name ever stops reaching the coverage run the pipeline still reports success while quietly measuring none of the database code it exists to measure.",
+    "requires": [
+      "a later edit to the workflow that drops, renames or mistypes DATABASE_URL_TEST on the coverage step while the Neon branch outputs stay populated"
+    ],
+    "repro": "none",
+    "evidence": "The round-1 fix added a guard step that fails when the Neon branch id and the two ordinary connection settings are empty. The parallel fix line then changed the integration suite and the coverage config so that a third, separately named setting, and only that setting, decides whether the database repository file is measured or excluded. The merge kept both changes but the guard was never repointed; only the human-owned evidence step in gate.yaml was. Today the two come from the same workflow expression so the values agree, but the guard no longer names the variable that actually decides. If that variable stops arriving, the coverage config drops the repository file from the measured set, the remaining adapter files score full marks, the adapters threshold passes, and the only signal is a warning line printed to the build log."
+  },
+  {
+    "file": "tests/unit/coverage-thresholds.test.ts",
+    "line": 107,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "The new safety net proves every measured file has a rule, but nothing proves the reverse: a rule pointing at a file that no longer exists scores as perfectly covered and passes silently.",
+    "requires": [
+      "a later change that renames, moves or deletes one of the single-file entries (for example the proxy file, a runtime bootstrap file or the ops script) without updating both lists"
+    ],
+    "repro": "test",
+    "evidence": "Read in the installed coverage package: for each rule it filters the measured files by the pattern and builds a coverage map from the matches. When nothing matches, the map is empty and an empty map reports every metric as fully covered, so the rule passes. No warning is emitted for a rule that matched nothing. The new test asserts the direction include-list to rules, and the third test asserts the two key lists are equal, but a stale entry present in both lists satisfies all three tests while measuring nothing. The definition-of-done row records a one-off manual confirmation that the seven single-file entries were present in the summary report, which is exactly the kind of hand-checked claim this pull request exists to replace with an automated one."
+  },
+  {
+    "file": "tests/unit/instrumentation.test.ts",
+    "line": 27,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "Three of the four checks in the new error-reporting test cannot fail: the stand-in modules record that they were loaded only the first time in the whole file, so the later \"was not loaded\" checks would stay green even if the code loaded them.",
+    "requires": ["no precondition; this is how the file behaves on every run"],
+    "repro": "test",
+    "evidence": "The two stand-ins call a recorder from inside the replacement-module factory. Read in the installed test runner: a manual replacement module caches its factory result on first use and is never re-created, and the reset-modules helper explicitly skips replacement modules unless asked to reset them too, which the public reset call does not do. So each recorder fires at most once per file no matter how many times the reset runs. The first two tests still prove something because each is the first to touch its own module, but the third test's two assertions, and the cross-checks in the first two, hold for the cache rather than for the behaviour. The file's own header comment states the opposite, that the reset call is load-bearing and makes each factory fire per test."
+  },
+  {
+    "file": "docs/quality/testing.md",
+    "line": 107,
+    "category": "docs",
+    "severity": "important",
+    "summary": "The testing guide says the new automated check makes it impossible to quietly lower a coverage number, but the check only refuses numbers below each layer's agreed minimum, so a number can still slide a long way down without anything objecting.",
+    "requires": [
+      "a future change that re-measures and writes a lower enforced number that is still at or above the layer's agreed minimum"
+    ],
+    "repro": "test",
+    "evidence": "The conformance test compares each enforced value against a fixed per-layer minimum (mostly 80 or 90). The features layer is enforced at 90 against an agreed minimum of 80, so it could be rewritten to 80 and every assertion still passes. That is precisely the move this pull request itself recorded as a problem when merging the main branch lowered three enforced values. The guide's sentence, and the same claim repeated in the test's own header comment, promise an enforcement of the ratchet rule that no code performs."
+  },
+  {
+    "file": "src/features/early-access/ui/recaptcha-bridge.test.tsx",
+    "line": 165,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "The new anti-spam tests are what justified bringing this file into the measurement and raising its layer's number, yet they skip the one path where a failure is truly invisible: if Google's check refuses, the signup button silently does nothing forever, with no message and no error.",
+    "requires": [
+      "production, where a real anti-spam key is configured, and Google's token call refuses (quota exhausted, restricted key, network failure)"
+    ],
+    "repro": "test",
+    "evidence": "The token helper resolves through a promise that has a success path only; a refusal from the anti-spam call produces a rejected inner promise that is discarded, so the outer promise never settles. The signup form awaits that helper inside a try/catch before starting its submit transition, so a never-settling promise means the submit never starts, the catch never runs, no pending state is shown and no message reaches the visitor. The new suite enumerates the paths it covers (injection, tag reuse, load and error events, the unavailable case, and the success path through the token call) and the new documentation row repeats that list; neither covers a refused token call. The component's own effect also discards every load error without a trace, and no test touches it."
+  },
+  {
+    "file": "docs/verification/definition-of-done.md",
+    "line": 30,
+    "category": "docs",
+    "severity": "minor",
+    "summary": "The evidence row for the coverage gate mixes a fresh run without a database with a much older run that did have one, and presents both as current proof, even though the older run predates this round's new test files and the change of which setting turns the database suite on.",
+    "requires": [
+      "a reader treating the row as the record that the database-backed measurement still holds"
+    ],
+    "repro": "none",
+    "evidence": "The same row states the database-free run at 593 tests across 99 files, and then cites the database-backed verification at 573 tests across 95 files with no skips. A run that includes the database suite must have more tests and more files, not fewer, so the cited run is from before this round added its five test files and before the integration suite moved to its new settings name. The testing guide attributes the same adapter figures to a disposable cloud branch while this row attributes them to a local database, and rounds one of them up where the ratchet rule rounds down. The gate's own checklist still lists the database-backed evidence as outstanding, so the process should re-collect it; the row as written reads as though it already had been."
+  }
+]

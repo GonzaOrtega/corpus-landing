@@ -107,7 +107,7 @@ connection strings, account identifiers, subscriber data, or raw tokens.
 | `CORPUS_DOWNLOAD_URL` | Server | HTTPS destination required by the launched stage. |
 | `DATABASE_URL` | Server | Pooled application database connection. |
 | `DATABASE_URL_UNPOOLED` | Server/automation | Direct database connection used by migrations. |
-| `DATABASE_URL_TEST` | Test tooling | Optional isolated integration-test connection. |
+| `DATABASE_URL_TEST` | Test tooling | Isolated database for the repository integration suite, which truncates the signup table on every test. Never a shared branch; leave unset to skip the suite. |
 | `RECAPTCHA_SITE_KEY` | Public configuration | Google Cloud Fraud Defense score-key ID; the only CAPTCHA value allowed to reach the browser in Production. |
 | `RECAPTCHA_API_KEY` | Secret | Server-only Google Cloud API key for `projects.assessments.create`; restrict it to the reCAPTCHA Enterprise API. |
 | `RECAPTCHA_PROJECT_ID` | Server | Google Cloud project ID that owns the reCAPTCHA key and API key. |
@@ -134,9 +134,10 @@ settings, or protected GitHub Environments.
 ## Testing
 
 ```bash
-bun run test       # Vitest unit, component, and integration suites
-bun run test:e2e   # Containerized Playwright browser flows
-bun run test:all   # Static checks, Vitest, then containerized Playwright
+bun run test            # Vitest unit, component, and integration suites
+bun run test:coverage   # The same suites with per-layer coverage gates (also part of `check`)
+bun run test:e2e        # Containerized Playwright browser flows
+bun run test:all        # check (which includes coverage), then containerized Playwright
 ```
 
 Pull requests expose six stable checks: `check`, `test`, `preview`, `e2e`,
@@ -146,6 +147,15 @@ the Git model are `check`, `test`, `preview`, `e2e`, and `lighthouse`;
 use disposable Neon branches; E2E uses ephemeral local Postgres through a Neon
 HTTP proxy. Email and CAPTCHA remain fake. See
 [Preview CI operations](docs/operations/preview-ci.md).
+
+`bun run test:coverage` enforces per-layer coverage thresholds (core 100%,
+adapters and composition 90%+, delivery layers 80%+) and writes the lcov/HTML
+report to `coverage/`. It runs in two places: inside `bun run check`, so a
+breached threshold is caught before you push, and in the required `test` check,
+which is the only job with a database and therefore the only place the Drizzle
+repository is measured rather than excluded. No report is published as a
+workflow artifact. The thresholds, the exclusion list and the rule for raising
+them are in [Testing](docs/quality/testing.md).
 
 ## Database schema and migrations
 

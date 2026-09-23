@@ -1,10 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// buildContext transitively imports server-env.ts, which imports 'server-only' —
-// see src/config/server-env.test.ts for why this mock is required outside Next's
-// own server bundling.
-vi.mock('server-only', () => ({}));
-
 const baseEnv = {
   SITE_URL: 'https://corpus-landing.example',
   CORPUS_RELEASE_STAGE: 'early-access',

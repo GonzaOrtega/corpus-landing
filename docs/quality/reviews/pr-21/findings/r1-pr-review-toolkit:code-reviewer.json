@@ -1,0 +1,56 @@
+[
+  {
+    "file": "package.json",
+    "line": 32,
+    "category": "correctness",
+    "severity": "important",
+    "summary": "The `check` command, which used to only inspect the code without touching anything, now runs the whole test suite — and one of those tests empties the signup table of whatever database the developer's local settings point at, which the setup guide says should be the shared Neon development branch.",
+    "requires": [
+      "a developer or maintainer runs `bun run check`, `bun run test:all`, or `bun run deps:adopt` on a machine where DATABASE_URL is set — which the README's own setup instructions produce, because it tells you to put the shared Neon `development` connection string in `.env.local`, and Bun loads `.env.local` into the environment of every `bun run` script"
+    ],
+    "repro": "none",
+    "evidence": "`check` gained `&& bun run test:coverage`, so it now executes every Vitest file. One of them, the Drizzle repository integration suite, activates itself whenever DATABASE_URL is present and clears the entire early_access_signups table before each of its cases. Before this change `check` was purely static (typecheck, lint, stack conformance) and safe to run with any environment loaded; `scripts/adopt-deps.sh` also calls `bun run check` and so inherits the same behavior. The suite has no guard that the target database is disposable, and nothing in the diff warns about this."
+  },
+  {
+    "file": "docs/quality/testing.md",
+    "line": 112,
+    "category": "docs",
+    "severity": "minor",
+    "summary": "The coverage documentation assumes a developer machine normally has no database configured, but the project's own setup instructions plus Bun's automatic loading of local settings mean it normally does — so the described difference between a local run and the pipeline, and the warning line the config prints, will rarely apply as written.",
+    "requires": ["a developer set up by following the README, which is the documented path"],
+    "repro": "none",
+    "evidence": "The \"Measuring the Drizzle repository\" section and the layers table's \"skipped locally without DATABASE_URL\" note, along with the notice printed from vitest.config.ts, are all written for the case where DATABASE_URL is unset. The README tells developers to copy .env.example to .env.local and fill in the Neon development connection string, and Bun loads .env.local for every `bun run` script, so the variable is set for a standard local run. The definition-of-done's coverage row is likewise recorded from a run \"without DATABASE_URL\", which is not the ordinary local condition."
+  },
+  {
+    "file": "CLAUDE.md",
+    "line": 33,
+    "category": "docs",
+    "severity": "minor",
+    "summary": "Two documents still describe the `check` command as only doing typechecking, linting and structure checks, even though this change makes it also run the entire test suite with coverage; one of them then tells contributors to run that suite a second time.",
+    "requires": [],
+    "repro": "none",
+    "evidence": "CLAUDE.md's command list and CONTRIBUTING.md's pre-PR block both still summarise `check` as \"typecheck + lint + stack conformance\" after the script gained `test:coverage`. CONTRIBUTING.md then lists `bun run test:coverage` as a separate step immediately below, annotated \"(also inside `check`)\", so following the block as written runs the full suite twice. README.md and the new testing page describe the same command correctly, so the three documents disagree with each other."
+  },
+  {
+    "file": "docs/quality/testing.md",
+    "line": 75,
+    "category": "docs",
+    "severity": "minor",
+    "summary": "The new rule says a coverage number may only ever go up and that any reduction must be justified on that same page, but this change reduces three of them and records the reason somewhere else, leaving the page claiming the numbers come from a measurement that no longer produced them.",
+    "requires": [],
+    "repro": "none",
+    "evidence": "The ratchet section states a threshold \"only moves up\" and that lowering one \"requires a documented decision in this file\". Three thresholds (config, features and the app layer) were lowered in this change after merging main brought the observability work into the measured set. That decision is explained in a comment in vitest.config.ts and in the definition-of-done row, but not in testing.md, whose table still attributes the enforced values to the original 2026-09-20 measurement at 454 tests while the values shown are the later re-measurement at 562 tests. The next contributor in the same situation will read a rule that forbids what this change did, with no recorded precedent."
+  },
+  {
+    "file": "docs/quality/testing.md",
+    "line": 50,
+    "category": "docs",
+    "severity": "minor",
+    "summary": "The page says the coverage tool is tied to the test runner's major version, but it is actually locked to one exact version while the test runner is allowed to drift within that major, and the tool refuses to work unless the two match exactly.",
+    "requires": [
+      "a future version bump that moves the test runner without moving the coverage package"
+    ],
+    "repro": "none",
+    "evidence": "The page describes the provider as \"pinned to the Vitest major\". package.json pins the coverage package to the exact version 5.0.0 while the test runner is declared as a caret range on 5.0.0, and the coverage package's declared compatibility requires the exact same runner version. The practical risk is small because the dependency bot groups every package into a single pull request and the adoption script now runs the gate, but the sentence describes a looser pin than the one that exists."
+  }
+]

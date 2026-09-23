@@ -109,9 +109,19 @@ excludes them by explicit signal (`CI`, `NODE_ENV=test`, or
 ## Database lifecycle and isolation
 
 `test` creates `ci-<run-id>-<attempt>` from Neon `development`, applies
-migrations using the direct `db_url`, runs Vitest with the pooled URL, and
-deletes the branch in an `always()` cleanup step. A one-day expiration is an
-independent fallback if a runner is terminated before cleanup.
+migrations using the direct `db_url`, runs Vitest with coverage using the
+pooled URL (`bun run test:coverage`, which fails the job below any per-layer
+threshold in `vitest.config.ts`), and deletes the branch in an `always()`
+cleanup step. A one-day expiration is an independent fallback if a runner is
+terminated before cleanup.
+
+Coverage runs here and nowhere else in CI, because this is the only job with a
+database: every other run excludes the Drizzle repository, whose suite
+self-skips without one. `bun run check` runs the same gate locally, so a
+breached threshold normally fails before the push and this job is the backstop
+rather than the first warning. Nothing uploads the HTML report, so a CI-only
+breach is read from the job log. See "Measuring the Drizzle repository" in
+[Testing](../quality/testing.md) to reproduce this job's measurement.
 
 `preview` creates or reuses `pr-<number>` from `development`, then explicitly
 refreshes that branch's expiration to seven days from the current workflow run

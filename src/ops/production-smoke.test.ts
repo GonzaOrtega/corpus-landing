@@ -355,4 +355,52 @@ describe('production smoke', () => {
       'Smoke request failed or timed out',
     );
   });
+
+  it.each([
+    [
+      'the release-stage section is absent',
+      html.replace(/<section[\s\S]*?<\/section>/, ''),
+      'Release-stage section missing',
+    ],
+    [
+      'the signup form has no controls',
+      earlyAccessHtml.replace(/<input[^>]*>/, ''),
+      'Early-access signup controls missing',
+    ],
+    [
+      'the robots meta has no content',
+      html.replace('<meta name="robots" content="index, follow"/>', '<meta name="robots"/>'),
+      'Production robots metadata must allow index and follow',
+    ],
+    [
+      'the page has no link tags',
+      html.replace(/<link[^>]*>/g, ''),
+      'Production canonical URL missing or incorrect',
+    ],
+    [
+      'the canonical href is not a URL',
+      html.replace('href="https://corpus.example/"', 'href="not a url"'),
+      'Production canonical URL missing or incorrect',
+    ],
+  ])('fails closed when %s', async (_label, body, message) => {
+    const releaseStage = body.includes('signup-form') ? 'early-access' : 'launched';
+    await expect(
+      runProductionSmoke(
+        { ...options, releaseStage },
+        fixture({ '/': { body, headers: security } }),
+      ),
+    ).rejects.toThrow(message);
+  });
+
+  it('ignores tags that lack the inspected attribute instead of failing on them', async () => {
+    const body = html
+      .replace('<meta name="robots"', '<meta charset="utf-8"/><meta name="robots"')
+      .replace(
+        '<section id="early-access">',
+        '<section><p>intro</p></section><section id="early-access">',
+      );
+    await expect(
+      runProductionSmoke(options, fixture({ '/': { body, headers: security } })),
+    ).resolves.toBeDefined();
+  });
 });

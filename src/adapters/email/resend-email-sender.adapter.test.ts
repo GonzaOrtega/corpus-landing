@@ -59,6 +59,50 @@ describe('ResendEmailSenderAdapter', () => {
     },
   );
 
+  it('renders the launch template for a launch message', async () => {
+    const calls: unknown[][] = [];
+    const client: ResendEmailClient = {
+      send: async (...args) => {
+        calls.push(args);
+        return { data: { id: 'provider-id' }, error: null };
+      },
+    };
+    const launch: EmailMessage = {
+      kind: 'launch',
+      to: 'person@example.com',
+      managementUrl: 'https://corpus.example/early-access/manage#opaque-token',
+      idempotencyKey: 'corpus-launch-v1/signup-1',
+      releaseVersion: '1.0.0',
+      releaseSummary: 'Corpus is ready.',
+      includedFeatures: ['Living Lexicon'],
+      knownLimitations: ['Android only'],
+      downloadUrl: new URL('https://play.google.com/store/apps/details?id=app.corpus'),
+    };
+
+    await expect(new ResendEmailSenderAdapter(client, config).send(launch)).resolves.toBe(
+      'accepted',
+    );
+    expect(calls[0]?.[0]).toMatchObject({
+      subject: 'Corpus is ready to try',
+      html: expect.stringContaining('Living Lexicon'),
+      text: expect.stringContaining('Android only'),
+    });
+    expect(calls[0]?.[1]).toEqual({ idempotencyKey: launch.idempotencyKey });
+  });
+
+  it('classifies a rejection with no HTTP status as ambiguous', async () => {
+    const client: ResendEmailClient = {
+      send: async () => ({
+        data: null,
+        error: { name: 'application_error', message: 'sensitive provider body', statusCode: null },
+      }),
+    };
+
+    await expect(new ResendEmailSenderAdapter(client, config).send(message)).resolves.toBe(
+      'ambiguous',
+    );
+  });
+
   it('classifies a thrown request as ambiguous', async () => {
     const client: ResendEmailClient = {
       send: async () => {
@@ -117,6 +161,22 @@ describe('ResendEmailSenderAdapter diagnostics', () => {
 
     expect(logger.errors).toEqual([
       { operation: 'resend_send', status: 'ambiguous', errorCode: 'PROVIDER_EXCEPTION' },
+    ]);
+  });
+
+  it('records an unknown provider status distinctly', async () => {
+    const logger = new RecordingLogger();
+    const client: ResendEmailClient = {
+      send: async () => ({
+        data: null,
+        error: { name: 'application_error', message: 'sensitive provider body', statusCode: null },
+      }),
+    };
+
+    await new ResendEmailSenderAdapter(client, config, logger).send(message);
+
+    expect(logger.errors).toEqual([
+      { operation: 'resend_send', status: 'ambiguous', errorCode: 'PROVIDER_STATUS_UNKNOWN' },
     ]);
   });
 

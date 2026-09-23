@@ -141,4 +141,208 @@ describe('launch operations', () => {
       { operation: 'launch_send', signupId: eligible.id, status: 'sent' },
     ]);
   });
+
+  it.each([
+    [
+      'the site is not launched',
+      { ...launchedConfig, releaseStage: 'early-access' as const },
+      'requires CORPUS_RELEASE_STAGE=launched',
+    ],
+    [
+      'no dry-run recipient is configured',
+      { ...launchedConfig, launchDryRunRecipient: null },
+      'LAUNCH_DRY_RUN_RECIPIENT is required',
+    ],
+    [
+      'no postal address is configured',
+      { ...launchedConfig, emailPostalAddress: null },
+      'EMAIL_POSTAL_ADDRESS is required',
+    ],
+  ])('refuses a dry run when %s', async (_label, config, message) => {
+    const sender = new RecordingEmailSender();
+
+    await expect(
+      runLaunchDryRun(
+        { config, repository: new InMemoryEarlyAccessSignupRepository(), sender },
+        input,
+      ),
+    ).rejects.toThrow(message);
+    expect(sender.messages).toEqual([]);
+  });
+
+  it('fails the dry run when the provider does not accept the operator message', async () => {
+    const sender = { send: async () => 'known_terminal_failure' as const };
+
+    await expect(
+      runLaunchDryRun(
+        { config: launchedConfig, repository: new InMemoryEarlyAccessSignupRepository(), sender },
+        input,
+      ),
+    ).rejects.toThrow('was not accepted by the provider');
+  });
+
+  it('refuses a production send unless the site is launched', async () => {
+    const repository = new InMemoryEarlyAccessSignupRepository();
+    const sender = new RecordingEmailSender();
+    const clock = new FixedClockAdapter(new Date('2026-09-07T00:00:00.000Z'));
+
+    await expect(
+      runLaunchProduction(
+        {
+          config: { ...launchedConfig, releaseStage: 'early-access' },
+          repository,
+          sendLaunch: new SendLaunchEmailUseCase(repository, sender, clock),
+          clock,
+          tokenHasher: new Sha256TokenHasherAdapter(),
+          tokenDeriver: new HmacManagementTokenDeriver(launchedConfig.managementTokenSecret),
+          logger: new RecordingLogger(),
+        },
+        { input, dryRunFingerprint: fingerprintLaunchInput(input) },
+      ),
+    ).rejects.toThrow('requires CORPUS_RELEASE_STAGE=launched');
+    expect(sender.messages).toEqual([]);
+  });
+
+  it('skips rows already sent or under manual review and never re-derives their token', async () => {
+    const repository = new InMemoryEarlyAccessSignupRepository();
+    const sender = new RecordingEmailSender();
+    const now = new Date('2026-09-07T00:00:00.000Z');
+    const clock = new FixedClockAdapter(now);
+    for (const [suffix, launchStatus] of [
+      ['sent', 'sent'],
+      ['review', 'manual_review'],
+    ] as const) {
+      const created = await repository.create({
+        emailOriginal: `${suffix}@example.com`,
+        emailNormalized: `${suffix}@example.com`,
+        consentVersion: 'v1',
+        consentedAt: now,
+        manageTokenHash: `hash-${suffix}`,
+      });
+      await repository.save(EarlyAccessSignup.fromProps({ ...created.toProps(), launchStatus }));
+    }
+
+    const result = await runLaunchProduction(
+      {
+        config: launchedConfig,
+        repository,
+        sendLaunch: new SendLaunchEmailUseCase(repository, sender, clock),
+        clock,
+        tokenHasher: new Sha256TokenHasherAdapter(),
+        tokenDeriver: new HmacManagementTokenDeriver(launchedConfig.managementTokenSecret),
+        logger: new RecordingLogger(),
+      },
+      { input, dryRunFingerprint: fingerprintLaunchInput(input) },
+    );
+
+    expect(result).toEqual({ processed: 0, skipped: 2 });
+    expect(sender.messages).toEqual([]);
+    expect(
+      (await repository.findLaunchEligible(10)).map((row) => row.toProps().manageTokenHash).sort(),
+    ).toEqual(['hash-review', 'hash-sent']);
+  });
+
+  it('logs a missing state when a processed row vanishes before it is re-read', async () => {
+    const repository = new InMemoryEarlyAccessSignupRepository();
+    const logger = new RecordingLogger();
+    const now = new Date('2026-09-07T00:00:00.000Z');
+    const clock = new FixedClockAdapter(now);
+    const signup = await repository.create({
+      emailOriginal: 'eligible@example.com',
+      emailNormalized: 'eligible@example.com',
+      consentVersion: 'v1',
+      consentedAt: now,
+      manageTokenHash: 'old-hash',
+    });
+    const vanishing = Object.assign(repository, { findById: async () => null });
+
+    const result = await runLaunchProduction(
+      {
+        config: launchedConfig,
+        repository: vanishing,
+        sendLaunch: { execute: async () => {} },
+        clock,
+        tokenHasher: new Sha256TokenHasherAdapter(),
+        tokenDeriver: new HmacManagementTokenDeriver(launchedConfig.managementTokenSecret),
+        logger,
+      },
+      { input, dryRunFingerprint: fingerprintLaunchInput(input) },
+    );
+
+    expect(result).toEqual({ processed: 1, skipped: 0 });
+    expect(logger.entries).toEqual([
+      { operation: 'launch_send', signupId: signup.id, status: 'missing' },
+    ]);
+  });
+
+  it('completes immediately when nobody is eligible', async () => {
+    const repository = new InMemoryEarlyAccessSignupRepository();
+    const sender = new RecordingEmailSender();
+    const clock = new FixedClockAdapter(new Date('2026-09-07T00:00:00.000Z'));
+
+    const result = await runLaunchProduction(
+      {
+        config: launchedConfig,
+        repository,
+        sendLaunch: new SendLaunchEmailUseCase(repository, sender, clock),
+        clock,
+        tokenHasher: new Sha256TokenHasherAdapter(),
+        tokenDeriver: new HmacManagementTokenDeriver(launchedConfig.managementTokenSecret),
+        logger: new RecordingLogger(),
+      },
+      { input, dryRunFingerprint: fingerprintLaunchInput(input) },
+    );
+
+    expect(result).toEqual({ processed: 0, skipped: 0 });
+    expect(sender.messages).toEqual([]);
+  });
+
+  it('pages through a full batch and stops on the empty page that follows it', async () => {
+    const repository = new InMemoryEarlyAccessSignupRepository();
+    const now = new Date('2026-09-07T00:00:00.000Z');
+    for (let index = 0; index < 100; index += 1) {
+      await repository.create({
+        emailOriginal: `person-${index}@example.com`,
+        emailNormalized: `person-${index}@example.com`,
+        consentVersion: 'v1',
+        consentedAt: now,
+        manageTokenHash: `hash-${index}`,
+      });
+    }
+    const pages: Array<string | undefined> = [];
+    const paged = Object.assign(repository, {
+      findLaunchEligible: (limit: number, afterId?: string) => {
+        pages.push(afterId);
+        return InMemoryEarlyAccessSignupRepository.prototype.findLaunchEligible.call(
+          repository,
+          limit,
+          afterId,
+        );
+      },
+    });
+    const sent: string[] = [];
+
+    const result = await runLaunchProduction(
+      {
+        config: launchedConfig,
+        repository: paged,
+        sendLaunch: {
+          execute: async ({ signupId }) => {
+            sent.push(signupId);
+          },
+        },
+        clock: new FixedClockAdapter(now),
+        tokenHasher: new Sha256TokenHasherAdapter(),
+        tokenDeriver: new HmacManagementTokenDeriver(launchedConfig.managementTokenSecret),
+        logger: new RecordingLogger(),
+      },
+      { input, dryRunFingerprint: fingerprintLaunchInput(input) },
+    );
+
+    expect(result).toEqual({ processed: 100, skipped: 0 });
+    expect(new Set(sent).size).toBe(100);
+    expect(pages).toHaveLength(2);
+    expect(pages[0]).toBeUndefined();
+    expect(pages[1]).toBe(sent.at(-1));
+  });
 });

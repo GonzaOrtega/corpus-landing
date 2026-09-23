@@ -1,13 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { loadPublicConfig, productionRecaptchaSiteKey } from './public-env';
 import { isSignupOpen, parseReleaseStage } from './release-stage';
 import { loadServerConfig, loadSiteConfig } from './server-env';
-
-// server-env.ts imports 'server-only', which throws unconditionally outside
-// Next.js's own server bundling (it only resolves to a no-op under the
-// 'react-server' export condition Next sets, which Vitest doesn't). Mocking
-// it is the standard way to unit-test a server-only module directly.
-vi.mock('server-only', () => ({}));
 
 /**
  * A minimal valid raw env — every field loadServerConfig requires when the
