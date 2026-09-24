@@ -77,11 +77,13 @@ function declaredOversized(request: Request): boolean {
  * Either the body, or why there isn't one: `oversized` is a decision this
  * code made, `unreadable` is the request stream faulting under it. The two
  * carry different status codes and different log lines, so a discriminated
- * result keeps them apart where a bare `null` could not.
+ * result keeps them apart where a bare `null` could not. Only `unreadable`
+ * carries a class, because only it has an exception behind it (R-23).
  */
 type BoundedBody =
   | { readonly ok: true; readonly body: Uint8Array<ArrayBuffer> }
-  | { readonly ok: false; readonly reason: 'oversized' | 'unreadable' };
+  | { readonly ok: false; readonly reason: 'oversized' }
+  | { readonly ok: false; readonly reason: 'unreadable'; readonly failureClass: string };
 
 /**
  * Stopping is already decided by the time this is called, so a `cancel()`
@@ -108,7 +110,9 @@ async function cancelQuietly(reader: ReadableStreamDefaultReader<Uint8Array>): P
  * ending it, and that rejection is caught here rather than left to escape
  * the handler: an unhandled rejection would be answered by the platform with
  * a generic error and no log line at all — the one fault this file exists to
- * make visible.
+ * make visible. The caught error's class comes back with the reason (R-23):
+ * a routine abort and a platform-side read fault arrive on the same path,
+ * and the class is the only thing that tells them apart downstream.
  */
 async function readBounded(request: Request, limit: number): Promise<BoundedBody> {
   if (!request.body) return { ok: true, body: new Uint8Array(0) };
@@ -126,9 +130,9 @@ async function readBounded(request: Request, limit: number): Promise<BoundedBody
       }
       chunks.push(value);
     }
-  } catch {
+  } catch (error) {
     await cancelQuietly(reader);
-    return { ok: false, reason: 'unreadable' };
+    return { ok: false, reason: 'unreadable', failureClass: errorClass(error) };
   }
   const body = new Uint8Array(total);
   let offset = 0;
@@ -171,7 +175,10 @@ export interface MonitoringTunnelDeps {
  * that errors mid-read (`readBounded`) is the third fault path, and a `warn`
  * rather than an `error`: the stream breaks because a caller went away, so it
  * belongs with the rejections and must not raise an issue per dropped
- * connection.
+ * connection. That level is only safe because the line says what broke — its
+ * `errorCode` carries the stream error's class alongside the constant, so a
+ * server-side read regression, which would silently stop every browser error
+ * report from arriving, does not read as one more routine abort (R-23).
  */
 export async function handleMonitoringTunnelRequest(
   request: Request,
@@ -224,7 +231,17 @@ export async function handleMonitoringTunnelRequest(
   if (!envelope.ok) {
     return envelope.reason === 'oversized'
       ? reject(logger, 413, 'oversized_actual', 'Monitoring tunnel rejected an oversized envelope')
-      : reject(logger, 400, 'body_read_failed', 'Monitoring tunnel could not read a request body');
+      : // The class rides inside `errorCode` rather than a field of its own:
+        // spec §24's allowlist (`logger.port.ts`) has no slot for a second
+        // one, and adapters strip anything outside it at runtime. Same shape
+        // as `PROVIDER_STATUS_<n>` in the Resend adapter — the constant
+        // prefix stays greppable, the suffix says which fault it was.
+        reject(
+          logger,
+          400,
+          `body_read_failed:${envelope.failureClass}`,
+          'Monitoring tunnel could not read a request body',
+        );
   }
 
   let upstream: Response;

@@ -211,12 +211,51 @@ describe('handleMonitoringTunnelRequest', () => {
         fields: {
           operation: 'monitoring_tunnel',
           status: 'rejected',
-          errorCode: 'body_read_failed',
+          errorCode: 'body_read_failed:TypeError',
         },
       },
     ]);
     // Never the stream error's own message, which can carry upstream detail (spec §24).
     expect(JSON.stringify(logger.calls)).not.toContain('terminated');
+  });
+
+  /**
+   * R-23: `warn` is the right level here — a visitor closing their tab must
+   * not open a Sentry issue — but it is only safe if the line says *what*
+   * broke. A client abort and a platform-side read fault land on the same
+   * path, and a genuine read regression would silently stop every browser
+   * error report from arriving. Without the class both are written down
+   * identically, at a level nobody is alerted on.
+   */
+  it('carries the stream error class into the body-read rejection, so two faults are distinguishable', async () => {
+    const rejectionFor = async (error: unknown): Promise<LoggedCall[]> => {
+      const logger = fakeLogger();
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.error(error);
+        },
+      });
+      const request = tunnelRequest('?o=123456&p=7891011', { body, duplex: 'half' } as RequestInit);
+
+      const response = await handleMonitoringTunnelRequest(request, DSN, vi.fn(), { logger });
+
+      expect(response.status).toBe(400);
+      return logger.calls;
+    };
+
+    const aborted = await rejectionFor(new TypeError('terminated'));
+    const faulted = await rejectionFor(new RangeError('stream state is invalid'));
+
+    expect(aborted[0]?.fields.errorCode).toBe('body_read_failed:TypeError');
+    expect(faulted[0]?.fields.errorCode).toBe('body_read_failed:RangeError');
+    expect(faulted[0]?.fields.errorCode).not.toBe(aborted[0]?.fields.errorCode);
+    // Still `warn`, and still one line each: the class is the only addition.
+    expect(aborted.map((call) => call.level)).toEqual(['warn']);
+    expect(faulted.map((call) => call.level)).toEqual(['warn']);
+    // The class only — a stream error's message can carry request detail (spec §24).
+    const logged = JSON.stringify([...aborted, ...faulted]);
+    expect(logged).not.toContain('terminated');
+    expect(logged).not.toContain('invalid');
   });
 
   it('forwards a body sent in several chunks, reassembled in order', async () => {
