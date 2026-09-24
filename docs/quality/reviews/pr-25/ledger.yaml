@@ -897,6 +897,10 @@ evidence:
     sha: ab0dde0b2122109aadb15ae57f7981427a7c0062
     result: pass
     note: "exit 0: 67 Playwright tests passed in 49.3s across 4 workers, including the axe pass on homepage, Privacy and Terms with no serious or critical violations"
+  - done: coverage-with-db
+    sha: ab0dde0b2122109aadb15ae57f7981427a7c0062
+    result: pass
+    note: "CI test job on this SHA: zero self-skip notices, 103 test files (one more than a local run, the integration suite), Drizzle repository suite 11 tests in 8866ms against a disposable Neon branch, src/adapters/db at 98.38/92.68/100/100"
 waivers:
   []
 eli5:
