@@ -179,6 +179,46 @@ describe('handleMonitoringTunnelRequest', () => {
     expect(logger.calls).toEqual(oversizedActual);
   });
 
+  /**
+   * R-05: a caller that aborts or resets mid-POST errors the body stream
+   * instead of ending it. That has to come out as a logged rejection — an
+   * unhandled rejection here would hand the platform a generic error and
+   * write no line at all, which is the one fault this handler promises to
+   * make visible (R-29). Cancelling an already-errored stream rejects with
+   * that same error, so this also pins that the cleanup cannot escape.
+   */
+  it('rejects a body whose stream errors mid-read, and logs exactly one line for it', async () => {
+    const forward = vi.fn();
+    const logger = fakeLogger();
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('{"dsn":"x"}\n'));
+        controller.error(new TypeError('terminated'));
+      },
+    });
+    const request = tunnelRequest('?o=123456&p=7891011', { body, duplex: 'half' } as RequestInit);
+
+    const response = await handleMonitoringTunnelRequest(request, DSN, forward, { logger });
+
+    expect(response.status).toBe(400);
+    expect(await response.text()).toBe('');
+    expect(forward).not.toHaveBeenCalled();
+    expect(logger.calls).toEqual([
+      {
+        level: 'warn',
+        message: expect.any(String),
+        fields: {
+          operation: 'monitoring_tunnel',
+          status: 'rejected',
+          errorCode: 'body_read_failed',
+        },
+      },
+    ]);
+    // Never the stream error's own message, which can carry upstream detail (spec §24).
+    expect(JSON.stringify(logger.calls)).not.toContain('terminated');
+  });
+
   it('forwards a body sent in several chunks, reassembled in order', async () => {
     const forward = vi.fn(
       async (_input: string | URL, _init?: RequestInit) => new Response(null, { status: 200 }),

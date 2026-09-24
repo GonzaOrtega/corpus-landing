@@ -73,29 +73,61 @@ function declaredOversized(request: Request): boolean {
 }
 
 /**
- * The body, or null once it grows past the limit (R-46). Read chunk by chunk
- * so a body that declares no size — chunked transfer encoding — is cut off
- * at the limit instead of being buffered whole first: `arrayBuffer()` would
- * hold everything a caller sends before any check could run. The stream is
- * cancelled at the limit, so the rest is never read.
+ * Either the body, or why there isn't one: `oversized` is a decision this
+ * code made, `unreadable` is the request stream faulting under it. The two
+ * carry different status codes and different log lines, so a discriminated
+ * result keeps them apart where a bare `null` could not.
  */
-async function readBounded(
-  request: Request,
-  limit: number,
-): Promise<Uint8Array<ArrayBuffer> | null> {
-  if (!request.body) return new Uint8Array(0);
+type BoundedBody =
+  | { readonly ok: true; readonly body: Uint8Array<ArrayBuffer> }
+  | { readonly ok: false; readonly reason: 'oversized' | 'unreadable' };
+
+/**
+ * Stopping is already decided by the time this is called, so a `cancel()`
+ * that rejects — the usual case being a stream that has already errored,
+ * which rejects with that same error — must not escape and turn one outcome
+ * into a different one. Cleanup only, never a signal.
+ */
+async function cancelQuietly(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
+  try {
+    await reader.cancel();
+  } catch {
+    // Best-effort: the connection is going away either way.
+  }
+}
+
+/**
+ * The body, or a reason there is none (R-46, R-05). Read chunk by chunk so a
+ * body that declares no size — chunked transfer encoding — is cut off at the
+ * limit instead of being buffered whole first: `arrayBuffer()` would hold
+ * everything a caller sends before any check could run. The stream is
+ * cancelled at the limit, so the rest is never read.
+ *
+ * A caller that aborts or resets mid-POST errors the stream instead of
+ * ending it, and that rejection is caught here rather than left to escape
+ * the handler: an unhandled rejection would be answered by the platform with
+ * a generic error and no log line at all — the one fault this file exists to
+ * make visible.
+ */
+async function readBounded(request: Request, limit: number): Promise<BoundedBody> {
+  if (!request.body) return { ok: true, body: new Uint8Array(0) };
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > limit) {
-      await reader.cancel();
-      return null;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > limit) {
+        await cancelQuietly(reader);
+        return { ok: false, reason: 'oversized' };
+      }
+      chunks.push(value);
     }
-    chunks.push(value);
+  } catch {
+    await cancelQuietly(reader);
+    return { ok: false, reason: 'unreadable' };
   }
   const body = new Uint8Array(total);
   let offset = 0;
@@ -103,7 +135,7 @@ async function readBounded(
     body.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return body;
+  return { ok: true, body };
 }
 
 export interface MonitoringTunnelDeps {
@@ -131,10 +163,14 @@ export interface MonitoringTunnelDeps {
  * design otherwise avoids. Rejections use `warn`, not `error`: they are the
  * expected shape of hostile or stale traffic, and the Sentry Pino
  * integration turns `error`-level lines into issues, which the runbook's
- * "new issue" alert should reserve for genuine faults — the two `catch`
- * blocks below, which use `error` and a distinct `errorCode` each, so a
- * forward failure (Sentry unreachable) is never conflated with a fault while
- * assembling the response to an already-successful forward.
+ * "new issue" alert should reserve for genuine faults — the two `error`-level
+ * `catch` blocks below, which use a distinct message each, so a forward
+ * failure (Sentry unreachable) is never conflated with a fault while
+ * assembling the response to an already-successful forward. A request body
+ * that errors mid-read (`readBounded`) is the third fault path, and a `warn`
+ * rather than an `error`: the stream breaks because a caller went away, so it
+ * belongs with the rejections and must not raise an issue per dropped
+ * connection.
  */
 export async function handleMonitoringTunnelRequest(
   request: Request,
@@ -183,14 +219,11 @@ export async function handleMonitoringTunnelRequest(
       'Monitoring tunnel rejected an oversized envelope',
     );
   }
-  const body = await readBounded(request, MAX_ENVELOPE_BYTES);
-  if (body === null) {
-    return reject(
-      logger,
-      413,
-      'oversized_actual',
-      'Monitoring tunnel rejected an oversized envelope',
-    );
+  const envelope = await readBounded(request, MAX_ENVELOPE_BYTES);
+  if (!envelope.ok) {
+    return envelope.reason === 'oversized'
+      ? reject(logger, 413, 'oversized_actual', 'Monitoring tunnel rejected an oversized envelope')
+      : reject(logger, 400, 'body_read_failed', 'Monitoring tunnel could not read a request body');
   }
 
   let upstream: Response;
@@ -200,7 +233,7 @@ export async function handleMonitoringTunnelRequest(
       headers: {
         'content-type': request.headers.get('content-type') ?? 'application/x-sentry-envelope',
       },
-      body,
+      body: envelope.body,
     });
   } catch (error) {
     logger.error('Monitoring tunnel failed to reach Sentry', {
