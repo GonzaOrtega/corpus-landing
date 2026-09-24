@@ -183,12 +183,26 @@ const SENSITIVE_QUERY_PATTERN =
   /((?:^|[?&])(?:key|token|secret|api_key|apikey|access_token|password|email)=)[^&\s#'"]*/gi;
 
 /**
- * Email addresses, redacted whole at any length (R-18). A local part bounded
- * to RFC 5321's 64 characters fails *open* here: `signup.schema.ts` caps an
- * address at 254 characters and caps nothing below that, so a 130-character
- * local part makes the match start 66 characters in and ships the head of a
- * subscriber's address to Sentry in the clear — inside the exact text this
- * rule exists for ("Email provider rejected <address>").
+ * Email addresses, redacted whole however long they are and whichever
+ * punctuation their local part uses (R-18/R-26). Both halves of that claim
+ * are load-bearing, and both failed *open* before:
+ *
+ * - A local part bounded to RFC 5321's 64 characters: `signup.schema.ts`
+ *   caps an address at 254 characters and caps nothing below that, so a
+ *   130-character local part makes the match start 66 characters in and
+ *   ships the head of a subscriber's address to Sentry in the clear — inside
+ *   the exact text this rule exists for ("Email provider rejected
+ *   <address>") (R-18).
+ * - A run class narrower than what the form accepts, which splits the run at
+ *   the character it omits and leaves everything before it readable for the
+ *   same reason. Zod 4's `.email()` accepts an apostrophe in the local part,
+ *   so the signup form stores such addresses and a class without `'` left a
+ *   `first.middle.lastname.o'…` head in the clear (R-26). The class must
+ *   therefore cover every character the *schema* admits, not every character
+ *   RFC 5322 admits; `sentry-options.test.ts` pins that by driving each
+ *   printable character through the real `signupSchema` and then through
+ *   `redactText`, so the next widening of the schema fails a test instead of
+ *   quietly reopening the hole.
  *
  * Simply unbounding the quantifier is the R-41 blowup itself, not a fix:
  * `[A-Z0-9._%+-]+@` retries the whole run from every start position, which
@@ -202,14 +216,18 @@ const SENSITIVE_QUERY_PATTERN =
  * - `redactEmails` walks each run's `@` signs once, left to right, probing
  *   only the domain with a sticky regex anchored at the `@` it is looking at.
  *
- * Every scan is anchored, so no position is revisited and there is no length
- * bound left that could leak a head: work stays linear in the text length
- * (~8 ms per 200 KB of adversarial input) whatever the address's length. The
- * local part of each address starts wherever the previous redaction — or the
- * previous `@` — ended, which is what keeps addresses glued to one another
- * redacted one by one (`a@b.com.x@c.com`).
+ * Every scan is anchored, so no position is revisited and neither a length
+ * bound nor a missing run character is left to leak a head: work stays
+ * linear in the text length (measured at 1–11 ms per 200 KB of adversarial
+ * input and almost exactly double that per 400 KB, apostrophe-dense runs
+ * included) whatever the address's length. The local part of each address
+ * starts wherever the previous redaction — or the previous `@` — ended,
+ * which is what keeps addresses glued to one another redacted one by one
+ * (`a@b.com.x@c.com`). Prose is untouched by the wider class because a run
+ * with no `@` in it is returned as-is: `it's` and `don't` never reach the
+ * domain probe.
  */
-const EMAIL_CANDIDATE_PATTERN = /[A-Z0-9._%+@-]+/gi;
+const EMAIL_CANDIDATE_PATTERN = /[A-Z0-9._%+@'-]+/gi;
 const EMAIL_DOMAIN_PATTERN = /[A-Z0-9.-]+\.[A-Z]{2,}/iy;
 
 function redactEmails(candidate: string): string {

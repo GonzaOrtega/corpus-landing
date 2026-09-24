@@ -3,6 +3,7 @@ import type { ErrorEvent, Event, Log } from '@sentry/nextjs';
 import { pinoIntegration, withScope } from '@sentry/nextjs';
 import { describe, expect, it, vi } from 'vitest';
 import { NEVER_LOG_FIXTURE, NEVER_LOG_FIXTURE_STRINGS } from '../core/testing/never-log-fixture';
+import { signupSchema } from '../features/early-access/schemas/signup.schema';
 import {
   buildClientSentryOptions,
   buildIngestUrl,
@@ -71,6 +72,81 @@ describe('redactText', () => {
     expect(redactText(`bounce for person@${'sub.'.repeat(60)}example.com`)).toBe(
       'bounce for [email]',
     );
+  });
+
+  it('redacts an address whose local part contains an apostrophe, whole (R-26)', () => {
+    // Zod's `.email()` accepts an apostrophe in the local part, so an `O'…`
+    // surname is accepted by the signup form and stored — and a run class
+    // that omits the apostrophe splits the address there, replacing only the
+    // tail and leaving the whole head, i.e. essentially the subscriber's
+    // name, readable. Same fail-open class as the 64-character bound above,
+    // one character wide instead of a length.
+    const address = FORBIDDEN.emailWithApostrophe;
+    expect(redactText(`Email provider rejected ${address}`)).toBe(
+      'Email provider rejected [email]',
+    );
+    // The other text that quotes an address back verbatim: a Postgres unique
+    // violation on `email_normalized`.
+    expect(
+      redactText(
+        `duplicate key value violates unique constraint "x" DETAIL:  Key (email_normalized)=(${address}) already exists.`,
+      ),
+    ).toBe(
+      'duplicate key value violates unique constraint "x" DETAIL:  Key (email_normalized)=([email]) already exists.',
+    );
+    // Not merely "most of it went": no readable fragment of the local part
+    // survives, on either side of the apostrophe.
+    for (const fragment of address.split('@')[0].split("'")) {
+      expect(redactText(`Email provider rejected ${address}`)).not.toContain(fragment);
+    }
+  });
+
+  it('misses no character the signup form itself accepts in an address (R-26)', () => {
+    // The rule can only redact an address whole if its run class covers every
+    // character `signupSchema` admits: one the schema accepts and the class
+    // omits splits the run and ships the head. Driven from the real schema so
+    // that widening validation without widening this rule fails here rather
+    // than leaking in production.
+    const probes: string[] = [];
+    for (let code = 0x20; code <= 0x7e; code += 1) probes.push(String.fromCharCode(code));
+    // A non-breaking space (written as a code point so it is visible here)
+    // and a few non-ASCII letters, the sort a paste from a contact list
+    // carries.
+    probes.push(String.fromCharCode(0xa0), 'é', 'ñ', 'ß', '—', '日');
+
+    const head = 'zzhead';
+    const tail = 'zztail';
+    const missed = new Set<string>();
+    let accepted = 0;
+    for (const probe of probes) {
+      for (const local of [
+        `${head}${probe}${tail}`,
+        `${probe}${head}${tail}`,
+        `${head}${tail}${probe}`,
+      ]) {
+        const parsed = signupSchema.safeParse({ email: `${local}@example.com`, captchaToken: 'x' });
+        if (!parsed.success) continue;
+        accepted += 1;
+        const stored = parsed.data.emailNormalized;
+        const redacted = redactText(`Email provider rejected ${stored}`);
+        if (redacted.includes(head) || redacted.includes(tail)) missed.add(probe);
+      }
+    }
+
+    expect(accepted).toBeGreaterThan(100);
+    expect([...missed]).toEqual([]);
+  });
+
+  it.each([
+    ['a contraction', "it's the operator's call, isn't it?"],
+    ['a possessive', "the server's own machinery raised it"],
+    ['a quoted property name', "TypeError: Cannot read properties of undefined (reading 'length')"],
+    ['a surname with no address in sight', "O'Brien reported the outage"],
+  ])('leaves an apostrophe in ordinary prose alone: %s (R-26)', (_label, text) => {
+    // The run class had to widen to cover the apostrophe; a run with no "@"
+    // in it must still come back byte-identical, or every stack trace and
+    // English sentence in an event gets mangled.
+    expect(redactText(text)).toBe(text);
   });
 
   it('drops a database connection string whole, host and database name included (R-25: spec §24 lists the connection string)', () => {

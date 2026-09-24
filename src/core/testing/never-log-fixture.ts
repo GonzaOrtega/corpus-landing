@@ -7,10 +7,16 @@
  * drifting apart again. `emailNormalized` matches the spelling used
  * everywhere else in the codebase (`early-access-signup.ts`,
  * `signup.schema.ts`, the Drizzle schema); nothing here is a real value.
+ *
+ * `emailWithApostrophe` is the shape a redaction rule is most likely to miss
+ * and the signup form most likely to accept — Zod's `.email()` admits an
+ * apostrophe in the local part, so `O'…` surnames reach the database and the
+ * error text that quotes them back (R-26).
  */
 export const NEVER_LOG_FIXTURE = {
   email: 'person@example.com',
   emailNormalized: 'person@example.com',
+  emailWithApostrophe: "firstname.o'lastname@example.com",
   rawToken: 'raw-management-token-0123456789',
   manageTokenHash: 'sha256-hash-of-the-token',
   captchaToken: 'captcha-token-value',
