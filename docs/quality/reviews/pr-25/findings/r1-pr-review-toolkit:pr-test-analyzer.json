@@ -1,0 +1,84 @@
+[
+  {
+    "file": "src/composition/capabilities/observability.ts",
+    "line": 38,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "Nothing checks that the stand-in reporter is actually given a working log writer, and the reporter quietly ignores a broken one, so the new \"write one line instead of throwing it away\" behaviour could stop working without any test noticing.",
+    "requires": [
+      "a machine or preview deployment with no error-reporting service configured, which is where the stand-in reporter is the one in use"
+    ],
+    "repro": "test",
+    "evidence": "Rating 7/10. The composition test only asserts the returned object is an instance of the no-op adapter; it never calls captureException on what provideObservability() returned. The adapter itself wraps the whole log call in a catch-all that swallows any failure by design. Replacing the real log writer with an empty stub, or with one that throws, leaves every test in src/composition/capabilities/observability.test.ts and src/adapters/observability/noop-error-reporter.adapter.test.ts green and produces no runtime signal either. Suggested test: call provideObservability().errorReporter.captureException(...) with the log writer spied on, and assert one error line with the allowlisted fields and the error class name."
+  },
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 380,
+    "category": "test-gap",
+    "severity": "important",
+    "summary": "The stricter filter for log-line extras only switches on when a report carries one exact marker string copied from the reporting library, and no test pins that string or covers what happens when it does not match.",
+    "requires": [
+      "an upgrade of the reporting library that renames its log marker, together with any second log writer in the process that attaches free-text fields"
+    ],
+    "repro": "test",
+    "evidence": "Rating 7/10. allowlistPinoAttributes returns the attributes untouched unless attributes['sentry.origin'] equals the hard-coded marker, falling back to the much weaker key-denylist walk. I ran scrubLog against a log-shaped record whose marker differed by one character: a caller-attached free-text field survived, where the new test (\"keeps only allowlisted fields ... not merely non-denied ones\") proves it is dropped. The suite only ever exercises the matching marker, so the protection can be switched off silently by a dependency bump. Two tests close it: one asserting the constant equals what the installed integration emits (the repo already verifies vendored SDK behaviour this way for the fetch transport), and one for the non-matching-marker path so the fallback is a deliberate, asserted choice rather than an accident."
+  },
+  {
+    "file": "src/config/sentry-options.test.ts",
+    "line": 322,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "A test named for proving that missing fields stay missing cannot actually detect an invented field, because the comparison it uses treats a present-but-empty field as absent.",
+    "requires": [
+      "a future edit that makes the cleaner add fields the incoming report did not have"
+    ],
+    "repro": "test",
+    "evidence": "Rating 4/10. I ran scrubEvent({ request: { method: 'GET' } }) directly: the result's request object has an own 'url' key holding an empty value, yet the test's toEqual({ method: 'GET' }) passes because that comparison ignores empty-valued keys. The same applies to the stack-frame and breadcrumb rows in the same test. toStrictEqual (or an explicit not.toHaveProperty, as the neighbouring query-string test correctly uses) would make the name true."
+  },
+  {
+    "file": "src/core/testing/never-log-fixture.test.ts",
+    "line": 19,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The new test for the never-log sample list asserts something that is true by construction, and does not guard the one way the new derivation can silently shrink the list.",
+    "requires": [],
+    "repro": "test",
+    "evidence": "Rating 4/10. The list is built by de-duplicating through a Set, so asserting that de-duplicating it again changes nothing can only fail if the Set wrapper itself is deleted; it proves nothing about the flattening. The flattening's real blind spot is that a field whose value is an empty object or empty list contributes no sample string at all, which would silently narrow the sweep every other suite runs without any test failing. A table-driven test over hand-made inputs (nested, duplicated, empty-container) would cover both."
+  },
+  {
+    "file": "app/error.test.tsx",
+    "line": 48,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The new error-page tests replace the framework's after-render hook with one that ignores its dependency list, so a change that stops a second, different failure from being reported would still pass.",
+    "requires": [
+      "the same error boundary being shown twice in one visit with two different underlying failures"
+    ],
+    "repro": "test",
+    "evidence": "Rating 4/10. The stand-in hook takes only the callback and runs it immediately during the render call, discarding the dependency array. Changing the page's dependency list from [error] to [] leaves both new tests green even though the page would then report only the first failure of a visit. The stand-in also runs the reporting during render rather than after it, so a change that moved the reporting out of the hook entirely (which would double-report under the framework's strict rendering) is equally invisible. app/global-error.test.tsx carries the identical helper, verbatim, including the same ~40 lines of element-walking code that could be shared."
+  },
+  {
+    "file": "next.config.ts",
+    "line": 115,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The new build-time warning about a misspelt reporting address is tested on its own but nothing checks that the build configuration still calls it, so deleting the call breaks nothing.",
+    "requires": [
+      "a future edit that removes or reorders the warning call in the build configuration"
+    ],
+    "repro": "test",
+    "evidence": "Rating 3/10. describeDsnProblem and warnOnDsnProblem have their own tests, but the call site added to next.config.ts has no assertion behind it. Because it is a bare top-level statement, removing it also leaves that file's measured coverage at 100, so the coverage gate does not notice either. A small test that imports the config with a deliberately malformed value set and asserts a warning was printed would hold the wiring in place."
+  },
+  {
+    "file": "src/features/early-access/actions/instrumented-action.ts",
+    "line": 51,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The new shared wrapper turns every failure into the polite retry answer, including the framework's own internal signals, and only a comment records that today's actions never raise one.",
+    "requires": [
+      "a future edit that makes one of the three actions send the visitor to another page or show a not-found page"
+    ],
+    "repro": "test",
+    "evidence": "Rating 4/10. The outer catch is unconditional. The file's own comment states the precondition (\"None of these actions redirect or call notFound()\"), which I confirmed holds today, but nothing enforces it: if a handler later redirects, the redirect signal would be swallowed, reported as an instrumentation fault and replaced by the retry state — the exact silent-failure shape this change set out to remove. One test that makes the wrapped work raise a framework control-flow signal and asserts it is re-thrown would turn the comment into a guarantee."
+  }
+]
