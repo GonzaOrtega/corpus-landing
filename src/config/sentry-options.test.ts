@@ -1,4 +1,6 @@
+import diagnosticsChannel from 'node:diagnostics_channel';
 import type { ErrorEvent, Event, Log } from '@sentry/nextjs';
+import { pinoIntegration, withScope } from '@sentry/nextjs';
 import { describe, expect, it, vi } from 'vitest';
 import { NEVER_LOG_FIXTURE, NEVER_LOG_FIXTURE_STRINGS } from '../core/testing/never-log-fixture';
 import {
@@ -369,7 +371,83 @@ describe('scrubEvent and scrubLog on sparse input', () => {
   });
 });
 
+type SentryClient = Parameters<NonNullable<ReturnType<typeof pinoIntegration>['setup']>>[0];
+
+/**
+ * Pushes one log line through the *installed* Pino integration and the SDK's
+ * own log pipeline, so `scrubLog` is handed exactly the attributes production
+ * hands it: the integration subscribes to Node's `pino_asJson` diagnostics
+ * channel and stamps `sentry.origin` itself, and `beforeSendLog` is the hook
+ * the built options wire `scrubLog` into.
+ *
+ * Taking the marker off the dependency instead of restating it as test input
+ * is the whole point (R-13). `allowlistPinoAttributes` only switches on for
+ * that one exact string; every other test here supplies it by hand, so an
+ * upgrade that renames it in `@sentry/node-core` would leave them all green
+ * while the allowlist silently stopped applying to real Pino records. This
+ * one goes red instead. Same instinct as the tunnel route's `Origin` check,
+ * which settled the question against the vendored fetch transport rather
+ * than against the spec — executed here rather than read.
+ *
+ * The integration's channel subscription cannot be undone, so this helper is
+ * called once. A second call would re-run the same capture against the same
+ * scope and client and land on the same value, so it carries no order
+ * dependence either way.
+ */
+function scrubLogFromInstalledPinoIntegration(logLine: Record<string, unknown>): Log {
+  let scrubbed: Log | undefined;
+  const client = {
+    getOptions: () => ({
+      enableLogs: true,
+      environment: 'production',
+      release: '1.0.0',
+      beforeSendLog: (log: Log) => {
+        scrubbed = scrubLog(log);
+        return scrubbed;
+      },
+    }),
+    getSdkMetadata: () => ({ sdk: { name: 'sentry.javascript.nextjs', version: '10.75.0' } }),
+    getIntegrationByName: () => undefined,
+    getDsn: () => undefined,
+    emit: () => undefined,
+    recordDroppedEvent: () => undefined,
+  } as unknown as SentryClient;
+
+  withScope((scope) => {
+    scope.setClient(client);
+    pinoIntegration().setup?.(client);
+    diagnosticsChannel.tracingChannel('pino_asJson').end.publish({
+      instance: { levels: { labels: { 50: 'error' } } },
+      arguments: [{}, 'Confirmation email failed', 50],
+      result: JSON.stringify({ level: 50, time: 0, pid: 0, hostname: 'vm', ...logLine }),
+    });
+  });
+
+  if (!scrubbed) throw new Error('the installed Pino integration emitted no log record');
+  return scrubbed;
+}
+
 describe('scrubLog — Pino records', () => {
+  it('applies the allowlist to a record the installed Pino integration really emitted (R-13)', () => {
+    const scrubbed = scrubLogFromInstalledPinoIntegration({
+      operation: 'send_confirmation',
+      signupId: 'uuid-1',
+      customerNote: 'free text a second pino logger in the process attached',
+    });
+
+    expect(scrubbed.attributes?.['sentry.origin']).toBe('auto.log.pino');
+    expect(scrubbed.attributes).toEqual({
+      'sentry.origin': 'auto.log.pino',
+      'sentry.environment': 'production',
+      'sentry.release': '1.0.0',
+      'sentry.sdk.name': 'sentry.javascript.nextjs',
+      'sentry.sdk.version': '10.75.0',
+      'pino.logger.level': 50,
+      operation: 'send_confirmation',
+      signupId: 'uuid-1',
+    });
+  });
+
   it('keeps only allowlisted fields and SDK metadata from a Pino record, not merely non-denied ones (R-10)', () => {
     const scrubbed = scrubLog({
       level: 'error',
@@ -392,6 +470,35 @@ describe('scrubLog — Pino records', () => {
       'pino.logger.level': 50,
       operation: 'send_confirmation',
       signupId: 'uuid-1',
+    });
+  });
+
+  /**
+   * The weaker path is deliberate, not an oversight (R-13): console logs and
+   * direct `Sentry.logger.*` calls carry their payload in attributes the
+   * logger allowlist does not name, so an unrecognised origin keeps the
+   * denylist walk rather than failing closed on it. What that path must never
+   * do is let a never-log value through — asserted here so the choice stays a
+   * choice. The paired test above is what keeps a renamed marker from taking
+   * this path by accident.
+   */
+  it('falls back to the denylist walk for an origin that is not the Pino marker, never-log values included (R-13)', () => {
+    const scrubbed = scrubLog({
+      level: 'error',
+      message: 'Confirmation email failed',
+      attributes: {
+        ...FORBIDDEN,
+        'sentry.origin': 'auto.logging.pino',
+        operation: 'send_confirmation',
+        customerNote: 'free text a second pino logger in the process attached',
+      },
+    });
+
+    expectClean(scrubbed);
+    expect(scrubbed.attributes).toEqual({
+      'sentry.origin': 'auto.logging.pino',
+      operation: 'send_confirmation',
+      customerNote: 'free text a second pino logger in the process attached',
     });
   });
 
