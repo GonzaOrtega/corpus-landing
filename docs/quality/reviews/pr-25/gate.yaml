@@ -1,0 +1,47 @@
+# review-gate gate. Human-owned: the CLI reads this and never writes it back.
+version: 1
+pr: 25
+branch: "claude/active-prs-review-vlu4uo"
+base: "main"
+intake_sha: 3945745a11b92a0de6a67c5e8aa885ed5978c61e   # commits at or before this SHA are exempt from trailer rules
+spec: "docs/superpowers/specs/2026-09-19-sentry-observability-design.md"
+about:
+  project: |
+    corpus-landing is the public early-access page for Corpus, an Android-first language-learning product. Anyone can visit it, read what the product is, and leave an email address to be told when it launches. They confirm that address by clicking a link in a mail, and they can later use a second opaque link to change their mind and leave. There are no accounts and no passwords: the links themselves are the only key. One day the site sends a single launch mail to everyone who stayed, and then it turns into a plain 'Get Corpus' page. It is built with Next.js on Vercel, keeps its list in a Postgres database at Neon, and sends its mail through Resend. The code is arranged so the rules of the product sit in the middle and never reach out to any outside service directly; the parts that talk to the database, the mail provider and the error tracker are plugged in around the edge. The repository is public, so its history and its documents are part of what it ships.
+  feature: |
+    An earlier change gave the running site a way to tell its operators when something breaks, by sending error reports to a service called Sentry. The review of that change ended with thirty-one smaller problems written down but left unfixed. This change closes twenty-nine of them; two turned out to need no work. Most of the fixes are about what must never leave the machine. Reports are now cleaned in more places and more thoroughly: browser timing reports, the extra fields attached to log lines, anything buried too deep to inspect, database addresses including the host name, and the question-mark and hash parts of every web address that shows up in a report or a stack trace. The cleaning was also made fast, because one of the old text rules took whole seconds on a long line, and made careful enough not to mangle innocent text such as a colour code or a button name. The rest of the fixes make failures visible instead of silent: a failed start-up now tries once more thirty seconds later, a reporting failure can no longer break the visitor's request, the stand-in reporter writes one line to the log instead of throwing everything away, and a local test run no longer forwards real browser reports to the live service. There are also new tests for the two error pages, for the forwarding route, and for the list of values that must never be logged, and the coverage thresholds were raised to match what is now actually measured.
+scope:                       # globs; findings outside them are deferred to issues
+  - "app/**"
+  - "instrumentation-client.ts"
+  - "lighthouserc.cjs"
+  - "next.config.ts"
+  - "proxy.test.ts"
+  - "src/adapters/observability/**"
+  - "src/composition/capabilities/**"
+  - "src/config/**"
+  - "src/core/testing/**"
+  - "src/features/early-access/actions/**"
+  - "tests/unit/**"
+  - "vitest.config.ts"
+  - "docs/operations/sentry.md"
+  - "docs/quality/testing.md"
+round_cap: 2
+severity_floor: important    # findings below this become "later"
+reviewers:
+  - "pr-review-toolkit:code-reviewer"
+  - "pr-review-toolkit:silent-failure-hunter"
+  - "pr-review-toolkit:pr-test-analyzer"
+  - "security"
+done:                        # evidence the ledger must carry on a fresh SHA before merge
+  - id: "check"
+    how: "bun run check  (typecheck + Biome lint + stack conformance audit + the per-glob coverage gate)"
+  - id: "depcruise"
+    how: "bunx depcruise --config .dependency-cruiser.json src app --output-type err  (hexagonal boundaries: core never imports adapters, and only the composition root builds one)"
+  - id: "coverage-with-db"
+    how: "the `test` job on this pull request's CI run: it creates a disposable Neon branch and runs bun run test:coverage with DATABASE_URL_TEST set, so the Drizzle repository is measured rather than self-skipped (wired in PR #21)"
+  - id: "e2e"
+    how: "bun run test:e2e  (containerized Playwright via docker compose, including the axe accessibility pass)"
+  - id: "lighthouse"
+    how: "the `lighthouse` job on this pull request, against the deployed Vercel Preview: landing page mobile performance >= 0.90, median of three runs, per Sentry observability decision 7"
+mirror: none                 # public repo: a digest of unfixed redaction findings maps the leak paths
+threat_model: docs/quality/reviews/threat-model.md
