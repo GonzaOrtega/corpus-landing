@@ -885,7 +885,14 @@ findings:
       []
     issue: 27
 evidence:
-  []
+  - done: check
+    sha: 4551f5592bb4194fb97689bf41e41ea90aeeb1b3
+    result: pass
+    note: "exit 0 at this tree: typecheck, biome, stack conformance and the per-glob coverage gate; 102 files, 682 tests, 1 skipped (Drizzle suite self-skips without a local database)"
+  - done: depcruise
+    sha: 4551f5592bb4194fb97689bf41e41ea90aeeb1b3
+    result: pass
+    note: "exit 0: no dependency violations, 262 modules and 535 dependencies cruised"
 waivers:
   []
 eli5:
