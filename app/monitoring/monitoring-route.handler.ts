@@ -25,7 +25,8 @@ const noopLogger: Logger = {
   error: () => {},
 };
 
-const OPERATION = 'monitoring_tunnel';
+/** The one operation name every monitoring-tunnel log line carries, including the suppression line `route.ts` writes before this handler is ever called. */
+export const MONITORING_TUNNEL_OPERATION = 'monitoring_tunnel';
 
 /** The exception's class name only — never its message, which can carry a URL, a header value, or upstream response detail (spec §24). */
 function errorClass(error: unknown): string {
@@ -33,7 +34,7 @@ function errorClass(error: unknown): string {
 }
 
 function reject(logger: Logger, status: number, errorCode: string, message: string): Response {
-  logger.warn(message, { operation: OPERATION, status: 'rejected', errorCode });
+  logger.warn(message, { operation: MONITORING_TUNNEL_OPERATION, status: 'rejected', errorCode });
   return new Response(null, { status });
 }
 
@@ -189,7 +190,7 @@ export async function handleMonitoringTunnelRequest(
     // and is exactly the silent failure R-29 exists to surface.
     if (dsn) {
       logger.warn('Monitoring tunnel DSN is configured but not usable', {
-        operation: OPERATION,
+        operation: MONITORING_TUNNEL_OPERATION,
         status: 'rejected',
         errorCode: 'dsn_unparseable',
       });
@@ -237,7 +238,7 @@ export async function handleMonitoringTunnelRequest(
     });
   } catch (error) {
     logger.error('Monitoring tunnel failed to reach Sentry', {
-      operation: OPERATION,
+      operation: MONITORING_TUNNEL_OPERATION,
       status: 'failed',
       errorCode: errorClass(error),
     });
@@ -260,7 +261,7 @@ export async function handleMonitoringTunnelRequest(
     // assembly, not a Sentry-reachability problem — the runbook needs to
     // tell the two apart.
     logger.error('Monitoring tunnel failed to assemble the forwarded response', {
-      operation: OPERATION,
+      operation: MONITORING_TUNNEL_OPERATION,
       status: 'failed',
       errorCode: errorClass(error),
     });

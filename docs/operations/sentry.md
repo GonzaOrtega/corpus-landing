@@ -60,6 +60,15 @@ command reports, for different reasons:
 - `bun run test:e2e` blanks the DSN and auth token in the build it runs and
   sets `CI`.
 
+A pipeline marker only counts when it carries a value that means "yes":
+`CI=`, `CI=false` and `CI=0` are *not* signals, so an accidentally-empty
+variable on a deployment cannot silently take the tunnel down
+(`runtime-environment.ts`). If a runtime ever has both a real marker and a
+configured DSN, `/monitoring` logs `operation=monitoring_tunnel
+status=rejected errorCode=pipeline_suppressed` once per request — that line
+means envelopes are being dropped on purpose, and on a Preview or Production
+deployment it is a misconfiguration to fix, not routine.
+
 `bun run lighthouse`'s local (non-preview) run blanks them too and forces
 the same pipeline signal for the server it starts, so the SERVER SDK stays
 off and the `/monitoring` tunnel forwards nothing — but it never rebuilds.
