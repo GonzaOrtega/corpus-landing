@@ -22,6 +22,15 @@ import { getErrorReporter } from '../early-access.wiring';
  *   rejecting, or the Sentry wrapper throwing before or after the callback.
  *   Observability must never be the reason a visitor sees a broken form.
  *
+ * Observability must not rewrite history either (R-04): the wrapper flushes
+ * its span in its own `finally`, so it can fail *after* the work already
+ * settled. `settled` holds that outcome, and the outer net returns it —
+ * reporting the instrumentation fault all the same. Only a fault that lands
+ * before the work finishes can produce the retry state, because only then is
+ * there no outcome to tell the visitor about. Downgrading a completed signup
+ * to "please try again" would invite a duplicate submission and a second
+ * confirmation mail for someone already on the list.
+ *
  * None of these actions redirect or call `notFound()`, so the outer catch
  * cannot swallow Next.js control flow.
  */
@@ -32,23 +41,26 @@ export async function runInstrumentedAction<State>(
   run: (reporter: ErrorReporter) => Promise<State>,
 ): Promise<State> {
   const reporter = getErrorReporter();
-  const fail = (error: unknown, status: string): State => {
+  const report = (error: unknown, status: string): void => {
     reporter.captureException(error, { operation, status });
-    return retryState;
   };
+  let settled: { readonly state: State } | undefined;
   try {
     return await Sentry.withServerActionInstrumentation(
       name,
       { headers: await headers(), recordResponse: false },
       async (): Promise<State> => {
         try {
-          return await run(reporter);
+          settled = { state: await run(reporter) };
         } catch (error) {
-          return fail(error, 'wiring');
+          report(error, 'wiring');
+          settled = { state: retryState };
         }
+        return settled.state;
       },
     );
   } catch (error) {
-    return fail(error, 'instrumentation');
+    report(error, 'instrumentation');
+    return settled ? settled.state : retryState;
   }
 }
