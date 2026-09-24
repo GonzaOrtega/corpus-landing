@@ -893,6 +893,10 @@ evidence:
     sha: 4551f5592bb4194fb97689bf41e41ea90aeeb1b3
     result: pass
     note: "exit 0: no dependency violations, 262 modules and 535 dependencies cruised"
+  - done: e2e
+    sha: ab0dde0b2122109aadb15ae57f7981427a7c0062
+    result: pass
+    note: "exit 0: 67 Playwright tests passed in 49.3s across 4 workers, including the axe pass on homepage, Privacy and Terms with no serious or critical violations"
 waivers:
   []
 eli5:
