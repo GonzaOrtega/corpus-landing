@@ -77,7 +77,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-02
     round: 1
     fingerprint: e34132e555c2d418
@@ -109,7 +109,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-03
     round: 1
     fingerprint: 937d41934ed0e9b5
@@ -134,7 +134,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-04
     round: 1
     fingerprint: bc1a6ae38cf454e3
@@ -241,7 +241,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-08
     round: 1
     fingerprint: 272a531978ff5ce3
@@ -266,7 +266,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-09
     round: 1
     fingerprint: bb84354c805550f5
@@ -291,7 +291,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-10
     round: 1
     fingerprint: 47f2e4422a50423e
@@ -316,7 +316,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-11
     round: 1
     fingerprint: b7a1c04965a75435
@@ -346,7 +346,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-12
     round: 1
     fingerprint: 0f5c9a273ba160b4
@@ -421,7 +421,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-15
     round: 1
     fingerprint: 414c3e5965743f80
@@ -446,7 +446,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-16
     round: 1
     fingerprint: 568aa612819dfd45
@@ -471,7 +471,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-17
     round: 1
     fingerprint: 4ce8ebd2534e88ce
@@ -496,7 +496,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-18
     round: 1
     fingerprint: 457c08a57062de3a
@@ -547,7 +547,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-20
     round: 1
     fingerprint: 62c06444f458598f
@@ -572,7 +572,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-21
     round: 1
     fingerprint: 510c6ad22f1b98ea
@@ -597,7 +597,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-22
     round: 2
     fingerprint: 92a1212190771ff5
@@ -622,7 +622,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-23
     round: 2
     fingerprint: a917168e691687d1
@@ -673,7 +673,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-25
     round: 2
     fingerprint: 2ace0c79f1af1712
@@ -699,7 +699,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-26
     round: 2
     fingerprint: 22a1014d706a65f8
@@ -757,7 +757,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-28
     round: 2
     fingerprint: cb6afce9e417876e
@@ -782,7 +782,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-29
     round: 2
     fingerprint: cb26e05277ddb1ad
@@ -807,7 +807,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-30
     round: 2
     fingerprint: 5a7ac7196aad8630
@@ -832,7 +832,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-31
     round: 2
     fingerprint: 5612e304a066ca46
@@ -857,7 +857,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
   - id: R-32
     round: 2
     fingerprint: 0a7de6ea2c7eee8d
@@ -883,7 +883,7 @@ findings:
     reason: Below the severity floor (important)
     fix_commits:
       []
-    issue: null
+    issue: 27
 evidence:
   []
 waivers:
