@@ -51,6 +51,26 @@ describe('redactText', () => {
     );
   });
 
+  it('redacts an address whose local part is longer than 64 characters, whole (R-18)', () => {
+    // `signup.schema.ts` caps an address at 254 characters and caps nothing
+    // below that, so a local part far past RFC 5321's 64 is accepted, stored,
+    // and quoted back in exactly the free text this rule exists for. A rule
+    // bounded at 64 matches only the tail and ships the head in the clear.
+    const address = `${'a'.repeat(242)}@example.com`;
+    expect(address).toHaveLength(254);
+    expect(redactText(`Email provider rejected ${address}`)).toBe(
+      'Email provider rejected [email]',
+    );
+    // Over the bound and glued to a neighbour: both still go, whole.
+    expect(redactText(`${'b'.repeat(300)}@example.com-${'c'.repeat(300)}@example.org`)).toBe(
+      '[email][email]',
+    );
+    // A long *domain* is no different: the address is dropped end to end.
+    expect(redactText(`bounce for person@${'sub.'.repeat(60)}example.com`)).toBe(
+      'bounce for [email]',
+    );
+  });
+
   it('drops a database connection string whole, host and database name included (R-25: spec §24 lists the connection string)', () => {
     const redacted = redactText(
       'connect ECONNREFUSED postgresql://corpus:s3cret@ep-x.neon.tech/db?sslmode=require',
@@ -112,6 +132,10 @@ describe('redactText', () => {
     ['an "@" followed by a long run of hyphens', `a@${'-'.repeat(100_000)}`],
     ['a long run of scheme-like labels', 'a.'.repeat(50_000)],
     ['a scheme followed by a long run with no "@"', `x://${'a'.repeat(100_000)}`],
+    // The address rule walks "@" signs rather than bounding the local part
+    // (R-18), so these two shapes are what could make it quadratic instead.
+    ['an "@"-dense block', '@a'.repeat(100_000)],
+    ['a single unbroken token ending in an address', `${'a'.repeat(200_000)}@example.com`],
   ])('stays linear on %s (R-41)', (_label, text) => {
     const started = performance.now();
     redactText(text);

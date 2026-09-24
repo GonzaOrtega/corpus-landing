@@ -167,11 +167,11 @@ const DENIED_KEY_PATTERN =
  * Every pattern that scans a character run from each start position has
  * that run bounded (R-41): an unbounded `[chars]+@` retries the whole run
  * from every position and turned a 40 KB line into seconds of work inside
- * the request that is reporting it. The bounds are real limits — a URL
- * scheme is at most 32 characters, an email local part at most 64 (RFC
- * 5321) — and a longer run still has its tail matched and redacted. No
- * lookbehind anchors: they would skip a match glued to a `-`, a digit or a
- * previous match (`-https://u:p@h`, `a@b.com-c@d.com`).
+ * the request that is reporting it. The URL scheme bound is a real limit (32
+ * characters) and failing it still redacts the whole credential — only the
+ * scheme text ahead of it stays readable. No lookbehind anchors: they would
+ * skip a match glued to a `-`, a digit or a previous match (`-https://u:p@h`,
+ * `a@b.com-c@d.com`). Addresses are matched differently again, below.
  *
  * The query pattern is anchored on `^` as well as `[?&]`: a bare string like
  * `token=abc&x=1` needs the same first-pair match a `?`-prefixed query would
@@ -179,9 +179,54 @@ const DENIED_KEY_PATTERN =
  */
 const DATABASE_URL_PATTERN = /postgres(?:ql)?:\/\/[^\s'"]+/gi;
 const URL_CREDENTIALS_PATTERN = /([a-z][a-z0-9+.-]{0,31}:\/\/)[^\s/@]+@/gi;
-const EMAIL_PATTERN = /[A-Z0-9._%+-]{1,64}@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const SENSITIVE_QUERY_PATTERN =
   /((?:^|[?&])(?:key|token|secret|api_key|apikey|access_token|password|email)=)[^&\s#'"]*/gi;
+
+/**
+ * Email addresses, redacted whole at any length (R-18). A local part bounded
+ * to RFC 5321's 64 characters fails *open* here: `signup.schema.ts` caps an
+ * address at 254 characters and caps nothing below that, so a 130-character
+ * local part makes the match start 66 characters in and ships the head of a
+ * subscriber's address to Sentry in the clear — inside the exact text this
+ * rule exists for ("Email provider rejected <address>").
+ *
+ * Simply unbounding the quantifier is the R-41 blowup itself, not a fix:
+ * `[A-Z0-9._%+-]+@` retries the whole run from every start position, which
+ * measures at ~35 s on a 200 KB line (Node 22 and Bun alike) inside the
+ * request that is reporting the error. So an address is not matched by one
+ * regex at all:
+ *
+ * - `EMAIL_CANDIDATE_PATTERN` cuts the text into maximal runs of address
+ *   characters in one pass — nothing follows the `+`, so it never backtracks
+ *   — and an address can never straddle a run boundary.
+ * - `redactEmails` walks each run's `@` signs once, left to right, probing
+ *   only the domain with a sticky regex anchored at the `@` it is looking at.
+ *
+ * Every scan is anchored, so no position is revisited and there is no length
+ * bound left that could leak a head: work stays linear in the text length
+ * (~8 ms per 200 KB of adversarial input) whatever the address's length. The
+ * local part of each address starts wherever the previous redaction — or the
+ * previous `@` — ended, which is what keeps addresses glued to one another
+ * redacted one by one (`a@b.com.x@c.com`).
+ */
+const EMAIL_CANDIDATE_PATTERN = /[A-Z0-9._%+@-]+/gi;
+const EMAIL_DOMAIN_PATTERN = /[A-Z0-9.-]+\.[A-Z]{2,}/iy;
+
+function redactEmails(candidate: string): string {
+  let redacted = '';
+  let kept = 0;
+  let previousAt = -1;
+  for (let at = candidate.indexOf('@'); at !== -1; at = candidate.indexOf('@', at + 1)) {
+    const localStart = Math.max(kept, previousAt + 1);
+    previousAt = at;
+    if (localStart >= at) continue;
+    EMAIL_DOMAIN_PATTERN.lastIndex = at + 1;
+    if (EMAIL_DOMAIN_PATTERN.exec(candidate) === null) continue;
+    redacted += `${candidate.slice(kept, localStart)}[email]`;
+    kept = EMAIL_DOMAIN_PATTERN.lastIndex;
+  }
+  return kept === 0 ? candidate : redacted + candidate.slice(kept);
+}
 
 /**
  * URL fragments: this product's *only* credential — the raw management
@@ -222,7 +267,7 @@ export function redactText(value: string): string {
   return value
     .replace(DATABASE_URL_PATTERN, 'postgres://[redacted]')
     .replace(URL_CREDENTIALS_PATTERN, '$1[credentials]@')
-    .replace(EMAIL_PATTERN, '[email]')
+    .replace(EMAIL_CANDIDATE_PATTERN, redactEmails)
     .replace(SENSITIVE_QUERY_PATTERN, '$1[redacted]')
     .replace(TEXT_TOKEN_PATTERN, redactUrlFragment)
     .replace(TOKEN_SHAPED_FRAGMENT_PATTERN, '$1[redacted]');
