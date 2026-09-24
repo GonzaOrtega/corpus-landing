@@ -1,0 +1,14 @@
+[
+  {
+    "file": "app/monitoring/route.ts",
+    "line": 62,
+    "category": "correctness",
+    "severity": "minor",
+    "summary": "The new \"we are dropping error reports on purpose\" warning line will also be written on a routine local speed-test run, even though the comment right above it promises the line only ever appears when a real deployment is misconfigured.",
+    "requires": [
+      "a local `bun run lighthouse` run started against a .next build that was produced while a real Sentry DSN was configured (the documented, supported case — that run deliberately never rebuilds)"
+    ],
+    "repro": "device",
+    "evidence": "The route reads the DSN as a literal `process.env.NEXT_PUBLIC_SENTRY_DSN` member expression, which the build inlines — the exact asymmetry the same file's earlier comment relies on when it says blanking the variable at start-up 'cannot reach the value already inlined into this handler'. The local Lighthouse config blanks that variable only in the running process and forces the pipeline marker without rebuilding, and the Sentry runbook states that such a stale build's browser SDK keeps posting envelopes which 'stop at the tunnel'. Each of those posts now takes the new suppressed-and-configured branch and writes a warn, so the line the new comment (same file, the 'stays silent on every runtime this repo controls' sentence) presents as proof of a real misconfiguration is also routine local noise. A narrower trigger — only warning on an actual deployment, e.g. when VERCEL_ENV is present — would match what the runbook says the line means."
+  }
+]

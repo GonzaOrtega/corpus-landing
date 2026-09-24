@@ -1,6 +1,6 @@
 version: 1
 pr: 25
-status: fixing
+status: awaiting-triage
 rounds:
   - "n": 1
     head: d1c957f56e8b226e074b27341aa52c0e0f4ca255
@@ -32,6 +32,26 @@ rounds:
       - R-19
       - R-20
       - R-21
+  - "n": 2
+    head: 56fa6570bc89e178befc8a2b055d402ad6d378ed
+    scope: fix-diff
+    reviewers:
+      - pr-review-toolkit:code-reviewer
+      - pr-review-toolkit:silent-failure-hunter
+      - pr-review-toolkit:pr-test-analyzer
+      - security
+    findings:
+      - R-22
+      - R-23
+      - R-24
+      - R-25
+      - R-26
+      - R-27
+      - R-28
+      - R-29
+      - R-30
+      - R-31
+      - R-32
 findings:
   - id: R-01
     round: 1
@@ -578,6 +598,292 @@ findings:
     fix_commits:
       []
     issue: null
+  - id: R-22
+    round: 2
+    fingerprint: 92a1212190771ff5
+    file: app/monitoring/route.ts
+    line: 62
+    category: correctness
+    severity: minor
+    summary: "The new \"we are dropping error reports on purpose\" warning line will also be written on a routine local speed-test run, even though the comment right above it promises the line only ever appears when a real deployment is misconfigured."
+    requires:
+      - "a local `bun run lighthouse` run started against a .next build that was produced while a real Sentry DSN was configured (the documented, supported case — that run deliberately never rebuilds)"
+    repro: device
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-23
+    round: 2
+    fingerprint: a917168e691687d1
+    file: app/monitoring/monitoring-route.handler.ts
+    line: 129
+    category: correctness
+    severity: important
+    summary: "The new body-read failure path throws the error away completely, so a visitor closing their tab and the server's own stream machinery breaking are written down as the exact same low-priority line."
+    requires:
+      - a request body stream that errors mid-read on a deployment where the monitoring tunnel is live
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-24
+    round: 2
+    fingerprint: 051c2a573035202c
+    file: app/monitoring/route.ts
+    line: 63
+    category: correctness
+    severity: minor
+    summary: "A fact about how the deployment is configured is written to the log once for every single request, so one misconfiguration becomes an endless stream of identical lines that any visitor can keep producing."
+    requires:
+      - a deployment that has a monitoring address configured and also carries a pipeline marker
+      - ordinary or abusive public POST traffic to the monitoring path
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-25
+    round: 2
+    fingerprint: 2ace0c79f1af1712
+    file: src/config/runtime-environment.ts
+    line: 34
+    category: correctness
+    severity: minor
+    summary: "A pipeline that spells its marker out as 'false' or '0' is now treated as a real deployment, switching real mail sending and error reporting back on, and nothing anywhere records that a marker was seen and ignored."
+    requires:
+      - "a runtime that sets the CI marker to an explicit false, zero or blank value"
+      - email or monitoring configuration readable in that runtime
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-26
+    round: 2
+    fingerprint: 22a1014d706a65f8
+    file: src/config/sentry-options.ts
+    line: 212
+    category: security
+    severity: important
+    summary: "Addresses are now hidden whatever their length, but an address containing an apostrophe before the @ — which the signup form accepts — still has the part in front of the apostrophe sent to the error service in readable form."
+    requires:
+      - a subscriber whose address contains an apostrophe in the part before the @
+      - an error whose text quotes that address
+      - "a subscriber whose address has an apostrophe before the @ sign, which the signup form's own validation accepts and stores"
+      - "free text quoting that address reaching the error-tracking service, which is the exact case this rule exists for (a mail-provider rejection, a duplicate-key database error)"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: auto
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      []
+    issue: null
+  - id: R-27
+    round: 2
+    fingerprint: 3e50aaaf56d4b7f9
+    file: src/features/early-access/actions/instrumented-action.test.ts
+    line: 111
+    category: test-gap
+    severity: minor
+    summary: "One of the two new tests added to prove the R-04 fix passes just as happily against the old, unfixed code, so it does not actually prove anything about that fix."
+    requires:
+      - "no runtime precondition; this is about what the test suite can detect, not about a live fault"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-28
+    round: 2
+    fingerprint: cb6afce9e417876e
+    file: app/monitoring/route.test.ts
+    line: 120
+    category: test-gap
+    severity: minor
+    summary: The new tests never try the one setup this project actually ships for its own test runs — a blank monitoring address plus the pipeline marker — so nothing stops a future change from writing a misleading warning line on every request of every local test and speed-audit run.
+    requires:
+      - "the project's own containerised end-to-end run or the local Lighthouse run, both of which set the marker and blank the address"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-29
+    round: 2
+    fingerprint: cb26e05277ddb1ad
+    file: src/config/runtime-environment.ts
+    line: 37
+    category: test-gap
+    severity: minor
+    summary: "The new rule for deciding whether a pipeline marker means yes or no has no test of its own, and two parts of it can be deleted without any test noticing."
+    requires:
+      - "an environment that spells the marker with capital letters, or that sets the database-endpoint marker to an empty value"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-30
+    round: 2
+    fingerprint: 5a7ac7196aad8630
+    file: app/monitoring/monitoring-route.handler.test.ts
+    line: 197
+    category: test-gap
+    severity: minor
+    summary: "The new test's name and comment describe a caller that sends some data and then drops the connection, but the way the test builds that request means no data is ever delivered, so the half-sent case it advertises is not the case it runs."
+    requires:
+      - "a visitor's browser or a bot aborting a monitoring upload after part of the body has arrived"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-31
+    round: 2
+    fingerprint: 5612e304a066ca46
+    file: src/config/sentry-options.test.ts
+    line: 392
+    category: test-gap
+    severity: minor
+    summary: "The new helper permanently reroutes every future log line produced anywhere in that test file into a throwaway stand-in, and the comment explaining why that is safe only addresses calling the helper twice."
+    requires:
+      - "someone later adding a real logger to this one test file; Vitest's one-worker-per-file isolation keeps the effect from reaching any other file"
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
+  - id: R-32
+    round: 2
+    fingerprint: 0a7de6ea2c7eee8d
+    file: app/monitoring/route.ts
+    line: 63
+    category: security
+    severity: minor
+    summary: "On a public deployment wrongly marked as a pipeline run, every anonymous request to the monitoring endpoint now writes a log line, so a flood of requests becomes a flood of logs."
+    requires:
+      - "a public deployment where a pipeline marker is set at run time while a real error-tracking address is also configured, which is a misconfiguration rather than a supported state and arguably outside the stated threat model"
+      - "an attacker willing to send high request volume, which the documented edge firewall rule is the intended answer to"
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: auto
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: null
 evidence:
   []
 waivers:
@@ -585,4 +891,6 @@ waivers:
 eli5:
   - round: 1
     text: "Four helpers read this change on their own and wrote down twenty-one things. Fifteen are small, and the gate set those aside by itself. Six are big enough that you have to decide about them.\n\nThe most serious one is about hiding email addresses. When something goes wrong, the site writes a note about it and sends that note away to be read by its operators. Before sending, it blanks out anything private. Somebody was making that blanking-out faster and, while doing it, told the email rule to look at only the first sixty-four letters of an address. An address longer than that is now only half hidden: the beginning of it goes out readable. The sign-up form lets people use addresses that long, so this is a real person's address, not an imaginary one. The helper proved it by running the real code, and then checked whether the limit was even needed for speed. It was not. That rule was never the slow one.\n\nTwo are about the little door the site uses to pass browser reports along. If a visitor's browser starts sending a report and then goes away half-way through, the door falls over and nothing is written down about it, even though the door's own note promises that every failure is recorded. The other one: while the site is being tested, the door is told to throw everything away, but it is told in a way that looks exactly like \"nobody ever set this up\". If that ever happened by accident on the real site, every browser report would quietly disappear and nothing would say so.\n\nOne is about signing up. A new shared wrapper was added so that a failure in the monitoring code can never break a visitor's request. It works, but it is a little too eager: if the monitoring part trips after the sign-up has already gone through, the wrapper throws the good result away and tells the visitor it did not work. They sign up again and get a second confirmation mail for a place they already have.\n\nThe last two are missing checks rather than broken behaviour. Nothing proves that the stand-in reporter — the one used when no tracker is set up — was actually handed a working notebook to write in; it quietly ignores a broken one, so the whole point of the fix could stop working with every test still green. And the filter for extra bits attached to log lines only switches on when it sees one exact word copied from an outside library. Nothing anywhere pins that word down, so an update to that library could rename it and switch the filter off without a single test noticing.\n\nWhat you need to decide: for each of the six, whether it gets fixed in this pull request or written down for later. If you want them all done, saying so is enough.\n"
+  - round: 2
+    text: "The four helpers read the six repairs and wrote down eleven more things. Nine are small. Two are big enough that you have to decide about them.\n\nThe first is an apostrophe. The repair to the address-hiding rule works: an address is now hidden completely however long it is, and one helper checked that by running the new rule against about a million made-up inputs without finding a single case where it hides less than it ought to. But the list of characters the rule treats as part of an address leaves out the apostrophe, and the sign-up form accepts one. A helper tried every single character the form allows, one at a time, and the apostrophe is the only one the form takes and the rule does not know about. For somebody whose address contains one, everything in front of it is sent out readable, which in practice is their whole name. The repair is one character long.\n\nThe second is about the little door that passes browser reports along. The repair made it write a line when it cannot read what a browser sent, which is what we asked for. But the line does not say what went wrong. A visitor closing their tab half-way and the server's own machinery breaking now produce exactly the same line, at a level nobody is watching. So the thing the repair existed to make visible is still hidden, now behind the ordinary case instead of behind nothing.\n\nTwo of the nine small ones are worth knowing about even though the gate set them aside. One of the tests written to prove the first repair works passes just as happily against the unrepaired code, so it does not earn its name; the repair is still properly proven, by the test sitting next to it. And the new warning line about deliberately dropped reports will also show up during an ordinary local speed test, even though the note written directly above it promises it never does.\n\nThis is the last round. Once you answer, the gate freezes: whatever you leave for later stays written down in the ledger, and nothing further gets reviewed before this is merged.\n\nWhat you need to decide: for each of the two, fix it now or leave it for later.\n"
 comment_id: null

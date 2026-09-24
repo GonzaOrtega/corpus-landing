@@ -1,0 +1,53 @@
+[
+  {
+    "file": "app/monitoring/monitoring-route.handler.ts",
+    "line": 129,
+    "category": "correctness",
+    "severity": "important",
+    "summary": "The new body-read failure path throws the error away completely, so a visitor closing their tab and the server's own stream machinery breaking are written down as the exact same low-priority line.",
+    "requires": [
+      "a request body stream that errors mid-read on a deployment where the monitoring tunnel is live"
+    ],
+    "repro": "test",
+    "evidence": "The catch that produces the 'unreadable' result takes no error binding at all, and the rejection it feeds passes a fixed errorCode string rather than the error's class name, which is what both of this file's error-level paths pass through its own errorClass helper. Because the line is deliberately warn rather than error it also never raises an issue, so the two are compounding: a server-side read regression that quietly stops every browser error report from arriving would be indistinguishable from routine dropped connections, at a level nobody is alerted on. Recording the class (not the message) would keep the warn choice safe."
+  },
+  {
+    "file": "app/monitoring/route.ts",
+    "line": 63,
+    "category": "correctness",
+    "severity": "minor",
+    "summary": "A fact about how the deployment is configured is written to the log once for every single request, so one misconfiguration becomes an endless stream of identical lines that any visitor can keep producing.",
+    "requires": [
+      "a deployment that has a monitoring address configured and also carries a pipeline marker",
+      "ordinary or abusive public POST traffic to the monitoring path"
+    ],
+    "repro": "none",
+    "evidence": "The suppression warning is emitted before the handler runs and before any validation, so it fires for every POST including ones the handler would immediately reject as malformed. The condition it reports is static for the life of the deployment. The runbook text added alongside it says a line here means a real misconfiguration to fix, but in practice it arrives as volume proportional to traffic rather than as a signal, and unauthenticated callers control that volume. A once-per-process record, or a counter, would carry the same information without the amplification."
+  },
+  {
+    "file": "src/config/runtime-environment.ts",
+    "line": 34,
+    "category": "correctness",
+    "severity": "minor",
+    "summary": "A pipeline that spells its marker out as 'false' or '0' is now treated as a real deployment, switching real mail sending and error reporting back on, and nothing anywhere records that a marker was seen and ignored.",
+    "requires": [
+      "a runtime that sets the CI marker to an explicit false, zero or blank value",
+      "email or monitoring configuration readable in that runtime"
+    ],
+    "repro": "test",
+    "evidence": "The new disabled-marker set is shared by three consumers: the monitoring tunnel, the server SDK's enabled flag, and the real-versus-fake email sender chosen in the notifications capability. Treating a blank value as 'not a signal' is right, and the containers and workflows this repo controls all set the marker affirmatively, so the trade is sound overall. What is asymmetric is the recording: the newly-suppressing direction now logs a line, while the newly-live direction — a marker present and deliberately overridden, which is a recognised idiom for disabling pipeline behaviour — logs nothing, so the fail-safe moved from closed to open in silence. Production remains protected because the deployment-environment check is ordered ahead of this one in the notifications capability."
+  },
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 212,
+    "category": "security",
+    "severity": "minor",
+    "summary": "Addresses are now hidden whatever their length, but an address containing an apostrophe before the @ — which the signup form accepts — still has the part in front of the apostrophe sent to the error service in readable form.",
+    "requires": [
+      "a subscriber whose address contains an apostrophe in the part before the @",
+      "an error whose text quotes that address"
+    ],
+    "repro": "test",
+    "evidence": "The candidate-run character class the rewrite is built on omits the apostrophe, so the run begins after it and only the tail is replaced, leaving the head readable — the same partial-leak shape the length bound used to cause, from a different cause. The signup validator accepts such an address, so these subscribers exist. The added tests exercise only long plain-ASCII local parts, and the new comment asserts that nothing is left that could leak a head, so the gap is invisible to both the suite and the next reader. Verified against the installed validator and the new redaction rule in isolation; the linearity claim held on every adversarial shape I timed, so this is a class gap, not a bounds regression."
+  }
+]

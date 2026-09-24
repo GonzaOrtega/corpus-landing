@@ -1,0 +1,28 @@
+[
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 212,
+    "category": "security",
+    "severity": "important",
+    "summary": "The rewritten rule that hides email addresses from crash reports still misses addresses containing an apostrophe, so everything in the address before the apostrophe is sent to the error-tracking service in plain text.",
+    "requires": [
+      "a subscriber whose address has an apostrophe before the @ sign, which the signup form's own validation accepts and stores",
+      "free text quoting that address reaching the error-tracking service, which is the exact case this rule exists for (a mail-provider rejection, a duplicate-key database error)"
+    ],
+    "repro": "test",
+    "evidence": "The new character class used to cut text into address-shaped runs lists letters, digits, dot, underscore, percent, plus, hyphen and @ only. I swept every printable ASCII character through the real signup schema and then through the real redaction function: the apostrophe is the single character the signup form accepts inside the part before the @ and the redaction rule does not cover. For such an address only the tail is replaced and the whole head survives, which for a first-name.last-name style address is the identifying part. Widening the run class to include the apostrophe closes it; the surrounding walk already redacts a run end to end. Everything else about the rewrite verified clean: over 700,000 differential inputs produced output identical to an ideal unbounded rule with no case redacting less, 200-400 KB adversarial shapes ran between 0.4 and 20 ms with linear 2x scaling on both Bun and Node, the previously-claimed unbounded form measured quadratic (seconds at 80 KB, extrapolating past 30 s at 200 KB) so the correction to my round-1 reasoning is right, and every innocent string the PR preserves is still preserved."
+  },
+  {
+    "file": "app/monitoring/route.ts",
+    "line": 63,
+    "category": "security",
+    "severity": "minor",
+    "summary": "On a public deployment wrongly marked as a pipeline run, every anonymous request to the monitoring endpoint now writes a log line, so a flood of requests becomes a flood of logs.",
+    "requires": [
+      "a public deployment where a pipeline marker is set at run time while a real error-tracking address is also configured, which is a misconfiguration rather than a supported state and arguably outside the stated threat model",
+      "an attacker willing to send high request volume, which the documented edge firewall rule is the intended answer to"
+    ],
+    "repro": "none",
+    "evidence": "The line is written before the origin check and before the org/project check, so no valid parameters are needed to drive it. It carries a fixed message and three constant fields that pass through the logger's field allowlist, so it cannot carry subscriber data, the error-tracking address, request headers or body. A correctly configured deployment already lets the same anonymous caller drive one warning per request through the org/project mismatch path, so the volume ceiling is unchanged rather than newly created; and because the same marker also disables the server SDK, these lines never reach paid error-tracking ingestion. Raised only because the reviewer was asked to assess it; closing it as accepted risk is reasonable."
+  }
+]
