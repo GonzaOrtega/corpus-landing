@@ -1,0 +1,62 @@
+[
+  {
+    "file": "src/features/early-access/actions/instrumented-action.test.ts",
+    "line": 111,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "One of the two new tests added to prove the R-04 fix passes just as happily against the old, unfixed code, so it does not actually prove anything about that fix.",
+    "requires": [
+      "no runtime precondition; this is about what the test suite can detect, not about a live fault"
+    ],
+    "repro": "test",
+    "evidence": "I re-ran both the pre-fix and post-fix versions of the wrapper side by side against the exact mock this test installs (work fails, then the instrumentation wrapper fails after it). Both produce the same answer to the visitor and the same two reports in the same order, so the test is green either way. Its sibling test above it (work succeeds, wrapper fails after) does discriminate correctly and is the one carrying the fix. Suggested: keep this one as a guard against double-reporting, but drop the R-04 label or note that it was already true before the fix."
+  },
+  {
+    "file": "app/monitoring/route.test.ts",
+    "line": 120,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The new tests never try the one setup this project actually ships for its own test runs — a blank monitoring address plus the pipeline marker — so nothing stops a future change from writing a misleading warning line on every request of every local test and speed-audit run.",
+    "requires": [
+      "the project's own containerised end-to-end run or the local Lighthouse run, both of which set the marker and blank the address"
+    ],
+    "repro": "test",
+    "evidence": "The new suppression line only fires when the configured address is non-empty. The tests cover 'a real address is present' and 'the variable is deleted', but not 'the variable is present and empty', which is exactly what compose.yaml and lighthouserc.cjs set (and what two other suites assert they set). Loosening the check from 'has a value' to 'is defined' would keep all four new tests green while making every request in those runs log the line that the operations note promises means a genuine misconfiguration. The same untested check also treats the platform's placeholder for a hidden value as a real address."
+  },
+  {
+    "file": "src/config/runtime-environment.ts",
+    "line": 37,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The new rule for deciding whether a pipeline marker means yes or no has no test of its own, and two parts of it can be deleted without any test noticing.",
+    "requires": [
+      "an environment that spells the marker with capital letters, or that sets the database-endpoint marker to an empty value"
+    ],
+    "repro": "test",
+    "evidence": "There is no test file for this module; the only coverage is four indirect cases routed through the monitoring route test, all of them lowercase and all of them for the CI marker. Removing the lower-casing step keeps all four green while a marker spelled False or FALSE would again shut the tunnel down. Separately, the second marker (the end-to-end database endpoint) was changed by the same commit from 'is defined' to 'has a meaningful value', and no test anywhere exercises that arm with an empty value, so reverting just that half is invisible. A handful of direct cases against this function would pin both."
+  },
+  {
+    "file": "app/monitoring/monitoring-route.handler.test.ts",
+    "line": 197,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The new test's name and comment describe a caller that sends some data and then drops the connection, but the way the test builds that request means no data is ever delivered, so the half-sent case it advertises is not the case it runs.",
+    "requires": [
+      "a visitor's browser or a bot aborting a monitoring upload after part of the body has arrived"
+    ],
+    "repro": "test",
+    "evidence": "Building the body by queueing one chunk and then faulting the stream in the same step discards the queued chunk; I confirmed against the platform's own request object that the very first read fails and the chunk never arrives. The fix is still genuinely proven by this test, since the code path is shared, and I also confirmed the second claim behind it: cancelling an already-faulted stream really does fail, so the quiet-cancel helper is load-bearing. Only the advertised scenario is inaccurate. Delivering a chunk on the first read and faulting on the second would make the name true."
+  },
+  {
+    "file": "src/config/sentry-options.test.ts",
+    "line": 392,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The new helper permanently reroutes every future log line produced anywhere in that test file into a throwaway stand-in, and the comment explaining why that is safe only addresses calling the helper twice.",
+    "requires": [
+      "someone later adding a real logger to this one test file; Vitest's one-worker-per-file isolation keeps the effect from reaching any other file"
+    ],
+    "repro": "none",
+    "evidence": "I confirmed that the subscription this helper installs is global to the process and that it makes every logger created afterwards publish into it, including ones created long after. Today that is harmless: this file creates no real logger, and each test file runs in its own worker, so there is no ordering problem in the suite as it stands. The comment's reasoning covers repeated calls but not this wider effect, which would fail quietly rather than loudly if the file ever gains a real logger. Worth one extra sentence in the comment, or a guard that refuses a second install."
+  }
+]

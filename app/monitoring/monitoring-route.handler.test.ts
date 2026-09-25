@@ -122,16 +122,175 @@ describe('handleMonitoringTunnelRequest', () => {
     ]);
   });
 
+  const oversizedActual = [
+    {
+      level: 'warn',
+      message: expect.any(String),
+      fields: { operation: 'monitoring_tunnel', status: 'rejected', errorCode: 'oversized_actual' },
+    },
+  ];
+
   it('rejects an oversized body even when Content-Length understates it', async () => {
     const forward = vi.fn();
     const logger = fakeLogger();
-    const request = tunnelRequest('?o=123456&p=7891011', { body: 'x'.repeat(300_000) });
+    const request = tunnelRequest('?o=123456&p=7891011', {
+      body: 'x'.repeat(300_000),
+      headers: { 'content-length': '1000' },
+    });
+    expect(request.headers.get('content-length')).toBe('1000');
 
     const response = await handleMonitoringTunnelRequest(request, DSN, forward, { logger });
 
     expect(response.status).toBe(413);
     expect(forward).not.toHaveBeenCalled();
-    expect(logger.calls[0]?.fields.errorCode).toBe('oversized_actual');
+    expect(logger.calls).toEqual(oversizedActual);
+  });
+
+  /**
+   * R-46: a chunked body declares no size, so the Content-Length fast path
+   * cannot help. The read must stop at the limit and cancel the stream, not
+   * buffer everything the caller sends and measure it afterwards.
+   */
+  it('stops reading a body that declares no size once it passes the limit, and cancels the rest', async () => {
+    const forward = vi.fn();
+    const logger = fakeLogger();
+    const chunk = new Uint8Array(64_000);
+    let pulled = 0;
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(chunk);
+      },
+      cancel,
+    });
+    const request = tunnelRequest('?o=123456&p=7891011', {
+      body,
+      duplex: 'half',
+    } as RequestInit);
+    expect(request.headers.get('content-length')).toBeNull();
+
+    const response = await handleMonitoringTunnelRequest(request, DSN, forward, { logger });
+
+    expect(response.status).toBe(413);
+    expect(forward).not.toHaveBeenCalled();
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(pulled).toBeLessThan(10);
+    expect(logger.calls).toEqual(oversizedActual);
+  });
+
+  /**
+   * R-05: a caller that aborts or resets mid-POST errors the body stream
+   * instead of ending it. That has to come out as a logged rejection — an
+   * unhandled rejection here would hand the platform a generic error and
+   * write no line at all, which is the one fault this handler promises to
+   * make visible (R-29). Cancelling an already-errored stream rejects with
+   * that same error, so this also pins that the cleanup cannot escape.
+   */
+  it('rejects a body whose stream errors mid-read, and logs exactly one line for it', async () => {
+    const forward = vi.fn();
+    const logger = fakeLogger();
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('{"dsn":"x"}\n'));
+        controller.error(new TypeError('terminated'));
+      },
+    });
+    const request = tunnelRequest('?o=123456&p=7891011', { body, duplex: 'half' } as RequestInit);
+
+    const response = await handleMonitoringTunnelRequest(request, DSN, forward, { logger });
+
+    expect(response.status).toBe(400);
+    expect(await response.text()).toBe('');
+    expect(forward).not.toHaveBeenCalled();
+    expect(logger.calls).toEqual([
+      {
+        level: 'warn',
+        message: expect.any(String),
+        fields: {
+          operation: 'monitoring_tunnel',
+          status: 'rejected',
+          errorCode: 'body_read_failed:TypeError',
+        },
+      },
+    ]);
+    // Never the stream error's own message, which can carry upstream detail (spec §24).
+    expect(JSON.stringify(logger.calls)).not.toContain('terminated');
+  });
+
+  /**
+   * R-23: `warn` is the right level here — a visitor closing their tab must
+   * not open a Sentry issue — but it is only safe if the line says *what*
+   * broke. A client abort and a platform-side read fault land on the same
+   * path, and a genuine read regression would silently stop every browser
+   * error report from arriving. Without the class both are written down
+   * identically, at a level nobody is alerted on.
+   */
+  it('carries the stream error class into the body-read rejection, so two faults are distinguishable', async () => {
+    const rejectionFor = async (error: unknown): Promise<LoggedCall[]> => {
+      const logger = fakeLogger();
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.error(error);
+        },
+      });
+      const request = tunnelRequest('?o=123456&p=7891011', { body, duplex: 'half' } as RequestInit);
+
+      const response = await handleMonitoringTunnelRequest(request, DSN, vi.fn(), { logger });
+
+      expect(response.status).toBe(400);
+      return logger.calls;
+    };
+
+    const aborted = await rejectionFor(new TypeError('terminated'));
+    const faulted = await rejectionFor(new RangeError('stream state is invalid'));
+
+    expect(aborted[0]?.fields.errorCode).toBe('body_read_failed:TypeError');
+    expect(faulted[0]?.fields.errorCode).toBe('body_read_failed:RangeError');
+    expect(faulted[0]?.fields.errorCode).not.toBe(aborted[0]?.fields.errorCode);
+    // Still `warn`, and still one line each: the class is the only addition.
+    expect(aborted.map((call) => call.level)).toEqual(['warn']);
+    expect(faulted.map((call) => call.level)).toEqual(['warn']);
+    // The class only — a stream error's message can carry request detail (spec §24).
+    const logged = JSON.stringify([...aborted, ...faulted]);
+    expect(logged).not.toContain('terminated');
+    expect(logged).not.toContain('invalid');
+  });
+
+  it('forwards a body sent in several chunks, reassembled in order', async () => {
+    const forward = vi.fn(
+      async (_input: string | URL, _init?: RequestInit) => new Response(null, { status: 200 }),
+    );
+    const encoder = new TextEncoder();
+    const parts = ['{"dsn":"x"}\n', '{"type":"event"}\n', '{}'];
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const part of parts) controller.enqueue(encoder.encode(part));
+        controller.close();
+      },
+    });
+    const request = tunnelRequest('?o=123456&p=7891011', { body, duplex: 'half' } as RequestInit);
+
+    const response = await handleMonitoringTunnelRequest(request, DSN, forward);
+
+    expect(response.status).toBe(200);
+    const [, options] = forward.mock.calls[0] ?? [];
+    expect(new TextDecoder().decode(options?.body as Uint8Array)).toBe(parts.join(''));
+  });
+
+  it('forwards an empty body as an empty payload', async () => {
+    const forward = vi.fn(
+      async (_input: string | URL, _init?: RequestInit) => new Response(null, { status: 200 }),
+    );
+    const request = tunnelRequest('?o=123456&p=7891011', { body: null });
+
+    const response = await handleMonitoringTunnelRequest(request, DSN, forward);
+
+    expect(response.status).toBe(200);
+    const [, options] = forward.mock.calls[0] ?? [];
+    expect(options?.body).toBeInstanceOf(Uint8Array);
+    expect((options?.body as Uint8Array | undefined)?.byteLength).toBe(0);
   });
 
   it('does not forward anything when no DSN is configured, and stays silent — an unconfigured deployment is routine, not a fault', async () => {

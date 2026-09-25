@@ -25,7 +25,8 @@ const noopLogger: Logger = {
   error: () => {},
 };
 
-const OPERATION = 'monitoring_tunnel';
+/** The one operation name every monitoring-tunnel log line carries, including the suppression line `route.ts` writes before this handler is ever called. */
+export const MONITORING_TUNNEL_OPERATION = 'monitoring_tunnel';
 
 /** The exception's class name only — never its message, which can carry a URL, a header value, or upstream response detail (spec §24). */
 function errorClass(error: unknown): string {
@@ -33,7 +34,7 @@ function errorClass(error: unknown): string {
 }
 
 function reject(logger: Logger, status: number, errorCode: string, message: string): Response {
-  logger.warn(message, { operation: OPERATION, status: 'rejected', errorCode });
+  logger.warn(message, { operation: MONITORING_TUNNEL_OPERATION, status: 'rejected', errorCode });
   return new Response(null, { status });
 }
 
@@ -72,6 +73,76 @@ function declaredOversized(request: Request): boolean {
   return contentLength !== null && Number(contentLength) > MAX_ENVELOPE_BYTES;
 }
 
+/**
+ * Either the body, or why there isn't one: `oversized` is a decision this
+ * code made, `unreadable` is the request stream faulting under it. The two
+ * carry different status codes and different log lines, so a discriminated
+ * result keeps them apart where a bare `null` could not. Only `unreadable`
+ * carries a class, because only it has an exception behind it (R-23).
+ */
+type BoundedBody =
+  | { readonly ok: true; readonly body: Uint8Array<ArrayBuffer> }
+  | { readonly ok: false; readonly reason: 'oversized' }
+  | { readonly ok: false; readonly reason: 'unreadable'; readonly failureClass: string };
+
+/**
+ * Stopping is already decided by the time this is called, so a `cancel()`
+ * that rejects — the usual case being a stream that has already errored,
+ * which rejects with that same error — must not escape and turn one outcome
+ * into a different one. Cleanup only, never a signal.
+ */
+async function cancelQuietly(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
+  try {
+    await reader.cancel();
+  } catch {
+    // Best-effort: the connection is going away either way.
+  }
+}
+
+/**
+ * The body, or a reason there is none (R-46, R-05). Read chunk by chunk so a
+ * body that declares no size — chunked transfer encoding — is cut off at the
+ * limit instead of being buffered whole first: `arrayBuffer()` would hold
+ * everything a caller sends before any check could run. The stream is
+ * cancelled at the limit, so the rest is never read.
+ *
+ * A caller that aborts or resets mid-POST errors the stream instead of
+ * ending it, and that rejection is caught here rather than left to escape
+ * the handler: an unhandled rejection would be answered by the platform with
+ * a generic error and no log line at all — the one fault this file exists to
+ * make visible. The caught error's class comes back with the reason (R-23):
+ * a routine abort and a platform-side read fault arrive on the same path,
+ * and the class is the only thing that tells them apart downstream.
+ */
+async function readBounded(request: Request, limit: number): Promise<BoundedBody> {
+  if (!request.body) return { ok: true, body: new Uint8Array(0) };
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > limit) {
+        await cancelQuietly(reader);
+        return { ok: false, reason: 'oversized' };
+      }
+      chunks.push(value);
+    }
+  } catch (error) {
+    await cancelQuietly(reader);
+    return { ok: false, reason: 'unreadable', failureClass: errorClass(error) };
+  }
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { ok: true, body };
+}
+
 export interface MonitoringTunnelDeps {
   /** The project's Logger port (spec §24 allowlist) — see `route.ts` for how it's obtained. Defaults to a no-op so existing call sites are unaffected. */
   logger?: Logger;
@@ -97,10 +168,17 @@ export interface MonitoringTunnelDeps {
  * design otherwise avoids. Rejections use `warn`, not `error`: they are the
  * expected shape of hostile or stale traffic, and the Sentry Pino
  * integration turns `error`-level lines into issues, which the runbook's
- * "new issue" alert should reserve for genuine faults — the two `catch`
- * blocks below, which use `error` and a distinct `errorCode` each, so a
- * forward failure (Sentry unreachable) is never conflated with a fault while
- * assembling the response to an already-successful forward.
+ * "new issue" alert should reserve for genuine faults — the two `error`-level
+ * `catch` blocks below, which use a distinct message each, so a forward
+ * failure (Sentry unreachable) is never conflated with a fault while
+ * assembling the response to an already-successful forward. A request body
+ * that errors mid-read (`readBounded`) is the third fault path, and a `warn`
+ * rather than an `error`: the stream breaks because a caller went away, so it
+ * belongs with the rejections and must not raise an issue per dropped
+ * connection. That level is only safe because the line says what broke — its
+ * `errorCode` carries the stream error's class alongside the constant, so a
+ * server-side read regression, which would silently stop every browser error
+ * report from arriving, does not read as one more routine abort (R-23).
  */
 export async function handleMonitoringTunnelRequest(
   request: Request,
@@ -119,7 +197,7 @@ export async function handleMonitoringTunnelRequest(
     // and is exactly the silent failure R-29 exists to surface.
     if (dsn) {
       logger.warn('Monitoring tunnel DSN is configured but not usable', {
-        operation: OPERATION,
+        operation: MONITORING_TUNNEL_OPERATION,
         status: 'rejected',
         errorCode: 'dsn_unparseable',
       });
@@ -149,14 +227,21 @@ export async function handleMonitoringTunnelRequest(
       'Monitoring tunnel rejected an oversized envelope',
     );
   }
-  const body = await request.arrayBuffer();
-  if (body.byteLength > MAX_ENVELOPE_BYTES) {
-    return reject(
-      logger,
-      413,
-      'oversized_actual',
-      'Monitoring tunnel rejected an oversized envelope',
-    );
+  const envelope = await readBounded(request, MAX_ENVELOPE_BYTES);
+  if (!envelope.ok) {
+    return envelope.reason === 'oversized'
+      ? reject(logger, 413, 'oversized_actual', 'Monitoring tunnel rejected an oversized envelope')
+      : // The class rides inside `errorCode` rather than a field of its own:
+        // spec §24's allowlist (`logger.port.ts`) has no slot for a second
+        // one, and adapters strip anything outside it at runtime. Same shape
+        // as `PROVIDER_STATUS_<n>` in the Resend adapter — the constant
+        // prefix stays greppable, the suffix says which fault it was.
+        reject(
+          logger,
+          400,
+          `body_read_failed:${envelope.failureClass}`,
+          'Monitoring tunnel could not read a request body',
+        );
   }
 
   let upstream: Response;
@@ -166,11 +251,11 @@ export async function handleMonitoringTunnelRequest(
       headers: {
         'content-type': request.headers.get('content-type') ?? 'application/x-sentry-envelope',
       },
-      body,
+      body: envelope.body,
     });
   } catch (error) {
     logger.error('Monitoring tunnel failed to reach Sentry', {
-      operation: OPERATION,
+      operation: MONITORING_TUNNEL_OPERATION,
       status: 'failed',
       errorCode: errorClass(error),
     });
@@ -193,7 +278,7 @@ export async function handleMonitoringTunnelRequest(
     // assembly, not a Sentry-reachability problem — the runbook needs to
     // tell the two apart.
     logger.error('Monitoring tunnel failed to assemble the forwarded response', {
-      operation: OPERATION,
+      operation: MONITORING_TUNNEL_OPERATION,
       status: 'failed',
       errorCode: errorClass(error),
     });

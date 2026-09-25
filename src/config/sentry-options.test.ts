@@ -1,17 +1,22 @@
+import diagnosticsChannel from 'node:diagnostics_channel';
 import type { ErrorEvent, Event, Log } from '@sentry/nextjs';
-import { describe, expect, it } from 'vitest';
+import { pinoIntegration, withScope } from '@sentry/nextjs';
+import { describe, expect, it, vi } from 'vitest';
 import { NEVER_LOG_FIXTURE, NEVER_LOG_FIXTURE_STRINGS } from '../core/testing/never-log-fixture';
+import { signupSchema } from '../features/early-access/schemas/signup.schema';
 import {
   buildClientSentryOptions,
   buildIngestUrl,
   buildSentryBuildOptions,
   buildServerSentryOptions,
   buildTunnelPath,
+  describeDsnProblem,
   parseSentryDsn,
   redactText,
   resolveTracesSampleRate,
   scrubEvent,
   scrubLog,
+  warnOnDsnProblem,
 } from './sentry-options';
 
 /**
@@ -44,9 +49,175 @@ describe('redactText', () => {
     expect(redactText('https://site/manage?token=abc#frag')).toBe(
       'https://site/manage?token=[redacted]#[redacted]',
     );
-    expect(redactText('connect ECONNREFUSED postgres://corpus:s3cret@ep-x.neon.tech/db')).toBe(
-      'connect ECONNREFUSED postgres://[credentials]@ep-x.neon.tech/db',
+    expect(redactText('fetch https://corpus:s3cret@api.example/v1 failed')).toBe(
+      'fetch https://[credentials]@api.example/v1 failed',
     );
+  });
+
+  it('redacts an address whose local part is longer than 64 characters, whole (R-18)', () => {
+    // `signup.schema.ts` caps an address at 254 characters and caps nothing
+    // below that, so a local part far past RFC 5321's 64 is accepted, stored,
+    // and quoted back in exactly the free text this rule exists for. A rule
+    // bounded at 64 matches only the tail and ships the head in the clear.
+    const address = `${'a'.repeat(242)}@example.com`;
+    expect(address).toHaveLength(254);
+    expect(redactText(`Email provider rejected ${address}`)).toBe(
+      'Email provider rejected [email]',
+    );
+    // Over the bound and glued to a neighbour: both still go, whole.
+    expect(redactText(`${'b'.repeat(300)}@example.com-${'c'.repeat(300)}@example.org`)).toBe(
+      '[email][email]',
+    );
+    // A long *domain* is no different: the address is dropped end to end.
+    expect(redactText(`bounce for person@${'sub.'.repeat(60)}example.com`)).toBe(
+      'bounce for [email]',
+    );
+  });
+
+  it('redacts an address whose local part contains an apostrophe, whole (R-26)', () => {
+    // Zod's `.email()` accepts an apostrophe in the local part, so an `O'…`
+    // surname is accepted by the signup form and stored — and a run class
+    // that omits the apostrophe splits the address there, replacing only the
+    // tail and leaving the whole head, i.e. essentially the subscriber's
+    // name, readable. Same fail-open class as the 64-character bound above,
+    // one character wide instead of a length.
+    const address = FORBIDDEN.emailWithApostrophe;
+    expect(redactText(`Email provider rejected ${address}`)).toBe(
+      'Email provider rejected [email]',
+    );
+    // The other text that quotes an address back verbatim: a Postgres unique
+    // violation on `email_normalized`.
+    expect(
+      redactText(
+        `duplicate key value violates unique constraint "x" DETAIL:  Key (email_normalized)=(${address}) already exists.`,
+      ),
+    ).toBe(
+      'duplicate key value violates unique constraint "x" DETAIL:  Key (email_normalized)=([email]) already exists.',
+    );
+    // Not merely "most of it went": no readable fragment of the local part
+    // survives, on either side of the apostrophe.
+    for (const fragment of address.split('@')[0].split("'")) {
+      expect(redactText(`Email provider rejected ${address}`)).not.toContain(fragment);
+    }
+  });
+
+  it('misses no character the signup form itself accepts in an address (R-26)', () => {
+    // The rule can only redact an address whole if its run class covers every
+    // character `signupSchema` admits: one the schema accepts and the class
+    // omits splits the run and ships the head. Driven from the real schema so
+    // that widening validation without widening this rule fails here rather
+    // than leaking in production.
+    const probes: string[] = [];
+    for (let code = 0x20; code <= 0x7e; code += 1) probes.push(String.fromCharCode(code));
+    // A non-breaking space (written as a code point so it is visible here)
+    // and a few non-ASCII letters, the sort a paste from a contact list
+    // carries.
+    probes.push(String.fromCharCode(0xa0), 'é', 'ñ', 'ß', '—', '日');
+
+    const head = 'zzhead';
+    const tail = 'zztail';
+    const missed = new Set<string>();
+    let accepted = 0;
+    for (const probe of probes) {
+      for (const local of [
+        `${head}${probe}${tail}`,
+        `${probe}${head}${tail}`,
+        `${head}${tail}${probe}`,
+      ]) {
+        const parsed = signupSchema.safeParse({ email: `${local}@example.com`, captchaToken: 'x' });
+        if (!parsed.success) continue;
+        accepted += 1;
+        const stored = parsed.data.emailNormalized;
+        const redacted = redactText(`Email provider rejected ${stored}`);
+        if (redacted.includes(head) || redacted.includes(tail)) missed.add(probe);
+      }
+    }
+
+    expect(accepted).toBeGreaterThan(100);
+    expect([...missed]).toEqual([]);
+  });
+
+  it.each([
+    ['a contraction', "it's the operator's call, isn't it?"],
+    ['a possessive', "the server's own machinery raised it"],
+    ['a quoted property name', "TypeError: Cannot read properties of undefined (reading 'length')"],
+    ['a surname with no address in sight', "O'Brien reported the outage"],
+  ])('leaves an apostrophe in ordinary prose alone: %s (R-26)', (_label, text) => {
+    // The run class had to widen to cover the apostrophe; a run with no "@"
+    // in it must still come back byte-identical, or every stack trace and
+    // English sentence in an event gets mangled.
+    expect(redactText(text)).toBe(text);
+  });
+
+  it('drops a database connection string whole, host and database name included (R-25: spec §24 lists the connection string)', () => {
+    const redacted = redactText(
+      'connect ECONNREFUSED postgresql://corpus:s3cret@ep-x.neon.tech/db?sslmode=require',
+    );
+    expect(redacted).toBe('connect ECONNREFUSED postgres://[redacted]');
+    expect(redactText(`driver said: ${FORBIDDEN.databaseUrl}`)).toBe(
+      'driver said: postgres://[redacted]',
+    );
+  });
+
+  it.each([
+    ['the bare location.hash', `#${FORBIDDEN.rawToken}`],
+    ['a selector DOMException', `'#${FORBIDDEN.rawToken}' is not a valid selector`],
+    ['a path with no slash', `manage#${FORBIDDEN.rawToken}`],
+    ['a path split by a quote', `https://site/early-access/manage'#${FORBIDDEN.rawToken}`],
+    ['a backslash path', `site\\early-access\\manage#${FORBIDDEN.rawToken}`],
+    ['a URL-encoded hash', `/early-access/manage%23${FORBIDDEN.rawToken}`],
+  ])('redacts a token-shaped fragment with no URL in front of it: %s', (_label, text) => {
+    expect(redactText(text)).not.toContain(FORBIDDEN.rawToken);
+  });
+
+  it.each([
+    ['after a hyphen', '-https://admin:hunter2@localhost/x', '-https://[credentials]@localhost/x'],
+    [
+      'with a scheme over 32 characters',
+      `${'x'.repeat(40)}://admin:hunter2@h`,
+      `${'x'.repeat(8)}${'x'.repeat(32)}://[credentials]@h`,
+    ],
+    [
+      'glued to a digit',
+      '1.postgres://owner:npg_SECRET@ep-x.neon.tech/db',
+      '1.postgres://[redacted]',
+    ],
+    [
+      'glued to a previous match',
+      'a@b.com.x@c.com and first@a.com-second@b.com',
+      '[email][email] and [email][email]',
+    ],
+  ])('still redacts a credential or address %s', (_label, text, expected) => {
+    expect(redactText(text)).toBe(expected);
+  });
+
+  it('redacts a fragment on a relative path too — the shape a navigation breadcrumb records', () => {
+    expect(redactText(`/early-access/manage#${FORBIDDEN.rawToken}`)).toBe(
+      '/early-access/manage#[redacted]',
+    );
+  });
+
+  it.each([
+    ['a clicked element selector', 'body > main > form > button#submit.primary'],
+    ['a minified React error', 'Minified React error #418; visit the docs for the full message'],
+    ['a colour', 'unexpected colour #fff in theme'],
+  ])('leaves a "#" that is not part of a URL alone: %s (R-32/R-42)', (_label, text) => {
+    expect(redactText(text)).toBe(text);
+  });
+
+  it.each([
+    ['a long run of address characters', 'a'.repeat(100_000)],
+    ['an "@" followed by a long run of hyphens', `a@${'-'.repeat(100_000)}`],
+    ['a long run of scheme-like labels', 'a.'.repeat(50_000)],
+    ['a scheme followed by a long run with no "@"', `x://${'a'.repeat(100_000)}`],
+    // The address rule walks "@" signs rather than bounding the local part
+    // (R-18), so these two shapes are what could make it quadratic instead.
+    ['an "@"-dense block', '@a'.repeat(100_000)],
+    ['a single unbroken token ending in an address', `${'a'.repeat(200_000)}@example.com`],
+  ])('stays linear on %s (R-41)', (_label, text) => {
+    const started = performance.now();
+    redactText(text);
+    expect(performance.now() - started).toBeLessThan(250);
   });
 
   it('redacts a realistic management-link fragment carrying the raw token', () => {
@@ -153,7 +324,7 @@ describe('scrubEvent', () => {
     expectClean(scrubbed);
   });
 
-  it('redacts the first parameter of a bare request.query_string (R-14: the SDK populates it via URL.search.slice(1), with no leading "?")', () => {
+  it('drops request.query_string structurally, like the query in request.url (R-14/R-24)', () => {
     const scrubbed = scrubEvent({
       request: {
         url: 'https://corpus.example/early-access/manage',
@@ -162,8 +333,73 @@ describe('scrubEvent', () => {
       },
     });
 
-    expect(scrubbed.request?.query_string).toBe('token=[redacted]&x=1');
+    expect(scrubbed.request).not.toHaveProperty('query_string');
     expectClean(scrubbed);
+  });
+
+  it('replaces anything nested past the depth limit instead of passing it through unscrubbed (R-20)', () => {
+    let deep: Record<string, unknown> = { email: FORBIDDEN.email, note: FORBIDDEN.secret };
+    for (let level = 0; level < 13; level += 1) deep = { next: deep };
+
+    const scrubbed = scrubEvent({ extra: { deep } });
+
+    expectClean(scrubbed);
+    expect(JSON.stringify(scrubbed)).toContain('"[depth-limit]"');
+  });
+
+  /**
+   * R-26/R-43/R-44: a browser error on the management page, shaped the way
+   * the browser SDK builds it. The token can sit in three places besides the
+   * page URL: the navigation breadcrumb the bridge's `replaceState` records,
+   * and the frame filename of an error thrown from an inline script.
+   */
+  it('removes the management token from every field a browser event on the manage page carries it in', () => {
+    const managePage = `https://corpus.example/early-access/manage#${FORBIDDEN.rawToken}`;
+    const scrubbed = scrubEvent({
+      request: {
+        url: managePage,
+        headers: { Referer: managePage, 'User-Agent': 'Mozilla/5.0' },
+      },
+      breadcrumbs: [
+        {
+          category: 'navigation',
+          data: { from: `/early-access/manage#${FORBIDDEN.rawToken}`, to: '/early-access/manage' },
+        },
+        { category: 'ui.click', message: 'main > form > button#unsubscribe' },
+      ],
+      exception: {
+        values: [
+          {
+            type: 'TypeError',
+            value: 'x is undefined',
+            stacktrace: {
+              frames: [
+                { filename: managePage, abs_path: managePage, function: 'inline', lineno: 1 },
+                { filename: 'app:///_next/static/chunks/app.js', function: 'render', lineno: 9 },
+              ],
+            },
+          },
+        ],
+      },
+      transaction: '/early-access/manage',
+    });
+
+    expectClean(scrubbed);
+    expect(scrubbed.request).toEqual({ url: 'https://corpus.example/early-access/manage' });
+    expect(scrubbed.breadcrumbs?.[0]?.data).toEqual({
+      from: '/early-access/manage',
+      to: '/early-access/manage',
+    });
+    expect(scrubbed.breadcrumbs?.[1]?.message).toBe('main > form > button#unsubscribe');
+    expect(scrubbed.exception?.values?.[0]?.stacktrace?.frames).toEqual([
+      {
+        filename: 'https://corpus.example/early-access/manage',
+        abs_path: 'https://corpus.example/early-access/manage',
+        function: 'inline',
+        lineno: 1,
+      },
+      { filename: 'app:///_next/static/chunks/app.js', function: 'render', lineno: 9 },
+    ]);
   });
 });
 
@@ -180,6 +416,181 @@ describe('scrubLog', () => {
     expect(scrubbed.attributes).toEqual({
       operation: 'send_confirmation',
       'sentry.origin': 'auto.pino',
+    });
+  });
+});
+
+describe('scrubEvent and scrubLog on sparse input', () => {
+  it('leaves absent fields absent rather than inventing them', () => {
+    const scrubbed = scrubEvent({
+      request: { method: 'GET' },
+      breadcrumbs: [
+        { category: 'navigation' },
+        { category: 'navigation', data: { from: '/a?x=1', to: 7 } },
+      ],
+      exception: { values: [{ type: 'Error' }, { stacktrace: { frames: [{ lineno: 3 }] } }] },
+    });
+
+    expect(scrubbed.request).toEqual({ method: 'GET' });
+    expect(scrubbed.breadcrumbs).toEqual([
+      { category: 'navigation' },
+      { category: 'navigation', data: { from: '/a', to: 7 } },
+    ]);
+    expect(scrubbed.exception?.values).toEqual([
+      { type: 'Error' },
+      { stacktrace: { frames: [{ lineno: 3 }] } },
+    ]);
+    expect(scrubLog({ level: 'info', message: 'started' })).toEqual({
+      level: 'info',
+      message: 'started',
+    });
+  });
+});
+
+type SentryClient = Parameters<NonNullable<ReturnType<typeof pinoIntegration>['setup']>>[0];
+
+/**
+ * Pushes one log line through the *installed* Pino integration and the SDK's
+ * own log pipeline, so `scrubLog` is handed exactly the attributes production
+ * hands it: the integration subscribes to Node's `pino_asJson` diagnostics
+ * channel and stamps `sentry.origin` itself, and `beforeSendLog` is the hook
+ * the built options wire `scrubLog` into.
+ *
+ * Taking the marker off the dependency instead of restating it as test input
+ * is the whole point (R-13). `allowlistPinoAttributes` only switches on for
+ * that one exact string; every other test here supplies it by hand, so an
+ * upgrade that renames it in `@sentry/node-core` would leave them all green
+ * while the allowlist silently stopped applying to real Pino records. This
+ * one goes red instead. Same instinct as the tunnel route's `Origin` check,
+ * which settled the question against the vendored fetch transport rather
+ * than against the spec — executed here rather than read.
+ *
+ * The integration's channel subscription cannot be undone, so this helper is
+ * called once. A second call would re-run the same capture against the same
+ * scope and client and land on the same value, so it carries no order
+ * dependence either way.
+ */
+function scrubLogFromInstalledPinoIntegration(logLine: Record<string, unknown>): Log {
+  let scrubbed: Log | undefined;
+  const client = {
+    getOptions: () => ({
+      enableLogs: true,
+      environment: 'production',
+      release: '1.0.0',
+      beforeSendLog: (log: Log) => {
+        scrubbed = scrubLog(log);
+        return scrubbed;
+      },
+    }),
+    getSdkMetadata: () => ({ sdk: { name: 'sentry.javascript.nextjs', version: '10.75.0' } }),
+    getIntegrationByName: () => undefined,
+    getDsn: () => undefined,
+    emit: () => undefined,
+    recordDroppedEvent: () => undefined,
+  } as unknown as SentryClient;
+
+  withScope((scope) => {
+    scope.setClient(client);
+    pinoIntegration().setup?.(client);
+    diagnosticsChannel.tracingChannel('pino_asJson').end.publish({
+      instance: { levels: { labels: { 50: 'error' } } },
+      arguments: [{}, 'Confirmation email failed', 50],
+      result: JSON.stringify({ level: 50, time: 0, pid: 0, hostname: 'vm', ...logLine }),
+    });
+  });
+
+  if (!scrubbed) throw new Error('the installed Pino integration emitted no log record');
+  return scrubbed;
+}
+
+describe('scrubLog — Pino records', () => {
+  it('applies the allowlist to a record the installed Pino integration really emitted (R-13)', () => {
+    const scrubbed = scrubLogFromInstalledPinoIntegration({
+      operation: 'send_confirmation',
+      signupId: 'uuid-1',
+      customerNote: 'free text a second pino logger in the process attached',
+    });
+
+    expect(scrubbed.attributes?.['sentry.origin']).toBe('auto.log.pino');
+    expect(scrubbed.attributes).toEqual({
+      'sentry.origin': 'auto.log.pino',
+      'sentry.environment': 'production',
+      'sentry.release': '1.0.0',
+      'sentry.sdk.name': 'sentry.javascript.nextjs',
+      'sentry.sdk.version': '10.75.0',
+      'pino.logger.level': 50,
+      operation: 'send_confirmation',
+      signupId: 'uuid-1',
+    });
+  });
+
+  it('keeps only allowlisted fields and SDK metadata from a Pino record, not merely non-denied ones (R-10)', () => {
+    const scrubbed = scrubLog({
+      level: 'error',
+      message: 'Confirmation email failed',
+      attributes: {
+        'sentry.origin': 'auto.log.pino',
+        'sentry.environment': 'production',
+        'pino.logger.level': 50,
+        operation: 'send_confirmation',
+        signupId: 'uuid-1',
+        customerNote: 'free text a logger attached',
+        'sentry.customerNote': 'a caller field named like SDK metadata',
+        hostname: 'vm',
+      },
+    });
+
+    expect(scrubbed.attributes).toEqual({
+      'sentry.origin': 'auto.log.pino',
+      'sentry.environment': 'production',
+      'pino.logger.level': 50,
+      operation: 'send_confirmation',
+      signupId: 'uuid-1',
+    });
+  });
+
+  /**
+   * The weaker path is deliberate, not an oversight (R-13): console logs and
+   * direct `Sentry.logger.*` calls carry their payload in attributes the
+   * logger allowlist does not name, so an unrecognised origin keeps the
+   * denylist walk rather than failing closed on it. What that path must never
+   * do is let a never-log value through — asserted here so the choice stays a
+   * choice. The paired test above is what keeps a renamed marker from taking
+   * this path by accident.
+   */
+  it('falls back to the denylist walk for an origin that is not the Pino marker, never-log values included (R-13)', () => {
+    const scrubbed = scrubLog({
+      level: 'error',
+      message: 'Confirmation email failed',
+      attributes: {
+        ...FORBIDDEN,
+        'sentry.origin': 'auto.logging.pino',
+        operation: 'send_confirmation',
+        customerNote: 'free text a second pino logger in the process attached',
+      },
+    });
+
+    expectClean(scrubbed);
+    expect(scrubbed.attributes).toEqual({
+      'sentry.origin': 'auto.logging.pino',
+      operation: 'send_confirmation',
+      customerNote: 'free text a second pino logger in the process attached',
+    });
+  });
+
+  it('keeps console-log message parameters, which only the denylist applies to', () => {
+    const scrubbed = scrubLog({
+      level: 'warn',
+      message: 'Retrying in 5s',
+      attributes: {
+        'sentry.origin': 'auto.log.console',
+        'sentry.message.parameter.0': '5s',
+      },
+    });
+
+    expect(scrubbed.attributes).toEqual({
+      'sentry.origin': 'auto.log.console',
+      'sentry.message.parameter.0': '5s',
     });
   });
 });
@@ -283,11 +694,20 @@ describe('parseSentryDsn', () => {
     });
   });
 
+  it('accepts a region label longer than two letters (R-45)', () => {
+    expect(parseSentryDsn('https://public@o1.ingest.us2.sentry.io/1')).toMatchObject({
+      region: 'us2',
+      ingestHost: 'o1.ingest.us2.sentry.io',
+    });
+  });
+
   it.each([
     ['unset', undefined],
     ['blank', ''],
     ['the Vercel sensitive placeholder', '[SENSITIVE]'],
     ['not a URL at all', 'not-a-dsn'],
+    ['a look-alike ingest host outside sentry.io', 'https://public@o1.ingest.evil.com/1'],
+    ['a region label ending in a hyphen', 'https://public@o1.ingest.us-.sentry.io/1'],
     [
       'a self-hosted, non-SaaS host (R-04: treated as unconfigured, not tunnelled to a third party)',
       'https://public@sentry.internal.example/1',
@@ -296,6 +716,29 @@ describe('parseSentryDsn', () => {
     ['no project id at all', 'https://public@o1.ingest.sentry.io/'],
   ])('returns undefined for %s', (_label, raw) => {
     expect(parseSentryDsn(raw)).toBeUndefined();
+  });
+});
+
+describe('describeDsnProblem / warnOnDsnProblem', () => {
+  it.each([
+    ['unset', undefined],
+    ['blank', ''],
+    ['a valid Sentry SaaS DSN', 'https://public@o1.ingest.us.sentry.io/1'],
+  ])('has nothing to say when the DSN is %s', (_label, raw) => {
+    expect(describeDsnProblem(raw)).toBeUndefined();
+    const warn = vi.fn();
+    warnOnDsnProblem(raw, warn);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('warns when a DSN is set but would silently disable browser reporting (R-30)', () => {
+    const warn = vi.fn();
+    warnOnDsnProblem('https://public@sentry.internal.example/1', warn);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain('browser error reporting is disabled');
+    expect(describeDsnProblem('https://public@sentry.internal.example/1')).toBe(
+      warn.mock.calls[0]?.[0],
+    );
   });
 });
 
@@ -385,11 +828,13 @@ describe('sharedOptions wiring on the built options', () => {
     beforeSend: (event: ErrorEvent) => Event;
     beforeSendTransaction: <E extends Event>(event: E) => E;
     beforeSendLog: (log: Log) => Log;
+    beforeSendSpan: <S extends object>(span: S) => S;
     ignoreErrors: ReadonlyArray<string | RegExp>;
   }): void {
     expect(options.beforeSend).toBeTypeOf('function');
     expect(options.beforeSendTransaction).toBeTypeOf('function');
     expect(options.beforeSendLog).toBeTypeOf('function');
+    expect(options.beforeSendSpan).toBeTypeOf('function');
 
     const sentEvent = options.beforeSend({
       type: undefined,
@@ -414,10 +859,22 @@ describe('sharedOptions wiring on the built options', () => {
     expect(sentLog.message).toBe('Email provider rejected [email]');
     expectClean(sentLog);
 
+    // R-03: standalone browser spans (web vitals) never pass through
+    // beforeSendTransaction, so they need a hook of their own.
+    const sentSpan = options.beforeSendSpan({
+      span_id: '1',
+      trace_id: '2',
+      start_timestamp: 0,
+      description: `GET /early-access/manage#${FORBIDDEN.rawToken}`,
+      data: { ...FORBIDDEN },
+    });
+    expect(sentSpan).toMatchObject({ span_id: '1', trace_id: '2' });
+    expectClean(sentSpan);
+
     expect(options.ignoreErrors).toContain('The operation was aborted');
   }
 
-  it('wires beforeSend, beforeSendTransaction and beforeSendLog that actually scrub (server — sentry.edge.config.ts shares this same builder)', () => {
+  it('wires beforeSend, beforeSendTransaction, beforeSendLog and beforeSendSpan that actually scrub (server — sentry.edge.config.ts shares this same builder)', () => {
     const options = buildServerSentryOptions({
       NODE_ENV: 'development',
       CI: undefined,
@@ -427,7 +884,7 @@ describe('sharedOptions wiring on the built options', () => {
     expectHooksAreWiredAndScrub(options);
   });
 
-  it('wires beforeSend, beforeSendTransaction and beforeSendLog that actually scrub (client)', () => {
+  it('wires beforeSend, beforeSendTransaction, beforeSendLog and beforeSendSpan that actually scrub (client)', () => {
     const options = buildClientSentryOptions({ NEXT_PUBLIC_SENTRY_DSN: dsn });
     expectHooksAreWiredAndScrub(options);
   });

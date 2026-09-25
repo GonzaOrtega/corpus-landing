@@ -68,4 +68,16 @@ describe('E2E runtime configuration', () => {
       expect(source, file).toMatch(/SENTRY_AUTH_TOKEN: ''/);
     }
   });
+
+  // R-39: the pipeline signal (runtime-environment.ts) is what keeps the
+  // notifications capability fake, the server SDK off and the /monitoring
+  // tunnel silent in these runs; a blanked DSN alone does not reach a value
+  // already inlined into a build. Same literal-presence tripwire as above —
+  // lighthouse-config.test.ts evaluates the lighthouserc.cjs branch itself.
+  // playwright.config.ts reads CI rather than setting it, so it is not here.
+  it('sets the CI pipeline marker in every local production runtime', () => {
+    for (const file of ['compose.yaml', 'lighthouserc.cjs']) {
+      expect(read(file), file).toMatch(/CI: 'true'/);
+    }
+  });
 });

@@ -36,14 +36,19 @@ let started = false;
  * Whichever runs first calls `init`; the other is a no-op, so a hydration
  * error firing seconds before the deferred path would have run cannot start
  * the client twice. A missing DSN means disabled everywhere, same as before.
+ *
+ * The flag is raised only once `init` has returned (R-31): a start-up that
+ * throws leaves it down, so the next trigger tries again instead of every
+ * later call returning as if the SDK were running. `init` is synchronous, so
+ * there is no window in which two callers can both get past the check.
  */
 export function ensureSentryStarted(): void {
   if (started || !options.enabled) return;
-  started = true;
   init({
     ...options,
     integrations: [consoleLoggingIntegration({ levels: ['warn', 'error'] })],
   });
+  started = true;
 }
 
 /**

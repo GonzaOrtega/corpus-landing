@@ -1,0 +1,915 @@
+version: 1
+pr: 25
+status: frozen
+rounds:
+  - "n": 1
+    head: d1c957f56e8b226e074b27341aa52c0e0f4ca255
+    scope: full
+    reviewers:
+      - pr-review-toolkit:code-reviewer
+      - pr-review-toolkit:silent-failure-hunter
+      - pr-review-toolkit:pr-test-analyzer
+      - security
+    findings:
+      - R-01
+      - R-02
+      - R-03
+      - R-04
+      - R-05
+      - R-06
+      - R-07
+      - R-08
+      - R-09
+      - R-10
+      - R-11
+      - R-12
+      - R-13
+      - R-14
+      - R-15
+      - R-16
+      - R-17
+      - R-18
+      - R-19
+      - R-20
+      - R-21
+  - "n": 2
+    head: 56fa6570bc89e178befc8a2b055d402ad6d378ed
+    scope: fix-diff
+    reviewers:
+      - pr-review-toolkit:code-reviewer
+      - pr-review-toolkit:silent-failure-hunter
+      - pr-review-toolkit:pr-test-analyzer
+      - security
+    findings:
+      - R-22
+      - R-23
+      - R-24
+      - R-25
+      - R-26
+      - R-27
+      - R-28
+      - R-29
+      - R-30
+      - R-31
+      - R-32
+findings:
+  - id: R-01
+    round: 1
+    fingerprint: 3132a6fb0377a3d5
+    file: src/config/sentry-options.ts
+    line: 268
+    category: test-gap
+    severity: minor
+    summary: "The one line that cleans a web address the code cannot fully understand was changed but is never exercised by a test, so nobody would notice if it stopped cleaning."
+    requires:
+      - "an error report whose page address is not a complete web address, for example a bare path"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-02
+    round: 1
+    fingerprint: e34132e555c2d418
+    file: src/config/sentry-options.ts
+    line: 209
+    category: security
+    severity: minor
+    summary: "The rule that hides the part of a link after the hash was deliberately narrowed, and a few unusual spellings of that link now pass through uncleaned."
+    requires:
+      - a report containing a link whose hash part is written in a shape the product itself never produces
+      - "a report containing a '#' part written in a shape other than the bare opaque value this product uses — for example one preceded by a short label and an '=' sign, one written as a sub-path, or one where the '#' itself is doubly encoded"
+      - "no such shape is produced by this application today, so this is defence in depth rather than a live leak"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-03
+    round: 1
+    fingerprint: 937d41934ed0e9b5
+    file: next.config.ts
+    line: 115
+    category: docs
+    severity: minor
+    summary: "A new one-line call was inserted between an explanatory comment and the thing that comment describes, so the comment now reads as if it were about the new line."
+    requires:
+      []
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-04
+    round: 1
+    fingerprint: bc1a6ae38cf454e3
+    file: src/features/early-access/actions/instrumented-action.ts
+    line: 51
+    category: correctness
+    severity: important
+    summary: "If the monitoring wrapper trips after the real work has already succeeded, the successful result is thrown away and the visitor is told the action failed, so a person who is actually on the list is invited to sign up again."
+    requires:
+      - "the Sentry server-action wrapper failing after the inner callback has already returned its result, e.g. in the flush it schedules in its own finally block"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: human
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      - 8857876049376f578a94ec2918181299bb395010
+    issue: null
+  - id: R-05
+    round: 1
+    fingerprint: f64336cded3fad66
+    file: app/monitoring/monitoring-route.handler.ts
+    line: 91
+    category: correctness
+    severity: important
+    summary: "The new chunk-by-chunk body reader has no error handling, so if reading the request body fails the whole tunnel request blows up with nothing written to the log — the one fault this file promises to make visible."
+    requires:
+      - "a caller that aborts or resets its POST part-way through the body, or any runtime condition that errors the request stream"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: human
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      - bc0cd8eb4a41b2d5f39b78a0a3906febbe9dda3c
+    issue: null
+  - id: R-06
+    round: 1
+    fingerprint: 29fe1bf314890857
+    file: app/monitoring/route.ts
+    line: 46
+    category: correctness
+    severity: important
+    summary: "On any pipeline signal the route hands the handler no address at all, which makes a deliberate 'drop everything' indistinguishable from 'this site never set up error reporting' — nothing is written down either way."
+    requires:
+      - "a deployed runtime whose environment happens to carry CI (any value, including an empty string), NODE_ENV set to test, or the E2E database variable"
+      - "a deployment where one of the three pipeline markers is present in the running environment, for example a stray project variable or one supplied by the hosting platform"
+      - "the markers are not reachable by a visitor, so this is a misconfiguration risk rather than something an outsider can trigger"
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: human
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      - b8c48ac5e1890668e69518588f8470056b0ecead
+    issue: null
+  - id: R-07
+    round: 1
+    fingerprint: 9f0fc5bf211a7e1e
+    file: src/features/early-access/actions/instrumented-action.ts
+    line: 34
+    category: correctness
+    severity: minor
+    summary: "Obtaining the error reporter happens outside the protective wrapper, so the one step that runs before any reporter exists can still crash the whole action instead of turning into the polite retry the file promises."
+    requires:
+      - "the observability provider throwing, for instance while constructing the logging adapter this change newly added to that path"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-08
+    round: 1
+    fingerprint: 272a531978ff5ce3
+    file: src/adapters/observability/noop-error-reporter.adapter.ts
+    line: 26
+    category: correctness
+    severity: minor
+    summary: "The stand-in reporter's whole purpose is to write one line instead of discarding the failure, but if that write fails it discards the failure anyway with an empty catch and no fallback."
+    requires:
+      - "the logging adapter itself failing, for example a closed or broken output stream"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-09
+    round: 1
+    fingerprint: bb84354c805550f5
+    file: src/composition/capabilities/observability.ts
+    line: 34
+    category: correctness
+    severity: minor
+    summary: "The comment says a boundary is never handed a reporter the reporting service will quietly drop, but the rule it uses only checks that an address was supplied, not that it is usable — so a typo leaves failures vanishing at runtime with no log line either."
+    requires:
+      - "the public Sentry address set to something the SDK cannot parse, such as a typo or a truncated value"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-10
+    round: 1
+    fingerprint: 47f2e4422a50423e
+    file: instrumentation-client.ts
+    line: 76
+    category: docs
+    severity: minor
+    summary: "When browser reporting fails to start twice in a row, the only record is a line in that one visitor's own browser console, which no operator ever sees — so 'reporting was off for some visitors' stays invisible."
+    requires:
+      - "the reporting code failing to load on a visitor's device on both the first attempt and the retry half a minute later"
+    repro: device
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-11
+    round: 1
+    fingerprint: b7a1c04965a75435
+    file: src/core/testing/never-log-fixture.test.ts
+    line: 19
+    category: test-gap
+    severity: minor
+    summary: "A new test checks that the list of values-never-to-log has no duplicates, but the list is built by de-duplicating, so that check can never fail and proves nothing."
+    requires:
+      []
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-12
+    round: 1
+    fingerprint: 0f5c9a273ba160b4
+    file: src/composition/capabilities/observability.ts
+    line: 38
+    category: test-gap
+    severity: important
+    summary: "Nothing checks that the stand-in reporter is actually given a working log writer, and the reporter quietly ignores a broken one, so the new \"write one line instead of throwing it away\" behaviour could stop working without any test noticing."
+    requires:
+      - "a machine or preview deployment with no error-reporting service configured, which is where the stand-in reporter is the one in use"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: human
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      - f7523f9751fe9aea5b8d05ccd7f95f19ac792611
+    issue: null
+  - id: R-13
+    round: 1
+    fingerprint: 04377e98b6a35480
+    file: src/config/sentry-options.ts
+    line: 380
+    category: test-gap
+    severity: important
+    summary: "The stricter filter for log-line extras only switches on when a report carries one exact marker string copied from the reporting library, and no test pins that string or covers what happens when it does not match."
+    requires:
+      - "an upgrade of the reporting library that renames its log marker, together with any second log writer in the process that attaches free-text fields"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: human
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      - edffb1dc7bbca1074376bf35c75c1df2fab2adce
+    issue: null
+  - id: R-14
+    round: 1
+    fingerprint: 954b5b190f457edd
+    file: src/config/sentry-options.test.ts
+    line: 322
+    category: test-gap
+    severity: minor
+    summary: "A test named for proving that missing fields stay missing cannot actually detect an invented field, because the comparison it uses treats a present-but-empty field as absent."
+    requires:
+      - a future edit that makes the cleaner add fields the incoming report did not have
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-15
+    round: 1
+    fingerprint: 414c3e5965743f80
+    file: app/error.test.tsx
+    line: 48
+    category: test-gap
+    severity: minor
+    summary: "The new error-page tests replace the framework's after-render hook with one that ignores its dependency list, so a change that stops a second, different failure from being reported would still pass."
+    requires:
+      - the same error boundary being shown twice in one visit with two different underlying failures
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-16
+    round: 1
+    fingerprint: 568aa612819dfd45
+    file: next.config.ts
+    line: 115
+    category: test-gap
+    severity: minor
+    summary: "The new build-time warning about a misspelt reporting address is tested on its own but nothing checks that the build configuration still calls it, so deleting the call breaks nothing."
+    requires:
+      - a future edit that removes or reorders the warning call in the build configuration
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-17
+    round: 1
+    fingerprint: 4ce8ebd2534e88ce
+    file: src/features/early-access/actions/instrumented-action.ts
+    line: 51
+    category: test-gap
+    severity: minor
+    summary: "The new shared wrapper turns every failure into the polite retry answer, including the framework's own internal signals, and only a comment records that today's actions never raise one."
+    requires:
+      - a future edit that makes one of the three actions send the visitor to another page or show a not-found page
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-18
+    round: 1
+    fingerprint: 457c08a57062de3a
+    file: src/config/sentry-options.ts
+    line: 182
+    category: security
+    severity: important
+    summary: "The rule that hides email addresses in error reports was given a length limit of 64 characters, so an unusually long address is only partly hidden — the beginning of it is sent to the error tracker in the clear."
+    requires:
+      - a subscriber address whose part before the @ sign is longer than 64 characters; the signup form accepts addresses up to 254 characters in total and does not cap that part separately
+      - "that address appearing inside the free text of an error message or log line, which is the exact case this rule exists to cover (the project's own test asserts the shape 'Email provider rejected <address>')"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: human
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      - 482dfb90a55386ee44efe04253c4e2b7f2214d1a
+    issue: null
+  - id: R-19
+    round: 1
+    fingerprint: f3fbd3d3e8ec94bd
+    file: src/core/testing/never-log-fixture.ts
+    line: 12
+    category: test-gap
+    severity: minor
+    summary: "The shared list of values that must never leave the machine only contains short sample values, so nothing in the suite exercises the new length limits the scrubber now applies."
+    requires:
+      - the length bounds added to the text rules in this PR
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-20
+    round: 1
+    fingerprint: 62c06444f458598f
+    file: app/monitoring/monitoring-route.handler.ts
+    line: 82
+    category: correctness
+    severity: minor
+    summary: "The new chunk-by-chunk body reader in the forwarding endpoint has no failure path, so a caller that starts sending and then drops the connection produces a server error with no log line, although this handler promises that every fault is recorded."
+    requires:
+      - "a caller that begins a body and then disconnects, or a stream that errors part way through"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-21
+    round: 1
+    fingerprint: 510c6ad22f1b98ea
+    file: src/composition/capabilities/observability.ts
+    line: 38
+    category: performance
+    severity: minor
+    summary: "Wherever error reporting is switched off, a fresh logger is now built from scratch every time a form submission or link lookup asks for a reporter."
+    requires:
+      - "an environment with error reporting off — a developer machine, a preview without the tracker configured, or a pipeline run"
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-22
+    round: 2
+    fingerprint: 92a1212190771ff5
+    file: app/monitoring/route.ts
+    line: 62
+    category: correctness
+    severity: minor
+    summary: "The new \"we are dropping error reports on purpose\" warning line will also be written on a routine local speed-test run, even though the comment right above it promises the line only ever appears when a real deployment is misconfigured."
+    requires:
+      - "a local `bun run lighthouse` run started against a .next build that was produced while a real Sentry DSN was configured (the documented, supported case — that run deliberately never rebuilds)"
+    repro: device
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:code-reviewer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-23
+    round: 2
+    fingerprint: a917168e691687d1
+    file: app/monitoring/monitoring-route.handler.ts
+    line: 129
+    category: correctness
+    severity: important
+    summary: "The new body-read failure path throws the error away completely, so a visitor closing their tab and the server's own stream machinery breaking are written down as the exact same low-priority line."
+    requires:
+      - a request body stream that errors mid-read on a deployment where the monitoring tunnel is live
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: human
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      - 85b5573a624d7204051fda07821dbeaf0bbecd4c
+    issue: null
+  - id: R-24
+    round: 2
+    fingerprint: 051c2a573035202c
+    file: app/monitoring/route.ts
+    line: 63
+    category: correctness
+    severity: minor
+    summary: "A fact about how the deployment is configured is written to the log once for every single request, so one misconfiguration becomes an endless stream of identical lines that any visitor can keep producing."
+    requires:
+      - a deployment that has a monitoring address configured and also carries a pipeline marker
+      - ordinary or abusive public POST traffic to the monitoring path
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-25
+    round: 2
+    fingerprint: 2ace0c79f1af1712
+    file: src/config/runtime-environment.ts
+    line: 34
+    category: correctness
+    severity: minor
+    summary: "A pipeline that spells its marker out as 'false' or '0' is now treated as a real deployment, switching real mail sending and error reporting back on, and nothing anywhere records that a marker was seen and ignored."
+    requires:
+      - "a runtime that sets the CI marker to an explicit false, zero or blank value"
+      - email or monitoring configuration readable in that runtime
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-26
+    round: 2
+    fingerprint: 22a1014d706a65f8
+    file: src/config/sentry-options.ts
+    line: 212
+    category: security
+    severity: important
+    summary: "Addresses are now hidden whatever their length, but an address containing an apostrophe before the @ — which the signup form accepts — still has the part in front of the apostrophe sent to the error service in readable form."
+    requires:
+      - a subscriber whose address contains an apostrophe in the part before the @
+      - an error whose text quotes that address
+      - "a subscriber whose address has an apostrophe before the @ sign, which the signup form's own validation accepts and stores"
+      - "free text quoting that address reaching the error-tracking service, which is the exact case this rule exists for (a mail-provider rejection, a duplicate-key database error)"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:silent-failure-hunter
+        author: null
+        association: null
+        url: null
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: fix
+    verdict_by: human
+    reason: "In scope, in the threat model, important"
+    fix_commits:
+      - 9e1256db8fc3e802e6d88d5ff46901903e1840e9
+    issue: null
+  - id: R-27
+    round: 2
+    fingerprint: 3e50aaaf56d4b7f9
+    file: src/features/early-access/actions/instrumented-action.test.ts
+    line: 111
+    category: test-gap
+    severity: minor
+    summary: "One of the two new tests added to prove the R-04 fix passes just as happily against the old, unfixed code, so it does not actually prove anything about that fix."
+    requires:
+      - "no runtime precondition; this is about what the test suite can detect, not about a live fault"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-28
+    round: 2
+    fingerprint: cb6afce9e417876e
+    file: app/monitoring/route.test.ts
+    line: 120
+    category: test-gap
+    severity: minor
+    summary: The new tests never try the one setup this project actually ships for its own test runs — a blank monitoring address plus the pipeline marker — so nothing stops a future change from writing a misleading warning line on every request of every local test and speed-audit run.
+    requires:
+      - "the project's own containerised end-to-end run or the local Lighthouse run, both of which set the marker and blank the address"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-29
+    round: 2
+    fingerprint: cb26e05277ddb1ad
+    file: src/config/runtime-environment.ts
+    line: 37
+    category: test-gap
+    severity: minor
+    summary: "The new rule for deciding whether a pipeline marker means yes or no has no test of its own, and two parts of it can be deleted without any test noticing."
+    requires:
+      - "an environment that spells the marker with capital letters, or that sets the database-endpoint marker to an empty value"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-30
+    round: 2
+    fingerprint: 5a7ac7196aad8630
+    file: app/monitoring/monitoring-route.handler.test.ts
+    line: 197
+    category: test-gap
+    severity: minor
+    summary: "The new test's name and comment describe a caller that sends some data and then drops the connection, but the way the test builds that request means no data is ever delivered, so the half-sent case it advertises is not the case it runs."
+    requires:
+      - "a visitor's browser or a bot aborting a monitoring upload after part of the body has arrived"
+    repro: test
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-31
+    round: 2
+    fingerprint: 5612e304a066ca46
+    file: src/config/sentry-options.test.ts
+    line: 392
+    category: test-gap
+    severity: minor
+    summary: "The new helper permanently reroutes every future log line produced anywhere in that test file into a throwaway stand-in, and the comment explaining why that is safe only addresses calling the helper twice."
+    requires:
+      - "someone later adding a real logger to this one test file; Vitest's one-worker-per-file isolation keeps the effect from reaching any other file"
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: pr-review-toolkit:pr-test-analyzer
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+  - id: R-32
+    round: 2
+    fingerprint: 0a7de6ea2c7eee8d
+    file: app/monitoring/route.ts
+    line: 63
+    category: security
+    severity: minor
+    summary: "On a public deployment wrongly marked as a pipeline run, every anonymous request to the monitoring endpoint now writes a log line, so a flood of requests becomes a flood of logs."
+    requires:
+      - "a public deployment where a pipeline marker is set at run time while a real error-tracking address is also configured, which is a misconfiguration rather than a supported state and arguably outside the stated threat model"
+      - "an attacker willing to send high request volume, which the documented edge firewall rule is the intended answer to"
+    repro: none
+    scope: in
+    threat: in
+    sources:
+      - kind: subagent
+        name: security
+        author: null
+        association: null
+        url: null
+    verdict: later
+    verdict_by: human
+    reason: Below the severity floor (important)
+    fix_commits:
+      []
+    issue: 27
+evidence:
+  - done: check
+    sha: 4551f5592bb4194fb97689bf41e41ea90aeeb1b3
+    result: pass
+    note: "exit 0 at this tree: typecheck, biome, stack conformance and the per-glob coverage gate; 102 files, 682 tests, 1 skipped (Drizzle suite self-skips without a local database)"
+  - done: depcruise
+    sha: 4551f5592bb4194fb97689bf41e41ea90aeeb1b3
+    result: pass
+    note: "exit 0: no dependency violations, 262 modules and 535 dependencies cruised"
+  - done: e2e
+    sha: ab0dde0b2122109aadb15ae57f7981427a7c0062
+    result: pass
+    note: "exit 0: 67 Playwright tests passed in 49.3s across 4 workers, including the axe pass on homepage, Privacy and Terms with no serious or critical violations"
+  - done: coverage-with-db
+    sha: ab0dde0b2122109aadb15ae57f7981427a7c0062
+    result: pass
+    note: "CI test job on this SHA: zero self-skip notices, 103 test files (one more than a local run, the integration suite), Drizzle repository suite 11 tests in 8866ms against a disposable Neon branch, src/adapters/db at 98.38/92.68/100/100"
+  - done: lighthouse
+    sha: ab0dde0b2122109aadb15ae57f7981427a7c0062
+    result: pass
+    note: "lighthouse job passed on this SHA in 1m21s against the deployed Preview: LHCI checked its assertions over 3 runs of 1 URL and reported no failures, so the >= 0.90 median mobile performance floor held"
+waivers:
+  []
+eli5:
+  - round: 1
+    text: "Four helpers read this change on their own and wrote down twenty-one things. Fifteen are small, and the gate set those aside by itself. Six are big enough that you have to decide about them.\n\nThe most serious one is about hiding email addresses. When something goes wrong, the site writes a note about it and sends that note away to be read by its operators. Before sending, it blanks out anything private. Somebody was making that blanking-out faster and, while doing it, told the email rule to look at only the first sixty-four letters of an address. An address longer than that is now only half hidden: the beginning of it goes out readable. The sign-up form lets people use addresses that long, so this is a real person's address, not an imaginary one. The helper proved it by running the real code, and then checked whether the limit was even needed for speed. It was not. That rule was never the slow one.\n\nTwo are about the little door the site uses to pass browser reports along. If a visitor's browser starts sending a report and then goes away half-way through, the door falls over and nothing is written down about it, even though the door's own note promises that every failure is recorded. The other one: while the site is being tested, the door is told to throw everything away, but it is told in a way that looks exactly like \"nobody ever set this up\". If that ever happened by accident on the real site, every browser report would quietly disappear and nothing would say so.\n\nOne is about signing up. A new shared wrapper was added so that a failure in the monitoring code can never break a visitor's request. It works, but it is a little too eager: if the monitoring part trips after the sign-up has already gone through, the wrapper throws the good result away and tells the visitor it did not work. They sign up again and get a second confirmation mail for a place they already have.\n\nThe last two are missing checks rather than broken behaviour. Nothing proves that the stand-in reporter — the one used when no tracker is set up — was actually handed a working notebook to write in; it quietly ignores a broken one, so the whole point of the fix could stop working with every test still green. And the filter for extra bits attached to log lines only switches on when it sees one exact word copied from an outside library. Nothing anywhere pins that word down, so an update to that library could rename it and switch the filter off without a single test noticing.\n\nWhat you need to decide: for each of the six, whether it gets fixed in this pull request or written down for later. If you want them all done, saying so is enough.\n"
+  - round: 2
+    text: "The four helpers read the six repairs and wrote down eleven more things. Nine are small. Two are big enough that you have to decide about them.\n\nThe first is an apostrophe. The repair to the address-hiding rule works: an address is now hidden completely however long it is, and one helper checked that by running the new rule against about a million made-up inputs without finding a single case where it hides less than it ought to. But the list of characters the rule treats as part of an address leaves out the apostrophe, and the sign-up form accepts one. A helper tried every single character the form allows, one at a time, and the apostrophe is the only one the form takes and the rule does not know about. For somebody whose address contains one, everything in front of it is sent out readable, which in practice is their whole name. The repair is one character long.\n\nThe second is about the little door that passes browser reports along. The repair made it write a line when it cannot read what a browser sent, which is what we asked for. But the line does not say what went wrong. A visitor closing their tab half-way and the server's own machinery breaking now produce exactly the same line, at a level nobody is watching. So the thing the repair existed to make visible is still hidden, now behind the ordinary case instead of behind nothing.\n\nTwo of the nine small ones are worth knowing about even though the gate set them aside. One of the tests written to prove the first repair works passes just as happily against the unrepaired code, so it does not earn its name; the repair is still properly proven, by the test sitting next to it. And the new warning line about deliberately dropped reports will also show up during an ordinary local speed test, even though the note written directly above it promises it never does.\n\nThis is the last round. Once you answer, the gate freezes: whatever you leave for later stays written down in the ledger, and nothing further gets reviewed before this is merged.\n\nWhat you need to decide: for each of the two, fix it now or leave it for later.\n"
+comment_id: null

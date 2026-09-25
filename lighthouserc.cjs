@@ -15,8 +15,13 @@ const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
 // NEXT_PUBLIC_ client bundle), so blanking it stops this run's traffic and
 // errors from reaching a real project. CI mirrors compose.yaml's e2e
 // service: the same pipeline signal (spec decision 6, runtime-environment.ts)
-// also keeps the notifications capability fake, so the run is silent end to
-// end rather than merely DSN-less.
+// also keeps the notifications capability fake, and makes the /monitoring
+// tunnel forward nothing. That last part matters because this run never
+// rebuilds: a .next built with a real DSN ships a browser SDK that still
+// posts envelopes, and only the tunnel's runtime pipeline check (not the
+// blanked variable, which the build already inlined) stops them there. The
+// browser SDK itself still starts and captures, so a clean run needs a
+// DSN-less build too — see docs/operations/sentry.md.
 if (!previewUrl) {
   Object.assign(process.env, {
     NEXT_PUBLIC_SENTRY_DSN: '',

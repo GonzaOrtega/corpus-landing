@@ -50,16 +50,33 @@ are in the GitHub Actions job log.
      a 10-minute check-in margin and a 15-minute maximum runtime.
 
 Local development: put `NEXT_PUBLIC_SENTRY_DSN` in `.env.local` only if you
-want local events in Sentry (environment `development`). `bun run test` and
-`bun run test:e2e` never report regardless — both blank the DSN and auth
-token in the build they run. `bun run lighthouse`'s local (non-preview) run
-blanks them too and forces the same pipeline signal for the server it
-starts, so the SERVER SDK stays off — but it never rebuilds. If `.env.local`
-had a real DSN the last time you ran `bun run build`, that DSN is already
-inlined into the client bundle it starts, and the browser SDK's error/console
-capture is not pipeline-gated (it has no way to see `CI`). Run `bun run
-build` with `NEXT_PUBLIC_SENTRY_DSN` unset before `bun run lighthouse` if you
-need a clean run end to end.
+want local events in Sentry (environment `development`). Neither test
+command reports, for different reasons:
+
+- `bun run test` runs Vitest, which never loads `instrumentation.ts`, so the
+  SDK is never initialised; and Vitest sets `NODE_ENV=test`, which the
+  pipeline signal (`runtime-environment.ts`) treats as a pipeline run, so
+  every Sentry decision in the code under test resolves to "off".
+- `bun run test:e2e` blanks the DSN and auth token in the build it runs and
+  sets `CI`.
+
+A pipeline marker only counts when it carries a value that means "yes":
+`CI=`, `CI=false` and `CI=0` are *not* signals, so an accidentally-empty
+variable on a deployment cannot silently take the tunnel down
+(`runtime-environment.ts`). If a runtime ever has both a real marker and a
+configured DSN, `/monitoring` logs `operation=monitoring_tunnel
+status=rejected errorCode=pipeline_suppressed` once per request — that line
+means envelopes are being dropped on purpose, and on a Preview or Production
+deployment it is a misconfiguration to fix, not routine.
+
+`bun run lighthouse`'s local (non-preview) run blanks them too and forces
+the same pipeline signal for the server it starts, so the SERVER SDK stays
+off and the `/monitoring` tunnel forwards nothing — but it never rebuilds.
+If `.env.local` had a real DSN the last time you ran `bun run build`, that
+DSN is already inlined into the client bundle it starts, and the browser SDK
+still starts and captures (it has no way to see `CI`); its envelopes stop
+at the tunnel. Run `bun run build` with `NEXT_PUBLIC_SENTRY_DSN` unset
+before `bun run lighthouse` if you want the browser SDK off as well.
 
 ## Verifying a deployment
 

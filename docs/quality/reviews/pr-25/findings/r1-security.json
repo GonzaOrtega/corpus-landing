@@ -1,0 +1,75 @@
+[
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 182,
+    "category": "security",
+    "severity": "important",
+    "summary": "The rule that hides email addresses in error reports was given a length limit of 64 characters, so an unusually long address is only partly hidden — the beginning of it is sent to the error tracker in the clear.",
+    "requires": [
+      "a subscriber address whose part before the @ sign is longer than 64 characters; the signup form accepts addresses up to 254 characters in total and does not cap that part separately",
+      "that address appearing inside the free text of an error message or log line, which is the exact case this rule exists to cover (the project's own test asserts the shape 'Email provider rejected <address>')"
+    ],
+    "repro": "test",
+    "evidence": "Ran the shipped redactText, scrubLog and scrubEvent against a message containing a placeholder address with a 130-character local part. Every one of the three returned the message with the leading 66 characters of the address intact, followed by the replacement marker. The previous unbounded version of the same rule replaced the whole address. The bound was introduced in this PR as a speed fix, and measurement shows the unbounded form was not the slow one, so the bound buys nothing here."
+  },
+  {
+    "file": "src/core/testing/never-log-fixture.ts",
+    "line": 12,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The shared list of values that must never leave the machine only contains short sample values, so nothing in the suite exercises the new length limits the scrubber now applies.",
+    "requires": ["the length bounds added to the text rules in this PR"],
+    "repro": "test",
+    "evidence": "Every sample in the fixture is well under the new 64-character and 32-character bounds, and the sweep used by the scrubber tests is built from that fixture. A sample at or past each bound would have caught the partial-address leak reported above before merge."
+  },
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 209,
+    "category": "security",
+    "severity": "minor",
+    "summary": "Narrowing the rule that hides the part of a web address after the '#' means a few other shapes of that part are now kept, although none of them is a shape this site actually produces today.",
+    "requires": [
+      "a report containing a '#' part written in a shape other than the bare opaque value this product uses — for example one preceded by a short label and an '=' sign, one written as a sub-path, or one where the '#' itself is doubly encoded",
+      "no such shape is produced by this application today, so this is defence in depth rather than a live leak"
+    ],
+    "repro": "test",
+    "evidence": "Exercised the shipped redactText with a realistic 43-character opaque value in a range of shapes. The shapes this product genuinely emits (a full link, a relative path, the bare value, a quote-split path, a backslash path, an encoded '#') are all replaced. Three synthetic shapes survive because they break the run of allowed characters the new rule looks for, or hide the '#' behind a second layer of encoding. The rule that was replaced covered all of them."
+  },
+  {
+    "file": "app/monitoring/monitoring-route.handler.ts",
+    "line": 82,
+    "category": "correctness",
+    "severity": "minor",
+    "summary": "The new chunk-by-chunk body reader in the forwarding endpoint has no failure path, so a caller that starts sending and then drops the connection produces a server error with no log line, although this handler promises that every fault is recorded.",
+    "requires": [
+      "a caller that begins a body and then disconnects, or a stream that errors part way through"
+    ],
+    "repro": "test",
+    "evidence": "The read loop and the cancel call are both awaited without a surrounding failure handler, while every other exit from this handler logs a line with its own reason code. The handler's own comment states that every rejection and fault is logged so that a tunnel going wrong is visible rather than looking like a quiet week."
+  },
+  {
+    "file": "app/monitoring/route.ts",
+    "line": 46,
+    "category": "correctness",
+    "severity": "minor",
+    "summary": "When the new pipeline check fires, the endpoint hands the handler nothing instead of the configured address, so it answers 'not found' and writes no log — the same answer as a site that never set the error tracker up.",
+    "requires": [
+      "a deployment where one of the three pipeline markers is present in the running environment, for example a stray project variable or one supplied by the hosting platform",
+      "the markers are not reachable by a visitor, so this is a misconfiguration risk rather than something an outsider can trigger"
+    ],
+    "repro": "none",
+    "evidence": "The handler already has a distinct warning for the case where an address is configured but unusable, which exists precisely so that a silently dead tunnel is noticed. Blanking the value before the handler sees it routes around that warning, and the browser side has no way to learn it should stop posting, so every visitor keeps making a request that is answered and discarded without a trace."
+  },
+  {
+    "file": "src/composition/capabilities/observability.ts",
+    "line": 38,
+    "category": "performance",
+    "severity": "minor",
+    "summary": "Wherever error reporting is switched off, a fresh logger is now built from scratch every time a form submission or link lookup asks for a reporter.",
+    "requires": [
+      "an environment with error reporting off — a developer machine, a preview without the tracker configured, or a pipeline run"
+    ],
+    "repro": "none",
+    "evidence": "The provider is a plain function called on each request path that needs a reporter, and it now constructs a new logging adapter inline on the disabled branch. Nothing caches it."
+  }
+]

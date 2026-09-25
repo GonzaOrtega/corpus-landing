@@ -1,0 +1,36 @@
+[
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 268,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "The one line that cleans a web address the code cannot fully understand was changed but is never exercised by a test, so nobody would notice if it stopped cleaning.",
+    "requires": [
+      "an error report whose page address is not a complete web address, for example a bare path"
+    ],
+    "repro": "test",
+    "evidence": "A coverage run of the whole suite reports this file at 99% lines with exactly one uncovered line, and it is this fallback inside reduceRequestUrl. The diff changed what the line does (it now cuts the address at the question mark or hash instead of running the text rules over it), and the surrounding test file only ever feeds scrubEvent complete web addresses. The new behaviour is stricter than the old one, so this is an untested path rather than a defect."
+  },
+  {
+    "file": "src/config/sentry-options.ts",
+    "line": 209,
+    "category": "security",
+    "severity": "minor",
+    "summary": "The rule that hides the part of a link after the hash was deliberately narrowed, and a few unusual spellings of that link now pass through uncleaned.",
+    "requires": [
+      "a report containing a link whose hash part is written in a shape the product itself never produces"
+    ],
+    "repro": "test",
+    "evidence": "Exercising the changed function directly: every shape this product actually builds is still cleaned (bare hash, full address, relative path, percent-encoded hash, hash inside quotes or JSON). Three shapes that the previous broader rule caught are now left intact: a hash written as a name-and-value pair, and a doubly percent-encoded hash. The product's own link is always a bare hash followed by a long random run, which the new rule still matches, so this is a narrowing of defence in depth rather than a live leak. Worth recording so the trade-off is on file."
+  },
+  {
+    "file": "next.config.ts",
+    "line": 115,
+    "category": "docs",
+    "severity": "minor",
+    "summary": "A new one-line call was inserted between an explanatory comment and the thing that comment describes, so the comment now reads as if it were about the new line.",
+    "requires": [],
+    "repro": "none",
+    "evidence": "The block comment above describes the Sentry build plugin and why the project does not use its built-in forwarding route; it was written for the default export immediately below it. The new warning call was placed between the two. Moving the call above the comment, or giving it its own short comment, restores the pairing."
+  }
+]

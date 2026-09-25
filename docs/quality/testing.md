@@ -165,6 +165,16 @@ are both written down.
   (`tests/unit/instrumentation-client.test.ts`,
   `tests/unit/next-config-headers.test.ts`), both at 100/100/100/100. No
   enforced value moved down.
+- **2026-09-23 — issue #20 (raises).** The deferred PR #19 review findings
+  added render tests for `app/error.tsx` and `app/global-error.tsx` (R-17,
+  R-36), which closes the `app/**` gap the 2026-09-22 lowering recorded, plus
+  tests for the no-op reporter, the shared action wrapper and the scrubber.
+  Re-measured at 652 tests and raised to `floor(measured)`: app
+  93/94/80/93 → 100/97/93/100; composition 98/100/93/98 → 98/100/94/98;
+  config 99/97/100/98 → 99/99/100/99; features 90/90/86/88 → 90/90/87/88.
+  Adapters measure 100 across the board locally but stay at 100/92/100/99:
+  CI also measures the Drizzle repository, which a local run without
+  `DATABASE_URL_TEST` never loads.
 
 ### Exclusions and why
 

@@ -1,0 +1,96 @@
+[
+  {
+    "file": "src/features/early-access/actions/instrumented-action.ts",
+    "line": 51,
+    "category": "correctness",
+    "severity": "important",
+    "summary": "If the monitoring wrapper trips after the real work has already succeeded, the successful result is thrown away and the visitor is told the action failed, so a person who is actually on the list is invited to sign up again.",
+    "requires": [
+      "the Sentry server-action wrapper failing after the inner callback has already returned its result, e.g. in the flush it schedules in its own finally block"
+    ],
+    "repro": "test",
+    "evidence": "The outer catch returns retryState for anything the wrapper throws, and the callback's return value is only reachable through that same await, so a post-callback fault discards it. The vendored wrapper does its span flush in a finally that runs after the callback resolves, which is precisely the 'after the callback' case the new doc comment names. The new test 'turns a Sentry wrapper that throws into the retry state' pins this: the work returns a done state and the assertion is that the caller still sees retry. For the signup action the retry state's own words are an apology and an invitation to try again, so the visible outcome is a duplicate submission and a second confirmation mail. A fix is to hold the callback's result in a local and return it from the outer catch when the work is known to have completed, reporting the instrumentation fault separately."
+  },
+  {
+    "file": "app/monitoring/monitoring-route.handler.ts",
+    "line": 91,
+    "category": "correctness",
+    "severity": "important",
+    "summary": "The new chunk-by-chunk body reader has no error handling, so if reading the request body fails the whole tunnel request blows up with nothing written to the log — the one fault this file promises to make visible.",
+    "requires": [
+      "a caller that aborts or resets its POST part-way through the body, or any runtime condition that errors the request stream"
+    ],
+    "repro": "test",
+    "evidence": "readBounded awaits reader.read() and reader.cancel() with no try/catch, and the POST entry point only wraps its configuration lookup, not the call into the handler. The handler's own doc comment states that every rejection and fault is logged and lists exactly two catch blocks (forward failure and response assembly); a body-read rejection is a third fault path that reaches neither, so it escapes as an unhandled rejection and the platform returns a generic error with no operation, status or errorCode line. The new tests cover an oversized stream and a well-behaved multi-chunk stream but never a stream that errors. Wrapping the read loop and rejecting with a distinct errorCode (for example body_read_failed) would keep the file's stated contract."
+  },
+  {
+    "file": "app/monitoring/route.ts",
+    "line": 46,
+    "category": "correctness",
+    "severity": "important",
+    "summary": "On any pipeline signal the route hands the handler no address at all, which makes a deliberate 'drop everything' indistinguishable from 'this site never set up error reporting' — nothing is written down either way.",
+    "requires": [
+      "a deployed runtime whose environment happens to carry CI (any value, including an empty string), NODE_ENV set to test, or the E2E database variable"
+    ],
+    "repro": "none",
+    "evidence": "The handler deliberately distinguishes two cases: a blank address is routine and stays quiet, while a supplied-but-unusable one gets a warning line described in its own comment as exactly the silent failure the logging exists to surface. By substituting undefined the route erases that distinction, so the suppression branch takes the quiet path. Every browser report then receives a 404 and is discarded by the SDK, with client reports switched off, so no trace exists on either side. The pipeline check treats the CI variable as tripped whenever it is merely defined, so an empty or 'false' value also silences the tunnel. The new route test stubs an environment with those variables cleared, which proves the intent but not that a real deployment's runtime is free of them, and no doc or check records that dependency. Logging one line when a configured address is being suppressed would close this."
+  },
+  {
+    "file": "src/features/early-access/actions/instrumented-action.ts",
+    "line": 34,
+    "category": "correctness",
+    "severity": "minor",
+    "summary": "Obtaining the error reporter happens outside the protective wrapper, so the one step that runs before any reporter exists can still crash the whole action instead of turning into the polite retry the file promises.",
+    "requires": [
+      "the observability provider throwing, for instance while constructing the logging adapter this change newly added to that path"
+    ],
+    "repro": "test",
+    "evidence": "The wrapper's doc comment promises that whatever fails comes back as the action's polite retry state, but the reporter lookup sits above the try block. This change made that lookup heavier: the provider now builds a Pino logging adapter for the disabled branch, where before it built a do-nothing object. The wiring module's comment still asserts the lookup never throws, and the provider's 'never throws' test only removes the database variable, so nothing exercises a failure in the new construction. The reporter call inside the failure helper is likewise unprotected: if it threw from the inner net, the outer net would call it again and the second throw would escape. Moving the lookup inside the try, with a last-resort console line when there is no reporter to report to, would make the guarantee true."
+  },
+  {
+    "file": "src/adapters/observability/noop-error-reporter.adapter.ts",
+    "line": 26,
+    "category": "correctness",
+    "severity": "minor",
+    "summary": "The stand-in reporter's whole purpose is to write one line instead of discarding the failure, but if that write fails it discards the failure anyway with an empty catch and no fallback.",
+    "requires": [
+      "the logging adapter itself failing, for example a closed or broken output stream"
+    ],
+    "repro": "test",
+    "evidence": "The catch block has no body beyond a comment. The intent — never break the boundary being served — is right, but the consequence is the exact silence the class was changed to end: on a developer machine or an unconfigured preview this line is described in its own comment as the only trace of the failure. The new test asserts only that a throwing logger does not propagate; it does not assert that anything is still said. A console error carrying the same allowlisted fields and error class name inside the catch would preserve the trace without risking the boundary."
+  },
+  {
+    "file": "src/composition/capabilities/observability.ts",
+    "line": 34,
+    "category": "correctness",
+    "severity": "minor",
+    "summary": "The comment says a boundary is never handed a reporter the reporting service will quietly drop, but the rule it uses only checks that an address was supplied, not that it is usable — so a typo leaves failures vanishing at runtime with no log line either.",
+    "requires": [
+      "the public Sentry address set to something the SDK cannot parse, such as a typo or a truncated value"
+    ],
+    "repro": "test",
+    "evidence": "The server option builder enables reporting when the address is merely present, while the browser builder requires it to parse. With an unparseable value the real reporter is selected here, the SDK builds no working transport, and the capture becomes a quiet no-op — while the stand-in reporter's new log line, the headline fix of this change, never runs because the disabled branch was not taken. The same change adds a build-time warning for exactly this misconfiguration, which shows the case is considered real; the runtime side is still silent. Gating this selection on the address parsing, or falling back to the stand-in reporter when it does not, would align the code with its comment."
+  },
+  {
+    "file": "instrumentation-client.ts",
+    "line": 76,
+    "category": "docs",
+    "severity": "minor",
+    "summary": "When browser reporting fails to start twice in a row, the only record is a line in that one visitor's own browser console, which no operator ever sees — so 'reporting was off for some visitors' stays invisible.",
+    "requires": [
+      "the reporting code failing to load on a visitor's device on both the first attempt and the retry half a minute later"
+    ],
+    "repro": "device",
+    "evidence": "The retry genuinely improves the odds and the retry tests would fail if it were removed or turned into a loop. But the terminal outcome is a console error inside a browser whose error capture is precisely what failed to start, so the failure is relocated rather than surfaced. The site already owns a same-origin forwarding route that could accept a minimal beacon for this one case. At a minimum the operations note should state plainly that a failed browser start-up is not observable from the operator side, since the same document currently reads as if the reporting story were complete end to end."
+  },
+  {
+    "file": "src/core/testing/never-log-fixture.test.ts",
+    "line": 19,
+    "category": "test-gap",
+    "severity": "minor",
+    "summary": "A new test checks that the list of values-never-to-log has no duplicates, but the list is built by de-duplicating, so that check can never fail and proves nothing.",
+    "requires": [],
+    "repro": "test",
+    "evidence": "The exported list is produced by spreading a Set, and the assertion then rebuilds a Set from it and compares sizes. The two can never differ, whatever the fixture contains. It reads like a guard on the derivation the change introduced but would stay green if the derivation stopped visiting nested values entirely. A falsifiable version would assert the count of distinct scalar values in the fixture directly, or assert that a deliberately nested extra value appears in the swept list."
+  }
+]

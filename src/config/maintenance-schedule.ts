@@ -1,8 +1,9 @@
 /**
  * The Vercel Cron schedule for `/api/cron/maintenance` (spec §10.3), mirrored
  * here so the Sentry cron monitor is upserted with the same expectation the
- * platform actually runs. `tests/unit/maintenance-monitor-config.test.ts`
- * asserts this matches `vercel.json`; change both or neither.
+ * platform actually runs. `app/api/cron/maintenance/route.test.ts` ('upserts
+ * the Sentry monitor with the schedule Vercel actually runs') asserts this
+ * matches `vercel.json`; change both or neither.
  */
 export const MAINTENANCE_CRON_SCHEDULE = '0 5 * * *';
 

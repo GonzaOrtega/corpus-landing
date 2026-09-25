@@ -55,6 +55,20 @@ describe('ensureSentryStarted', () => {
 
     expect(init).toHaveBeenCalledTimes(1);
   });
+
+  it('tries again on the next call when a start-up throws (R-31)', async () => {
+    buildClientSentryOptions.mockReturnValue({ enabled: true, dsn: 'https://example.test' });
+    init.mockImplementationOnce(() => {
+      throw new Error('init failed');
+    });
+    const { ensureSentryStarted } = await loadModule();
+
+    expect(() => ensureSentryStarted()).toThrow('init failed');
+    ensureSentryStarted();
+    ensureSentryStarted();
+
+    expect(init).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('ensureSentryStarted — what actually reaches Sentry.init', () => {
@@ -72,6 +86,7 @@ describe('ensureSentryStarted — what actually reaches Sentry.init', () => {
     const beforeSend = vi.fn();
     const beforeSendTransaction = vi.fn();
     const beforeSendLog = vi.fn();
+    const beforeSendSpan = vi.fn();
     const options = {
       enabled: true,
       dsn: 'https://example.test',
@@ -79,6 +94,7 @@ describe('ensureSentryStarted — what actually reaches Sentry.init', () => {
       beforeSend,
       beforeSendTransaction,
       beforeSendLog,
+      beforeSendSpan,
     };
     buildClientSentryOptions.mockReturnValue(options);
     const { ensureSentryStarted } = await loadModule();

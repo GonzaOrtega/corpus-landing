@@ -41,13 +41,36 @@ export const readSetting = (value: string | undefined): string | undefined =>
 export const SENTRY_TUNNEL_ROUTE = '/monitoring';
 
 /**
- * Sentry SaaS ingest hosts only: `o<orgId>.ingest[.<region>].sentry.io`. This
+ * Sentry SaaS ingest hosts only: `o<orgId>.ingest[.<region>].sentry.io`, where
+ * the region is a DNS label (`us`, `de`, and any newer, longer one). This
  * deployment only ever uses Sentry SaaS (spec decision 5's same-origin
  * tunnel assumes it) — a DSN that doesn't match is treated as unconfigured,
  * the same as no DSN, rather than falling back to posting directly to a
  * third-party origin the CSP's `connect-src 'self'` does not allow (spec §22).
  */
-const SENTRY_INGEST_HOST_PATTERN = /^o(\d+)\.ingest(?:\.([a-z]{2}))?\.sentry\.io$/;
+const SENTRY_INGEST_HOST_PATTERN =
+  /^o(\d+)\.ingest(?:\.([a-z](?:[a-z0-9-]{0,30}[a-z0-9])?))?\.sentry\.io$/;
+
+/**
+ * Why a configured DSN will not be used, or undefined when there is nothing
+ * to say (no DSN, or one that parses). The browser SDK treats an unparseable
+ * DSN exactly like a missing one, so without this a typo would look the same
+ * as Sentry never having been set up (R-30); `next.config.ts` prints it at
+ * build time.
+ */
+export function describeDsnProblem(rawDsn: string | undefined): string | undefined {
+  if (readSetting(rawDsn) === undefined || parseSentryDsn(rawDsn) !== undefined) return undefined;
+  return 'NEXT_PUBLIC_SENTRY_DSN is set but is not a Sentry SaaS DSN (https://<key>@o<org>.ingest[.<region>].sentry.io/<project>); browser error reporting is disabled.';
+}
+
+/** Prints `describeDsnProblem`'s message, if any; the build-time hook in `next.config.ts`. */
+export function warnOnDsnProblem(
+  rawDsn: string | undefined,
+  warn: (message: string) => void = console.warn,
+): void {
+  const problem = describeDsnProblem(rawDsn);
+  if (problem !== undefined) warn(problem);
+}
 
 export interface ParsedSentryDsn {
   readonly orgId: string;
@@ -134,49 +157,151 @@ const DENIED_KEY_PATTERN =
   /email|token|secret|password|passwd|cookie|authorization|captcha|form.?data|database.?url|connection.?string|response.?body|api.?key/i;
 
 /**
- * Email addresses, `user:pass@` URL credentials (a Neon connection string
- * inside a driver error), and credential-bearing query parameters inside
- * free text. URL credentials go first so the address-shaped `pass@host`
- * remainder is not mistaken for an email.
+ * Database connection strings, `user:pass@` URL credentials, email addresses
+ * and credential-bearing query parameters inside free text. A Postgres URL is
+ * dropped whole — host and database name included — because spec §24 lists
+ * the connection string itself, not just its password (R-25). URL credentials
+ * go before emails so the address-shaped `pass@host` remainder is not
+ * mistaken for an email.
  *
- * The query pattern is anchored on `^` as well as `[?&]`: the Sentry SDK
- * populates `request.query_string` as `URL.search.slice(1)` — no leading
- * `?` — so a bare string like `token=abc&x=1` needs the same first-pair
- * match a `?`-prefixed query would get (R-14).
+ * Every pattern that scans a character run from each start position has
+ * that run bounded (R-41): an unbounded `[chars]+@` retries the whole run
+ * from every position and turned a 40 KB line into seconds of work inside
+ * the request that is reporting it. The URL scheme bound is a real limit (32
+ * characters) and failing it still redacts the whole credential — only the
+ * scheme text ahead of it stays readable. No lookbehind anchors: they would
+ * skip a match glued to a `-`, a digit or a previous match (`-https://u:p@h`,
+ * `a@b.com-c@d.com`). Addresses are matched differently again, below.
+ *
+ * The query pattern is anchored on `^` as well as `[?&]`: a bare string like
+ * `token=abc&x=1` needs the same first-pair match a `?`-prefixed query would
+ * get (R-14).
  */
-const URL_CREDENTIALS_PATTERN = /(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi;
-const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+const DATABASE_URL_PATTERN = /postgres(?:ql)?:\/\/[^\s'"]+/gi;
+const URL_CREDENTIALS_PATTERN = /([a-z][a-z0-9+.-]{0,31}:\/\/)[^\s/@]+@/gi;
 const SENSITIVE_QUERY_PATTERN =
   /((?:^|[?&])(?:key|token|secret|api_key|apikey|access_token|password|email)=)[^&\s#'"]*/gi;
+
+/**
+ * Email addresses, redacted whole however long they are and whichever
+ * punctuation their local part uses (R-18/R-26). Both halves of that claim
+ * are load-bearing, and both failed *open* before:
+ *
+ * - A local part bounded to RFC 5321's 64 characters: `signup.schema.ts`
+ *   caps an address at 254 characters and caps nothing below that, so a
+ *   130-character local part makes the match start 66 characters in and
+ *   ships the head of a subscriber's address to Sentry in the clear — inside
+ *   the exact text this rule exists for ("Email provider rejected
+ *   <address>") (R-18).
+ * - A run class narrower than what the form accepts, which splits the run at
+ *   the character it omits and leaves everything before it readable for the
+ *   same reason. Zod 4's `.email()` accepts an apostrophe in the local part,
+ *   so the signup form stores such addresses and a class without `'` left a
+ *   `first.middle.lastname.o'…` head in the clear (R-26). The class must
+ *   therefore cover every character the *schema* admits, not every character
+ *   RFC 5322 admits; `sentry-options.test.ts` pins that by driving each
+ *   printable character through the real `signupSchema` and then through
+ *   `redactText`, so the next widening of the schema fails a test instead of
+ *   quietly reopening the hole.
+ *
+ * Simply unbounding the quantifier is the R-41 blowup itself, not a fix:
+ * `[A-Z0-9._%+-]+@` retries the whole run from every start position, which
+ * measures at ~35 s on a 200 KB line (Node 22 and Bun alike) inside the
+ * request that is reporting the error. So an address is not matched by one
+ * regex at all:
+ *
+ * - `EMAIL_CANDIDATE_PATTERN` cuts the text into maximal runs of address
+ *   characters in one pass — nothing follows the `+`, so it never backtracks
+ *   — and an address can never straddle a run boundary.
+ * - `redactEmails` walks each run's `@` signs once, left to right, probing
+ *   only the domain with a sticky regex anchored at the `@` it is looking at.
+ *
+ * Every scan is anchored, so no position is revisited and neither a length
+ * bound nor a missing run character is left to leak a head: work stays
+ * linear in the text length (measured at 1–11 ms per 200 KB of adversarial
+ * input and almost exactly double that per 400 KB, apostrophe-dense runs
+ * included) whatever the address's length. The local part of each address
+ * starts wherever the previous redaction — or the previous `@` — ended,
+ * which is what keeps addresses glued to one another redacted one by one
+ * (`a@b.com.x@c.com`). Prose is untouched by the wider class because a run
+ * with no `@` in it is returned as-is: `it's` and `don't` never reach the
+ * domain probe.
+ */
+const EMAIL_CANDIDATE_PATTERN = /[A-Z0-9._%+@'-]+/gi;
+const EMAIL_DOMAIN_PATTERN = /[A-Z0-9.-]+\.[A-Z]{2,}/iy;
+
+function redactEmails(candidate: string): string {
+  let redacted = '';
+  let kept = 0;
+  let previousAt = -1;
+  for (let at = candidate.indexOf('@'); at !== -1; at = candidate.indexOf('@', at + 1)) {
+    const localStart = Math.max(kept, previousAt + 1);
+    previousAt = at;
+    if (localStart >= at) continue;
+    EMAIL_DOMAIN_PATTERN.lastIndex = at + 1;
+    if (EMAIL_DOMAIN_PATTERN.exec(candidate) === null) continue;
+    redacted += `${candidate.slice(kept, localStart)}[email]`;
+    kept = EMAIL_DOMAIN_PATTERN.lastIndex;
+  }
+  return kept === 0 ? candidate : redacted + candidate.slice(kept);
+}
+
 /**
  * URL fragments: this product's *only* credential — the raw management
  * token — travels in one (`managementUrl.hash` in
  * `send-confirmation-email.use-case.ts` and `launch-production.ts`), and a
  * leaked token is full access to that subscriber's record, since there are
- * no accounts or passwords (R-01). Broad by design, same as the key
- * denylist above: a false positive drops an inert `#anchor`, a false
- * negative ships a token.
+ * no accounts or passwords (R-01).
+ *
+ * Two rules, either of which redacts:
+ * - a `#` that belongs to a URL or a path — one whose whitespace-delimited
+ *   token has a `/` before it (`https://x/y#t`, `/early-access/manage#t`),
+ *   whatever follows it;
+ * - a `#` (or its encoding `%23`) followed by a token-shaped run of 20 or
+ *   more base64url characters, wherever it appears. The token is
+ *   `randomBytes(...).toString('base64url')`, and it also surfaces with no
+ *   path in front: the bare `location.hash`, a `'#<token>' is not a valid
+ *   selector` DOMException, a console line.
+ *
+ * Anything else is left alone, so a clicked `button#submit`, `Minified
+ * React error #418` and `#fff` stay readable (R-32/R-42). The path rule is
+ * applied per token rather than with one regex so the work stays linear in
+ * the length of the text.
  */
-const URL_FRAGMENT_PATTERN = /#[^\s'"]+/g;
+const TEXT_TOKEN_PATTERN = /[^\s'"]+/g;
+const TOKEN_SHAPED_FRAGMENT_PATTERN = /(#|%23)[A-Za-z0-9_-]{20,}/gi;
 
+function redactUrlFragment(token: string): string {
+  const hash = token.indexOf('#');
+  if (hash === -1 || !token.slice(0, hash).includes('/')) return token;
+  return `${token.slice(0, hash)}#[redacted]`;
+}
+
+/** An object or array this deep is replaced, never passed through unscrubbed (R-20). */
 const MAX_DEPTH = 12;
+const DEPTH_LIMIT_MARKER = '[depth-limit]';
 
 export function redactText(value: string): string {
   return value
+    .replace(DATABASE_URL_PATTERN, 'postgres://[redacted]')
     .replace(URL_CREDENTIALS_PATTERN, '$1[credentials]@')
-    .replace(EMAIL_PATTERN, '[email]')
+    .replace(EMAIL_CANDIDATE_PATTERN, redactEmails)
     .replace(SENSITIVE_QUERY_PATTERN, '$1[redacted]')
-    .replace(URL_FRAGMENT_PATTERN, '#[redacted]');
+    .replace(TEXT_TOKEN_PATTERN, redactUrlFragment)
+    .replace(TOKEN_SHAPED_FRAGMENT_PATTERN, '$1[redacted]');
 }
 
 /**
  * Walks any JSON-shaped value: denied keys are dropped, strings are redacted,
  * everything else passes through. Cycles and very deep values stop at
- * MAX_DEPTH — the SDK normalises events to a fixed depth anyway.
+ * MAX_DEPTH, and fail closed: whatever sits below the limit is replaced by a
+ * marker rather than shipped unwalked. The SDK normalises events to a much
+ * shallower depth first, so a real event never reaches it.
  */
 export function scrubValue<T>(value: T, depth = 0): T {
   if (typeof value === 'string') return redactText(value) as T;
-  if (value === null || typeof value !== 'object' || depth >= MAX_DEPTH) return value;
+  if (value === null || typeof value !== 'object') return value;
+  if (depth >= MAX_DEPTH) return DEPTH_LIMIT_MARKER as T;
   if (Array.isArray(value)) return value.map((item) => scrubValue(item, depth + 1)) as T;
   const out: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
@@ -191,13 +316,11 @@ const PINO_ALLOWED = new Set<string>(EARLY_ACCESS_LOG_FIELDS);
 /**
  * Reduces a request URL to origin + pathname before it ever reaches
  * `scrubValue` (R-01/R-14). The browser SDK's HttpContext integration fills
- * `event.request.url` from `document.location.href` — fragment included —
- * and that fragment is the one place this product's raw management token
- * ever travels. Structurally dropping the query and fragment here is
- * stronger than trusting a regex to catch every shape one might take, and
- * neither carries diagnostic value for this site. Falls back to `redactText`
- * for a value `URL` cannot parse (a relative path, say) rather than letting
- * it through untouched.
+ * `event.request.url` from `document.location.href` — fragment included.
+ * Structurally dropping the query and fragment here is stronger than
+ * trusting a regex to catch every shape one might take, and neither carries
+ * diagnostic value for this site. A value `URL` cannot parse (a relative
+ * path, say) gets the same cut via `stripQueryAndFragment`.
  */
 function reduceRequestUrl(url: string | undefined): string | undefined {
   if (url === undefined) return undefined;
@@ -205,25 +328,70 @@ function reduceRequestUrl(url: string | undefined): string | undefined {
     const parsed = new URL(url);
     return `${parsed.origin}${parsed.pathname}`;
   } catch {
-    return redactText(url);
+    return stripQueryAndFragment(url);
   }
 }
 
+function stripQueryAndFragment(url: string): string {
+  return url.replace(/[?#][\s\S]*$/, '');
+}
+
+type Breadcrumbs = NonNullable<Event['breadcrumbs']>;
+type ExceptionValues = NonNullable<NonNullable<Event['exception']>['values']>;
+
 /**
- * Structural drops first — request bodies, cookies, headers, user identity —
- * then the generic walk. `contexts.pino` is what the Pino integration attaches
- * from a log line's fields; the adapter already allowlisted them, but the
- * integration also sees any other pino logger in the process, so the
- * allowlist is re-applied here rather than trusted.
+ * The page URL is not the only field that can carry the management link
+ * (R-43). The history instrumentation records the bridge's `replaceState`
+ * as a `navigation` breadcrumb whose `from` is the relative URL, fragment
+ * included; an error thrown from an inline script has the document URL as
+ * its frame filename. Both are cut structurally here, the same way
+ * `request.url` is, instead of relying on the text rule alone.
+ */
+function reduceBreadcrumbUrls(breadcrumbs: Breadcrumbs): Breadcrumbs {
+  return breadcrumbs.map((crumb) => {
+    if (crumb.category !== 'navigation' || !crumb.data) return crumb;
+    const data = { ...crumb.data };
+    for (const key of ['from', 'to'] as const) {
+      if (typeof data[key] === 'string') data[key] = stripQueryAndFragment(data[key]);
+    }
+    return { ...crumb, data };
+  });
+}
+
+function reduceFrameUrls(values: ExceptionValues): ExceptionValues {
+  return values.map((value) => {
+    const frames = value.stacktrace?.frames;
+    if (!frames) return value;
+    return {
+      ...value,
+      stacktrace: {
+        ...value.stacktrace,
+        frames: frames.map((frame) => ({
+          ...frame,
+          ...(frame.filename !== undefined
+            ? { filename: stripQueryAndFragment(frame.filename) }
+            : {}),
+          ...(frame.abs_path !== undefined
+            ? { abs_path: stripQueryAndFragment(frame.abs_path) }
+            : {}),
+        })),
+      },
+    };
+  });
+}
+
+/**
+ * Structural drops first — request bodies, cookies, headers, the query
+ * string, user identity, and the query and fragment of every URL-carrying
+ * field — then the generic walk. `contexts.pino` is what the Pino
+ * integration attaches from a log line's fields; the adapter already
+ * allowlisted them, but the integration also sees any other pino logger in
+ * the process, so the allowlist is re-applied here rather than trusted.
  */
 export function scrubEvent<E extends Event>(event: E): E {
   const { request, user: _user, ...rest } = event;
   const safeRequest = request
-    ? {
-        url: reduceRequestUrl(request.url),
-        method: request.method,
-        query_string: request.query_string,
-      }
+    ? { url: reduceRequestUrl(request.url), method: request.method }
     : undefined;
   const contexts = rest.contexts ? { ...rest.contexts } : undefined;
   if (contexts?.pino && typeof contexts.pino === 'object') {
@@ -231,18 +399,60 @@ export function scrubEvent<E extends Event>(event: E): E {
       Object.entries(contexts.pino).filter(([key]) => PINO_ALLOWED.has(key)),
     );
   }
+  const exceptionValues = rest.exception?.values;
   return scrubValue({
     ...rest,
     ...(contexts ? { contexts } : {}),
+    ...(rest.breadcrumbs ? { breadcrumbs: reduceBreadcrumbUrls(rest.breadcrumbs) } : {}),
+    ...(exceptionValues
+      ? { exception: { ...rest.exception, values: reduceFrameUrls(exceptionValues) } }
+      : {}),
     ...(safeRequest ? { request: safeRequest } : {}),
   } as E);
+}
+
+/** What the Pino integration stamps on every log record it forwards. */
+const PINO_LOG_ORIGIN = 'auto.log.pino';
+
+/**
+ * The metadata the SDK and its Pino integration add to a log record
+ * (`@sentry/core` logs/internal, `@sentry/node-core` integrations/pino).
+ * Named one by one rather than by prefix: the integration spreads the log
+ * line's own fields first, so a prefix would also admit a caller's field
+ * that happens to be called `sentry.something`.
+ */
+const SDK_LOG_ATTRIBUTES = new Set([
+  'sentry.origin',
+  'sentry.environment',
+  'sentry.release',
+  'sentry.sdk.name',
+  'sentry.sdk.version',
+  'sentry.trace.parent_span_id',
+  'pino.logger.level',
+]);
+
+/**
+ * Pino records arrive with every field of the log line as an attribute, from
+ * any pino logger in the process — not only the allowlisting adapter. As with
+ * `contexts.pino`, they are re-filtered against the logger allowlist, keeping
+ * only the SDK's own metadata besides (R-10). Console
+ * logs keep the denylist walk: their `sentry.message.parameter.N`
+ * attributes are the message itself.
+ */
+function allowlistPinoAttributes(attributes: NonNullable<Log['attributes']>) {
+  if (attributes['sentry.origin'] !== PINO_LOG_ORIGIN) return attributes;
+  return Object.fromEntries(
+    Object.entries(attributes).filter(
+      ([key]) => PINO_ALLOWED.has(key) || SDK_LOG_ATTRIBUTES.has(key),
+    ),
+  );
 }
 
 export function scrubLog(log: Log): Log {
   return {
     ...log,
     message: typeof log.message === 'string' ? redactText(log.message) : log.message,
-    ...(log.attributes ? { attributes: scrubValue(log.attributes) } : {}),
+    ...(log.attributes ? { attributes: scrubValue(allowlistPinoAttributes(log.attributes)) } : {}),
   };
 }
 
@@ -294,6 +504,8 @@ function sharedOptions(dsn: string | undefined, tracesSampleRate: number | undef
     beforeSend: (event: ErrorEvent) => scrubEvent(event),
     beforeSendTransaction: <E extends Event>(event: E) => scrubEvent(event),
     beforeSendLog: (log: Log) => scrubLog(log),
+    // Standalone spans (browser web vitals) skip beforeSendTransaction (R-03).
+    beforeSendSpan: <S extends object>(span: S) => scrubValue(span),
   };
 }
 

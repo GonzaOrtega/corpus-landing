@@ -27,11 +27,13 @@ function stubCompletedPageLoad() {
 
 beforeEach(() => {
   buildClientSentryOptions.mockReset();
-  ensureSentryStarted.mockClear();
+  // Reset, not clear: the retry tests give it a throwing implementation.
+  ensureSentryStarted.mockReset();
   captureRouterTransitionStart.mockClear();
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   // Restores the console.error spy the failure test installs.
   vi.restoreAllMocks();
@@ -103,6 +105,7 @@ describe('instrumentation-client', () => {
   });
 
   it('reports a client that fails to load, on page load and on a router transition', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
     buildClientSentryOptions.mockReturnValue({ enabled: true });
     stubCompletedPageLoad();
     vi.doMock('../../src/config/sentry-client', () => {
@@ -126,6 +129,44 @@ describe('instrumentation-client', () => {
       ),
     );
     expect(ensureSentryStarted).not.toHaveBeenCalled();
+  });
+
+  it('tries once more after a failed start-up, and a later success starts the client (R-07)', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    buildClientSentryOptions.mockReturnValue({ enabled: true });
+    stubCompletedPageLoad();
+    ensureSentryStarted.mockImplementationOnce(() => {
+      throw new Error('init failed');
+    });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await import('../../instrumentation-client');
+    await vi.waitFor(() => expect(consoleError).toHaveBeenCalledTimes(1));
+    expect(ensureSentryStarted).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    await vi.waitFor(() => expect(ensureSentryStarted).toHaveBeenCalledTimes(2));
+    expect(consoleError).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries a failed start-up only once', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    buildClientSentryOptions.mockReturnValue({ enabled: true });
+    stubCompletedPageLoad();
+    ensureSentryStarted.mockImplementation(() => {
+      throw new Error('init failed');
+    });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await import('../../instrumentation-client');
+    await vi.waitFor(() => expect(consoleError).toHaveBeenCalledTimes(1));
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.waitFor(() => expect(consoleError).toHaveBeenCalledTimes(2));
+    await vi.advanceTimersByTimeAsync(120_000);
+
+    expect(ensureSentryStarted).toHaveBeenCalledTimes(2);
+    expect(consoleError).toHaveBeenCalledTimes(2);
   });
 
   /**
