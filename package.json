@@ -58,7 +58,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.1.1",
-    "@vitest/coverage-v8": "5.0.0",
+    "@vitest/coverage-v8": "5.0.1",
     "dependency-cruiser": "^18.2.0",
     "drizzle-kit": "^0.31.10",
     "typescript": "npm:@typescript/typescript6",
