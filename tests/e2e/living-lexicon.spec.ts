@@ -141,3 +141,109 @@ test.describe('Living Lexicon', () => {
     expect(await browser.evaluate((track) => track.scrollWidth > track.clientWidth)).toBe(true);
   });
 });
+
+test.describe('Living Lexicon without element scrollTo', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      const nativeScrollTo = Element.prototype.scrollTo;
+      Object.defineProperty(Element.prototype, 'scrollTo', {
+        configurable: true,
+        get() {
+          return this.classList.contains('lex-track') ? undefined : nativeScrollTo;
+        },
+      });
+    });
+  });
+
+  test('selection and manual scrolling stay usable @smoke @mobile', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/#lexicon');
+    const track = page.locator('.lex-track');
+    await expect(page.locator('.lex-pause')).toBeHidden();
+    await expect(page.locator('.browser')).toHaveAttribute('data-autoplay-running', 'false');
+    await expect(page.getByRole('button', { name: 'lucent', exact: true })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+    const before = await page.evaluate(() => window.scrollY);
+
+    // DOM click avoids Playwright scrolling the document to expose an off-screen word.
+    await page
+      .getByRole('button', { name: 'quotidian', exact: true })
+      .evaluate((word) => (word as HTMLButtonElement).click());
+    await expect(page.getByText('6 of 8')).toBeVisible();
+    await expect
+      .poll(() =>
+        track.evaluate((element) => {
+          const word = element.querySelector<HTMLElement>('[data-lexicon-index="5"]');
+          if (!word) throw new Error('Missing selected word');
+          const target = word.offsetLeft - Number.parseFloat(getComputedStyle(element).paddingLeft);
+          return Math.abs(element.scrollLeft - target);
+        }),
+      )
+      .toBeLessThanOrEqual(1);
+    expect(await page.evaluate(() => window.scrollY)).toBe(before);
+
+    await page.getByRole('button', { name: 'quotidian', exact: true }).focus();
+    const beforeKeyboard = await page.evaluate(() => window.scrollY);
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByText('7 of 8')).toBeVisible();
+    expect(await page.evaluate(() => window.scrollY)).toBe(beforeKeyboard);
+
+    await track.evaluate((element) => {
+      const word = element.querySelector<HTMLElement>('[data-lexicon-index="1"]');
+      if (!word) throw new Error('Missing target word');
+      element.scrollLeft =
+        word.offsetLeft - Number.parseFloat(getComputedStyle(element).paddingLeft);
+    });
+    await expect(page.getByText('2 of 8')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'petrichor', exact: true })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+    expect(errors).toEqual([]);
+  });
+
+  test('autoplay and drag completion work with the fallback @smoke @mobile', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.clock.install();
+    await page.goto('/#lexicon');
+    await page
+      .locator('.browser')
+      .evaluate((element) => element.scrollIntoView({ behavior: 'instant', block: 'center' }));
+    await page.clock.runFor(100);
+    await expect(page.locator('.browser')).toHaveAttribute('data-autoplay-running', 'true');
+    const before = await page.evaluate(() => window.scrollY);
+    await page.clock.fastForward(5_100);
+    await expect(page.getByText('2 of 8')).toBeVisible();
+    expect(await page.evaluate(() => window.scrollY)).toBe(before);
+
+    // Real pointer events exercise capture and the drag-completion scroll path.
+    const track = page.locator('.lex-track');
+    const distance = await track.evaluate((element) => {
+      const word = element.querySelector<HTMLElement>('[data-lexicon-index="2"]');
+      if (!word) throw new Error('Missing next word');
+      return (
+        word.offsetLeft -
+        Number.parseFloat(getComputedStyle(element).paddingLeft) -
+        element.scrollLeft
+      );
+    });
+    const bounds = await track.boundingBox();
+    if (!bounds) throw new Error('Missing lexicon track');
+    const x = bounds.x + Math.min(bounds.width / 2, 250);
+    const y = bounds.y + bounds.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x - distance, y, { steps: 5 });
+    await page.clock.runFor(100);
+    await page.mouse.up();
+    await page.clock.runFor(100);
+    await expect(track).not.toHaveAttribute('data-dragging', 'true');
+    await expect(page.getByText('3 of 8')).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+});

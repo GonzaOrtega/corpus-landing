@@ -9,7 +9,12 @@ const RESUME_AFTER_IDLE_MS = 7_000;
 
 export function scrollLexiconItem(track: HTMLElement, item: HTMLElement, behavior: ScrollBehavior) {
   const inset = Number.parseFloat(getComputedStyle(track).paddingLeft) || 0;
-  track.scrollTo({ left: item.offsetLeft - inset, behavior });
+  const left = item.offsetLeft - inset;
+  if (typeof track.scrollTo === 'function') {
+    track.scrollTo({ left, behavior });
+  } else {
+    track.scrollLeft = left;
+  }
 }
 
 export function LivingLexiconClient({ entries }: { entries: readonly DemoLexiconEntry[] }) {
@@ -112,7 +117,11 @@ export function LivingLexiconClient({ entries }: { entries: readonly DemoLexicon
     if (track && item) {
       const inset = Number.parseFloat(getComputedStyle(track).paddingLeft) || 0;
       const target = item.offsetLeft - inset;
-      programmaticTargetRef.current = Math.abs(track.scrollLeft - target) <= 1 ? null : target;
+      // Only native scrolling needs to suppress selection while moving toward its target.
+      programmaticTargetRef.current =
+        typeof track.scrollTo === 'function' && Math.abs(track.scrollLeft - target) > 1
+          ? target
+          : null;
       scrollLexiconItem(track, item, reducedMotion ? 'auto' : 'smooth');
     }
   }, [activeIndex, reducedMotion]);
